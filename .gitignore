@@ -20,6 +20,7 @@ dist/
 Thumbs.db
 
 # Logs
+logs/
 *.log
 npm-debug.log*
 
