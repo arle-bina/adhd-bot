@@ -239,3 +239,21 @@ export async function getNews(params: {
   if (!response.ok) throw new Error(`API error: ${response.status}`);
   return response.json();
 }
+
+// --- Turn Status ---
+
+export interface TurnStatus {
+  currentTurn: number;
+  currentYear: number;
+  lastTurnProcessed: string;
+  nextScheduledTurn: string;
+}
+
+export async function getTurnStatus(): Promise<TurnStatus> {
+  const url = new URL("/api/game/turn/status", process.env.GAME_API_URL);
+
+  const response = await fetch(url.toString());
+
+  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  return response.json();
+}

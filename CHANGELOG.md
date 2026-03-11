@@ -4,6 +4,18 @@ All notable changes to the AHD Discord Bot are documented here.
 
 ---
 
+## [1.3.0] — 2026-03-11
+
+### Added
+
+- `/me` — view your own character profile. Auto-resolves via the caller's Discord ID (reuses existing `/api/discord-bot/lookup?discordId=`). Response is ephemeral. No new API route needed.
+- `/turn` — current game turn, game year, year progress, last processed time, and next scheduled turn, all as Discord-native relative timestamps. Calls the public `/api/game/turn/status` endpoint (no auth header required).
+- `/compare` — side-by-side two-column embed comparing two politicians (office, party, state, profile links). Fetches both via `Promise.all` against the existing lookup endpoint. No new API route needed.
+- `getTurnStatus()` added to `api.ts` for the public turn status endpoint.
+- `/me`, `/compare` added to Players category in `helpRegistry.ts`; `/turn` added to World category.
+
+---
+
 ## [1.2.0] — 2026-03-11
 
 ### Added

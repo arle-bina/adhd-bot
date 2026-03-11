@@ -28,6 +28,13 @@ export const categories: Category[] = [
         examples: ["/profile name:John Smith", "/profile user:@RainFrog"],
       },
       {
+        name: "/me",
+        usage: "/me",
+        description:
+          "View your own character profile — auto-resolves using your Discord account. No name needed.",
+        examples: ["/me"],
+      },
+      {
         name: "/leaderboard",
         usage: "/leaderboard [metric] [country] [limit]",
         description:
@@ -36,6 +43,13 @@ export const categories: Category[] = [
           "/leaderboard",
           "/leaderboard metric:Favorability country:US limit:5",
         ],
+      },
+      {
+        name: "/compare",
+        usage: "/compare politician1:<name> politician2:<name>",
+        description:
+          "Compare two politicians side by side — office, party, and state shown in a two-column embed.",
+        examples: ["/compare politician1:John Smith politician2:Jane Doe"],
       },
     ],
   },
@@ -80,6 +94,13 @@ export const categories: Category[] = [
         description:
           "Latest in-game news posts with reactions and timestamps. Filter by Elections, Legislation, Executive, or General.",
         examples: ["/news", "/news category:Elections limit:10"],
+      },
+      {
+        name: "/turn",
+        usage: "/turn",
+        description:
+          "Current game turn, year, and clock. Shows when the last turn processed and when the next one is due.",
+        examples: ["/turn"],
       },
     ],
   },
