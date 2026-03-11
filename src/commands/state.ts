@@ -6,7 +6,7 @@ import {
 import { getState } from "../utils/api.js";
 import { errorMessage } from "../utils/helpers.js";
 
-function formatOfficeType(type: string): string {
+export function formatOfficeType(type: string): string {
   const map: Record<string, string> = {
     governor: "Governor",
     senate: "Senator",
