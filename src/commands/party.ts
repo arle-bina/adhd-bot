@@ -6,7 +6,7 @@ import {
 import { getParty } from "../utils/api.js";
 import { hexToInt, errorMessage } from "../utils/helpers.js";
 
-function ideologyLabel(economic: number, social: number): string {
+export function ideologyLabel(economic: number, social: number): string {
   const econ = economic < -20 ? "Left" : economic > 20 ? "Right" : "Center";
   const soc = social < -20 ? "Liberal" : social > 20 ? "Conservative" : "Center";
   if (econ === "Center" && soc === "Center") return "Centrist";
