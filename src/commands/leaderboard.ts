@@ -14,6 +14,8 @@ function getMetricValue(
   return metric === "favorability" ? char.favorability : char.politicalInfluence;
 }
 
+export const cooldown = 10;
+
 export const data = new SlashCommandBuilder()
   .setName("leaderboard")
   .setDescription("Show top politicians by influence or favorability")
@@ -51,11 +53,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const country = interaction.options.getString("country") ?? undefined;
   const limit = interaction.options.getInteger("limit") ?? 10;
 
+  await interaction.deferReply();
+
   try {
     const result = await getLeaderboard({ metric, country, limit });
 
     if (!result.found || result.characters.length === 0) {
-      await interaction.reply({ content: "No politicians found.", ephemeral: true });
+      await interaction.editReply({ content: "No politicians found." });
       return;
     }
 
@@ -76,14 +80,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .setDescription(lines.join("\n"))
       .setFooter({ text: footerParts.join(" · ") });
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
   } catch (error) {
     console.error("Leaderboard error:", error);
-    const errReply = { content: errorMessage(error), ephemeral: true };
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(errReply);
-    } else {
-      await interaction.reply(errReply);
-    }
+    await interaction.editReply({ content: errorMessage(error) });
   }
 }

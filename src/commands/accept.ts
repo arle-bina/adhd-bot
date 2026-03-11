@@ -3,7 +3,6 @@ import {
   ChatInputCommandInteraction,
 } from "discord.js";
 
-const MEMBER_ROLE_ID = "1470502115716894846";
 
 export const data = new SlashCommandBuilder()
   .setName("accept")
@@ -18,13 +17,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
-  if (member.roles.cache.has(MEMBER_ROLE_ID)) {
+  if (member.roles.cache.has(process.env.MEMBER_ROLE_ID!)) {
     await interaction.reply({ content: "You already have access.", ephemeral: true });
     return;
   }
 
   try {
-    await member.roles.add(MEMBER_ROLE_ID);
+    await member.roles.add(process.env.MEMBER_ROLE_ID!);
     await interaction.reply({ content: "✅ Welcome! You now have access to the server.", ephemeral: true });
   } catch (error) {
     console.error("Accept role error:", error);

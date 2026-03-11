@@ -18,6 +18,8 @@ function formatElectionType(type: string): string {
   return map[type] ?? type;
 }
 
+export const cooldown = 5;
+
 export const data = new SlashCommandBuilder()
   .setName("elections")
   .setDescription("Show active and upcoming elections")
@@ -42,14 +44,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const country = interaction.options.getString("country") ?? undefined;
   const state = interaction.options.getString("state") ?? undefined;
 
+  await interaction.deferReply();
+
   try {
     const result = await getElections({ country, state });
 
     if (!result.found || result.elections.length === 0) {
-      await interaction.reply({
-        content: "No active or upcoming elections found.",
-        ephemeral: true,
-      });
+      await interaction.editReply({ content: "No active or upcoming elections found." });
       return;
     }
 
@@ -76,14 +77,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       embed.setFooter({ text: `Showing 5 of ${total} elections` });
     }
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
   } catch (error) {
     console.error("Elections error:", error);
-    const errReply = { content: errorMessage(error), ephemeral: true };
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(errReply);
-    } else {
-      await interaction.reply(errReply);
-    }
+    await interaction.editReply({ content: errorMessage(error) });
   }
 }

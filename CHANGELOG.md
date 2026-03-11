@@ -4,6 +4,27 @@ All notable changes to the AHD Discord Bot are documented here.
 
 ---
 
+## [1.2.0] — 2026-03-11
+
+### Added
+
+- Per-user command cooldowns enforced centrally in `index.ts`. Each command opts in via `export const cooldown = N` (seconds). Default fallback of 3s. Leaderboard is 10s; all other API commands are 5s.
+- Dynamic command loader in `index.ts` and `register.ts` — commands are auto-discovered from `src/commands/` at startup. Adding a new command no longer requires manual imports in either file.
+- `src/utils/cooldown.ts` — in-memory cooldown tracker (`Map<userId:command, timestamp>`).
+- ESLint with `typescript-eslint` — `npm run lint` and `npm run lint:fix`. Config in `eslint.config.js`.
+
+### Changed
+
+- `leaderboard`, `party`, `elections`, `state`, `news` — all now call `deferReply()` before hitting the game API, buying 15 minutes of response time instead of 3 seconds. Eliminates silent timeout failures under slow API conditions. Error handling simplified as a result (always `editReply`, no `replied || deferred` branch needed).
+- `WELCOME_CHANNEL_ID`, `RULES_CHANNEL_ID`, and `MEMBER_ROLE_ID` moved from hardcoded source literals to environment variables. All three are now required and validated on startup. Update your `.env` accordingly.
+- `package.json` version bumped to `1.2.0`.
+
+### Fixed
+
+- `/help` registry had incorrect usage for `/party` (`name` → `id`).
+
+---
+
 ## [1.1.0] — 2026-03-11
 
 ### Added

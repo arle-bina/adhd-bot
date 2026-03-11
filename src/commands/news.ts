@@ -13,6 +13,8 @@ const categoryNames: Record<string, string> = {
   general: "General",
 };
 
+export const cooldown = 5;
+
 export const data = new SlashCommandBuilder()
   .setName("news")
   .setDescription("Show the latest in-game news")
@@ -41,11 +43,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const category = interaction.options.getString("category") ?? undefined;
   const limit = interaction.options.getInteger("limit") ?? 5;
 
+  await interaction.deferReply();
+
   try {
     const result = await getNews({ category, limit });
 
     if (!result.found || result.posts.length === 0) {
-      await interaction.reply({ content: "No news posts found.", ephemeral: true });
+      await interaction.editReply({ content: "No news posts found." });
       return;
     }
 
@@ -70,14 +74,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       embed.addFields({ name: fieldName, value: (content + footer).slice(0, 1024) });
     }
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
   } catch (error) {
     console.error("News error:", error);
-    const errReply = { content: errorMessage(error), ephemeral: true };
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(errReply);
-    } else {
-      await interaction.reply(errReply);
-    }
+    await interaction.editReply({ content: errorMessage(error) });
   }
 }

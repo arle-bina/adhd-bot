@@ -8,6 +8,8 @@ import {
 } from "discord.js";
 import { lookupByName, lookupByDiscordId } from "../utils/api.js";
 
+export const cooldown = 5;
+
 export const data = new SlashCommandBuilder()
   .setName("profile")
   .setDescription("View a player profile")

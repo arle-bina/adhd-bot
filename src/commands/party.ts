@@ -15,6 +15,8 @@ function ideologyLabel(economic: number, social: number): string {
   return `${econ}-${soc}`;
 }
 
+export const cooldown = 5;
+
 export const data = new SlashCommandBuilder()
   .setName("party")
   .setDescription("Look up a political party")
@@ -28,13 +30,14 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction: ChatInputCommandInteraction) {
   const id = interaction.options.getString("id", true);
 
+  await interaction.deferReply();
+
   try {
     const result = await getParty(id);
 
     if (!result.found || !result.party) {
-      await interaction.reply({
+      await interaction.editReply({
         content: "Party not found. Try the slug, e.g. `democrat`, `republican`, `labour`.",
-        ephemeral: true,
       });
       return;
     }
@@ -63,14 +66,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         { name: "Top Members", value: topMembersValue }
       );
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
   } catch (error) {
     console.error("Party error:", error);
-    const errReply = { content: errorMessage(error), ephemeral: true };
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(errReply);
-    } else {
-      await interaction.reply(errReply);
-    }
+    await interaction.editReply({ content: errorMessage(error) });
   }
 }

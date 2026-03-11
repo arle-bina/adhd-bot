@@ -1,41 +1,36 @@
 import { REST, Routes } from "discord.js";
+import { readdirSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 import { validateEnv } from "./utils/env.js";
-import * as profileCommand from "./commands/profile.js";
-import * as leaderboardCommand from "./commands/leaderboard.js";
-import * as partyCommand from "./commands/party.js";
-import * as electionsCommand from "./commands/elections.js";
-import * as stateCommand from "./commands/state.js";
-import * as newsCommand from "./commands/news.js";
-import * as acceptCommand from "./commands/accept.js";
-import * as helpCommand from "./commands/help.js";
 
 validateEnv();
 
-const commands = [
-  profileCommand.data.toJSON(),
-  leaderboardCommand.data.toJSON(),
-  partyCommand.data.toJSON(),
-  electionsCommand.data.toJSON(),
-  stateCommand.data.toJSON(),
-  newsCommand.data.toJSON(),
-  acceptCommand.data.toJSON(),
-  helpCommand.data.toJSON(),
-];
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-const rest = new REST().setToken(process.env.DISCORD_BOT_TOKEN!);
+const commandFiles = readdirSync(join(__dirname, "commands")).filter(
+  (f) => f.endsWith(".js") || f.endsWith(".ts")
+);
 
-async function main() {
-  try {
-    console.log("Registering slash commands...");
+const commandData: unknown[] = [];
 
-    await rest.put(Routes.applicationCommands(process.env.DISCORD_CLIENT_ID!), {
-      body: commands,
-    });
-
-    console.log("Successfully registered commands.");
-  } catch (error) {
-    console.error(error);
+for (const file of commandFiles) {
+  const baseName = file.replace(/\.(js|ts)$/, "");
+  const mod = await import(`./commands/${baseName}.js`);
+  if (mod.data) {
+    commandData.push(mod.data.toJSON());
   }
 }
 
-main();
+const rest = new REST().setToken(process.env.DISCORD_BOT_TOKEN!);
+
+try {
+  console.log(`Registering ${commandData.length} slash commands...`);
+  await rest.put(Routes.applicationCommands(process.env.DISCORD_CLIENT_ID!), {
+    body: commandData,
+  });
+  console.log("Successfully registered commands.");
+} catch (error) {
+  console.error(error);
+}

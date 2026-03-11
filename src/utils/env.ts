@@ -5,6 +5,9 @@ const required = [
   "DISCORD_CLIENT_ID",
   "GAME_API_URL",
   "GAME_API_KEY",
+  "WELCOME_CHANNEL_ID",
+  "RULES_CHANNEL_ID",
+  "MEMBER_ROLE_ID",
 ] as const;
 
 export function validateEnv() {

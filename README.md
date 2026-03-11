@@ -104,6 +104,7 @@ adhd-bot/
 - **Node.js** v20 or later
 - **npm** v10 or later
 - A Discord bot token and application from the [Discord Developer Portal](https://discord.com/developers/applications)
+- **Server Members Intent** enabled in the Discord Developer Portal (Bot → Privileged Gateway Intents) — required for the welcome message flow
 - A valid `GAME_API_KEY` from A House Divided
 
 ### Installation
@@ -128,6 +129,9 @@ cp .env.example .env
 | `DISCORD_CLIENT_ID` | Your Discord application client ID |
 | `GAME_API_URL` | Game API base URL (default: `https://www.ahousedividedgame.com/`) |
 | `GAME_API_KEY` | API key for the game backend |
+| `WELCOME_CHANNEL_ID` | Channel ID where welcome messages are sent to new members |
+| `RULES_CHANNEL_ID` | Channel ID linked in the welcome message |
+| `MEMBER_ROLE_ID` | Role ID assigned by `/accept` |
 
 ### Development
 
@@ -180,6 +184,20 @@ Pulls latest changes, rebuilds, and restarts the PM2 process.
 pm2 status              # Check bot status
 pm2 logs adhd-bot       # View live logs
 pm2 restart adhd-bot    # Manual restart
+```
+
+---
+
+## :robot: Code Style & Linting
+
+After installing dependencies, run:
+
+```bash
+# Check for lint errors
+npm run lint
+
+# Auto-fix where possible
+npm run lint:fix
 ```
 
 ---

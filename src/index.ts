@@ -1,47 +1,59 @@
-import { Client, GatewayIntentBits, Collection, EmbedBuilder } from "discord.js";
+import {
+  Client,
+  GatewayIntentBits,
+  Collection,
+  EmbedBuilder,
+  ChatInputCommandInteraction,
+} from "discord.js";
+import { readdirSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 import { validateEnv } from "./utils/env.js";
-import * as profileCommand from "./commands/profile.js";
-import * as leaderboardCommand from "./commands/leaderboard.js";
-import * as partyCommand from "./commands/party.js";
-import * as electionsCommand from "./commands/elections.js";
-import * as stateCommand from "./commands/state.js";
-import * as newsCommand from "./commands/news.js";
-import * as acceptCommand from "./commands/accept.js";
-import * as helpCommand from "./commands/help.js";
 import { buildCategoryEmbed, buildSelectMenu } from "./commands/help.js";
+import { checkCooldown } from "./utils/cooldown.js";
 
 validateEnv();
 
-const WELCOME_CHANNEL_ID = "1470572208127475875";
-const RULES_CHANNEL_ID = "1474142953437135142";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+interface Command {
+  data: { name: string };
+  execute: (interaction: ChatInputCommandInteraction) => Promise<void>;
+  cooldown?: number;
+}
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
 });
 
-const commands = new Collection<string, typeof profileCommand>();
-commands.set(profileCommand.data.name, profileCommand);
-commands.set(leaderboardCommand.data.name, leaderboardCommand);
-commands.set(partyCommand.data.name, partyCommand);
-commands.set(electionsCommand.data.name, electionsCommand);
-commands.set(stateCommand.data.name, stateCommand);
-commands.set(newsCommand.data.name, newsCommand);
-commands.set(acceptCommand.data.name, acceptCommand);
-commands.set(helpCommand.data.name, helpCommand);
+const commands = new Collection<string, Command>();
+
+const commandFiles = readdirSync(join(__dirname, "commands")).filter(
+  (f) => f.endsWith(".js") || f.endsWith(".ts")
+);
+
+for (const file of commandFiles) {
+  const baseName = file.replace(/\.(js|ts)$/, "");
+  const mod = await import(`./commands/${baseName}.js`);
+  if (mod.data && mod.execute) {
+    commands.set(mod.data.name, mod as Command);
+  }
+}
 
 client.once("ready", () => {
-  console.log(`Bot ready as ${client.user?.tag}`);
+  console.log(`Bot ready as ${client.user?.tag} — ${commands.size} commands loaded`);
 });
 
 client.on("guildMemberAdd", async (member) => {
   try {
-    const channel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
+    const channel = member.guild.channels.cache.get(process.env.WELCOME_CHANNEL_ID!);
     if (!channel?.isTextBased()) return;
 
     const embed = new EmbedBuilder()
       .setTitle("Welcome to the server!")
       .setDescription(
-        `Hey ${member}! 👋\n\nWelcome to **${member.guild.name}**.\n\nPlease read the rules in <#${RULES_CHANNEL_ID}>, then run \`/accept\` in this channel to gain access to the rest of the server.`
+        `Hey ${member}! 👋\n\nWelcome to **${member.guild.name}**.\n\nPlease read the rules in <#${process.env.RULES_CHANNEL_ID}>, then run \`/accept\` in this channel to gain access to the rest of the server.`
       )
       .setColor(0x5865f2)
       .setThumbnail(member.user.displayAvatarURL());
@@ -65,14 +77,24 @@ client.on("interactionCreate", async (interaction) => {
   const command = commands.get(interaction.commandName);
   if (!command) return;
 
+  const remaining = checkCooldown(
+    interaction.user.id,
+    interaction.commandName,
+    command.cooldown ?? 3
+  );
+  if (remaining > 0) {
+    await interaction.reply({
+      content: `Please wait **${remaining}s** before using \`/${interaction.commandName}\` again.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
   try {
     await command.execute(interaction);
   } catch (error) {
     console.error("Command error:", error);
-    const reply = {
-      content: "There was an error executing this command.",
-      ephemeral: true,
-    };
+    const reply = { content: "There was an error executing this command.", ephemeral: true };
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp(reply);
     } else {

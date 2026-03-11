@@ -18,6 +18,8 @@ function formatOfficeType(type: string): string {
   return map[type] ?? type;
 }
 
+export const cooldown = 5;
+
 export const data = new SlashCommandBuilder()
   .setName("state")
   .setDescription("Look up a state or region")
@@ -31,13 +33,14 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction: ChatInputCommandInteraction) {
   const id = interaction.options.getString("id", true);
 
+  await interaction.deferReply();
+
   try {
     const result = await getState(id);
 
     if (!result.found || !result.state) {
-      await interaction.reply({
+      await interaction.editReply({
         content: "State not found. Use the state code, e.g. `CA`, `TX`, `UK_ENG`.",
-        ephemeral: true,
       });
       return;
     }
@@ -70,14 +73,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         { name: "Officials", value: officialsValue.slice(0, 1024) }
       );
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
   } catch (error) {
     console.error("State error:", error);
-    const errReply = { content: errorMessage(error), ephemeral: true };
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(errReply);
-    } else {
-      await interaction.reply(errReply);
-    }
+    await interaction.editReply({ content: errorMessage(error) });
   }
 }
