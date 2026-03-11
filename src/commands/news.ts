@@ -60,6 +60,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       ).slice(0, 256);
       const ts = Math.floor(new Date(post.createdAt).getTime() / 1000);
       const footer = `\n👍 ${post.reactions.agree}  👎 ${post.reactions.disagree}  · <t:${ts}:R>  · [Read more](${post.postUrl})`;
+      // Discord embed field values are capped at 1024 chars. Measure the footer first so the
+      // content slice fits exactly. Math.max(0, ...) guards against unusually long URLs.
       const maxContentLen = Math.max(0, 1024 - footer.length);
       const content =
         post.content.length > maxContentLen

@@ -6,6 +6,7 @@ import {
 import { getLeaderboard, LeaderboardCharacter } from "../utils/api.js";
 import { errorMessage } from "../utils/helpers.js";
 
+// Explicit conditional avoids TypeScript's TS7053 "any" error from dynamic key indexing (char[metric]).
 function getMetricValue(
   char: LeaderboardCharacter,
   metric: "politicalInfluence" | "favorability"
