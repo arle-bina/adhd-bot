@@ -6,7 +6,7 @@ import {
 import { getElections } from "../utils/api.js";
 import { errorMessage } from "../utils/helpers.js";
 
-function formatElectionType(type: string): string {
+export function formatElectionType(type: string): string {
   const map: Record<string, string> = {
     senate: "Senate",
     house: "House",
