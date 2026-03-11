@@ -13,6 +13,8 @@ All notable changes to the AHD Discord Bot are documented here.
 - `/compare` — side-by-side two-column embed comparing two politicians (office, party, state, profile links). Fetches both via `Promise.all` against the existing lookup endpoint. No new API route needed.
 - `getTurnStatus()` added to `api.ts` for the public turn status endpoint.
 - `/me`, `/compare` added to Players category in `helpRegistry.ts`; `/turn` added to World category.
+- Unit test suite via **Vitest** — 33 tests across 5 files covering all pure utility and formatting functions (`hexToInt`, `errorMessage`, `getMetricValue`, `ideologyLabel`, `formatElectionType`, `formatOfficeType`). Run with `npm test`.
+- `vitest.config.ts` added at project root.
 
 ---
 

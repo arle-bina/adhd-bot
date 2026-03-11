@@ -30,16 +30,29 @@ This repository contains the **Discord bot** — a companion app that connects t
 
 ## :robot: Commands
 
-### Game data
+### Players
 
 | Command | Description | Options |
 | --- | --- | --- |
 | `/profile` | View a player's character(s) | `name` (character name), `user` (Discord user) |
+| `/me` | View your own character profile (auto-resolved via Discord) | — |
 | `/leaderboard` | Top politicians by influence or favorability | `metric`, `country`, `limit` |
-| `/party` | Look up a political party | `name` |
+| `/compare` | Compare two politicians side by side | `politician1`, `politician2` |
+
+### Politics
+
+| Command | Description | Options |
+| --- | --- | --- |
 | `/elections` | Active and upcoming elections | `country`, `state` |
+| `/party` | Look up a political party | `id` (slug, e.g. `labour`) |
 | `/state` | State or region overview with current officials | `id` (e.g. `CA`, `UK_ENG`) |
+
+### World
+
+| Command | Description | Options |
+| --- | --- | --- |
 | `/news` | Latest in-game news posts | `category`, `limit` |
+| `/turn` | Current game turn, year, and clock | — |
 
 ### Server
 
@@ -72,24 +85,38 @@ adhd-bot/
 ├── src/
 │   ├── commands/
 │   │   ├── accept.ts        # /accept command (server onboarding)
+│   │   ├── compare.ts       # /compare command
 │   │   ├── elections.ts     # /elections command
 │   │   ├── help.ts          # /help command (interactive menu)
 │   │   ├── leaderboard.ts   # /leaderboard command
+│   │   ├── me.ts            # /me command
 │   │   ├── news.ts          # /news command
 │   │   ├── party.ts         # /party command
 │   │   ├── profile.ts       # /profile command
-│   │   └── state.ts         # /state command
+│   │   ├── state.ts         # /state command
+│   │   └── turn.ts          # /turn command
 │   ├── utils/
 │   │   ├── api.ts           # Game API client
+│   │   ├── cooldown.ts      # Per-user command cooldown tracker
 │   │   ├── env.ts           # Env validation
 │   │   ├── helpRegistry.ts  # Help menu command metadata (source of truth)
-│   │   └── helpers.ts       # Shared helpers
-│   ├── index.ts             # Bot entry point
-│   └── register.ts          # Slash command registration
+│   │   └── helpers.ts       # Shared helpers (hexToInt, errorMessage)
+│   ├── index.ts             # Bot entry point (auto-discovers commands)
+│   └── register.ts          # Slash command registration (auto-discovers commands)
+├── tests/
+│   ├── commands/
+│   │   ├── elections.test.ts
+│   │   ├── leaderboard.test.ts
+│   │   ├── party.test.ts
+│   │   └── state.test.ts
+│   └── utils/
+│       └── helpers.test.ts
 ├── scripts/
 │   ├── setup.sh             # First-time server setup
 │   └── deploy.sh            # Update & restart bot
 ├── ecosystem.config.cjs     # PM2 configuration
+├── eslint.config.js         # ESLint + typescript-eslint config
+├── vitest.config.ts         # Test runner config
 ├── .env.example             # Required environment variables
 ├── tsconfig.json
 └── package.json
@@ -185,6 +212,20 @@ pm2 status              # Check bot status
 pm2 logs adhd-bot       # View live logs
 pm2 restart adhd-bot    # Manual restart
 ```
+
+---
+
+## :robot: Testing
+
+```bash
+# Run unit tests (pure utility and formatting functions)
+npm test
+
+# Watch mode for development
+npm run test:watch
+```
+
+33 unit tests cover `hexToInt`, `errorMessage`, `getMetricValue`, `ideologyLabel`, `formatElectionType`, and `formatOfficeType`. No mocking required — all tested functions are pure input/output.
 
 ---
 
