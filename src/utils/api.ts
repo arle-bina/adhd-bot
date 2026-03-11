@@ -57,13 +57,16 @@ export interface LeaderboardCharacter {
   stateCode: string;
   position: string;
   politicalInfluence: number;
+  nationalPoliticalInfluence: number;
   favorability: number;
   profileUrl: string;
 }
 
+export type LeaderboardMetric = "politicalInfluence" | "nationalPoliticalInfluence" | "favorability";
+
 interface LeaderboardResponse {
   found: boolean;
-  metric: "politicalInfluence" | "favorability";
+  metric: LeaderboardMetric;
   characters: LeaderboardCharacter[];
 }
 

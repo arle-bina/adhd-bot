@@ -3,15 +3,17 @@ import {
   ChatInputCommandInteraction,
   EmbedBuilder,
 } from "discord.js";
-import { getLeaderboard, LeaderboardCharacter } from "../utils/api.js";
+import { getLeaderboard, LeaderboardCharacter, LeaderboardMetric } from "../utils/api.js";
 import { errorMessage } from "../utils/helpers.js";
 
 // Explicit conditional avoids TypeScript's TS7053 "any" error from dynamic key indexing (char[metric]).
 export function getMetricValue(
   char: LeaderboardCharacter,
-  metric: "politicalInfluence" | "favorability"
+  metric: LeaderboardMetric
 ): number {
-  return metric === "favorability" ? char.favorability : char.politicalInfluence;
+  if (metric === "favorability") return char.favorability;
+  if (metric === "nationalPoliticalInfluence") return char.nationalPoliticalInfluence;
+  return char.politicalInfluence;
 }
 
 export const cooldown = 10;
@@ -26,6 +28,7 @@ export const data = new SlashCommandBuilder()
       .setRequired(false)
       .addChoices(
         { name: "Political Influence (default)", value: "influence" },
+        { name: "National Political Influence", value: "nationalPoliticalInfluence" },
         { name: "Favorability", value: "favorability" }
       )
   )
@@ -63,8 +66,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       return;
     }
 
-    const metricLabel =
-      result.metric === "favorability" ? "Favorability" : "Political Influence";
+    const metricLabels: Record<LeaderboardMetric, string> = {
+      politicalInfluence: "Political Influence",
+      nationalPoliticalInfluence: "National Political Influence",
+      favorability: "Favorability",
+    };
+    const metricLabel = metricLabels[result.metric];
 
     const lines = result.characters.map((char) => {
       const value = getMetricValue(char, result.metric).toLocaleString();
