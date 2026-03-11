@@ -60,12 +60,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       ).slice(0, 256);
       const ts = Math.floor(new Date(post.createdAt).getTime() / 1000);
       const footer = `\n👍 ${post.reactions.agree}  👎 ${post.reactions.disagree}  · <t:${ts}:R>  · [Read more](${post.postUrl})`;
-      const maxContentLen = 1024 - footer.length;
+      const maxContentLen = Math.max(0, 1024 - footer.length);
       const content =
         post.content.length > maxContentLen
-          ? post.content.slice(0, maxContentLen - 1) + "…"
+          ? post.content.slice(0, Math.max(0, maxContentLen - 1)) + "…"
           : post.content;
-      embed.addFields({ name: fieldName, value: content + footer });
+      embed.addFields({ name: fieldName, value: (content + footer).slice(0, 1024) });
     }
 
     await interaction.reply({ embeds: [embed] });
