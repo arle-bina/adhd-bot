@@ -13,6 +13,8 @@ export function getMetricValue(
 ): number {
   if (metric === "favorability") return char.favorability;
   if (metric === "nationalPoliticalInfluence") return char.nationalPoliticalInfluence;
+  if (metric === "actions") return char.actions;
+  if (metric === "funds") return char.funds;
   return char.politicalInfluence;
 }
 
@@ -20,7 +22,7 @@ export const cooldown = 10;
 
 export const data = new SlashCommandBuilder()
   .setName("leaderboard")
-  .setDescription("Show top politicians by influence or favorability")
+  .setDescription("Show top politicians ranked by various metrics")
   .addStringOption((option) =>
     option
       .setName("metric")
@@ -29,7 +31,9 @@ export const data = new SlashCommandBuilder()
       .addChoices(
         { name: "Political Influence (default)", value: "influence" },
         { name: "National Political Influence", value: "nationalPoliticalInfluence" },
-        { name: "Favorability", value: "favorability" }
+        { name: "Favorability", value: "favorability" },
+        { name: "Actions", value: "actions" },
+        { name: "Funds", value: "funds" }
       )
   )
   .addStringOption((option) =>
@@ -70,6 +74,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       politicalInfluence: "Political Influence",
       nationalPoliticalInfluence: "National Political Influence",
       favorability: "Favorability",
+      actions: "Actions",
+      funds: "Funds",
     };
     const metricLabel = metricLabels[result.metric];
 
