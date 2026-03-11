@@ -7,6 +7,7 @@ import * as electionsCommand from "./commands/elections.js";
 import * as stateCommand from "./commands/state.js";
 import * as newsCommand from "./commands/news.js";
 import * as acceptCommand from "./commands/accept.js";
+import * as helpCommand from "./commands/help.js";
 
 validateEnv();
 
@@ -18,6 +19,7 @@ const commands = [
   stateCommand.data.toJSON(),
   newsCommand.data.toJSON(),
   acceptCommand.data.toJSON(),
+  helpCommand.data.toJSON(),
 ];
 
 const rest = new REST().setToken(process.env.DISCORD_BOT_TOKEN!);

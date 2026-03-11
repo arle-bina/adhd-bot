@@ -7,6 +7,8 @@ import * as electionsCommand from "./commands/elections.js";
 import * as stateCommand from "./commands/state.js";
 import * as newsCommand from "./commands/news.js";
 import * as acceptCommand from "./commands/accept.js";
+import * as helpCommand from "./commands/help.js";
+import { buildCategoryEmbed, buildSelectMenu } from "./commands/help.js";
 
 validateEnv();
 
@@ -25,6 +27,7 @@ commands.set(electionsCommand.data.name, electionsCommand);
 commands.set(stateCommand.data.name, stateCommand);
 commands.set(newsCommand.data.name, newsCommand);
 commands.set(acceptCommand.data.name, acceptCommand);
+commands.set(helpCommand.data.name, helpCommand);
 
 client.once("ready", () => {
   console.log(`Bot ready as ${client.user?.tag}`);
@@ -50,6 +53,13 @@ client.on("guildMemberAdd", async (member) => {
 });
 
 client.on("interactionCreate", async (interaction) => {
+  if (interaction.isStringSelectMenu() && interaction.customId === "help_category") {
+    const embed = buildCategoryEmbed(interaction.values[0]);
+    if (!embed) return;
+    await interaction.update({ embeds: [embed], components: [buildSelectMenu()] });
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   const command = commands.get(interaction.commandName);
