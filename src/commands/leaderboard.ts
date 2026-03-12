@@ -3,22 +3,26 @@ import {
   ChatInputCommandInteraction,
   EmbedBuilder,
 } from "discord.js";
-import { getLeaderboard, LeaderboardCharacter } from "../utils/api.js";
+import { getLeaderboard, LeaderboardCharacter, LeaderboardMetric } from "../utils/api.js";
 import { errorMessage } from "../utils/helpers.js";
 
 // Explicit conditional avoids TypeScript's TS7053 "any" error from dynamic key indexing (char[metric]).
 export function getMetricValue(
   char: LeaderboardCharacter,
-  metric: "politicalInfluence" | "favorability"
+  metric: LeaderboardMetric
 ): number {
-  return metric === "favorability" ? char.favorability : char.politicalInfluence;
+  if (metric === "favorability") return char.favorability;
+  if (metric === "nationalPoliticalInfluence") return char.nationalPoliticalInfluence;
+  if (metric === "actions") return char.actions;
+  if (metric === "funds") return char.funds;
+  return char.politicalInfluence;
 }
 
 export const cooldown = 10;
 
 export const data = new SlashCommandBuilder()
   .setName("leaderboard")
-  .setDescription("Show top politicians by influence or favorability")
+  .setDescription("Show top politicians ranked by various metrics")
   .addStringOption((option) =>
     option
       .setName("metric")
@@ -26,7 +30,10 @@ export const data = new SlashCommandBuilder()
       .setRequired(false)
       .addChoices(
         { name: "Political Influence (default)", value: "influence" },
-        { name: "Favorability", value: "favorability" }
+        { name: "National Political Influence", value: "nationalPoliticalInfluence" },
+        { name: "Favorability", value: "favorability" },
+        { name: "Actions", value: "actions" },
+        { name: "Funds", value: "funds" }
       )
   )
   .addStringOption((option) =>
@@ -63,8 +70,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       return;
     }
 
-    const metricLabel =
-      result.metric === "favorability" ? "Favorability" : "Political Influence";
+    const metricLabels: Record<LeaderboardMetric, string> = {
+      politicalInfluence: "Political Influence",
+      nationalPoliticalInfluence: "National Political Influence",
+      favorability: "Favorability",
+      actions: "Actions",
+      funds: "Funds",
+    };
+    const metricLabel = metricLabels[result.metric];
 
     const lines = result.characters.map((char) => {
       const value = getMetricValue(char, result.metric).toLocaleString();

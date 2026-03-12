@@ -25,11 +25,21 @@ for (const file of commandFiles) {
 
 const rest = new REST().setToken(process.env.DISCORD_BOT_TOKEN!);
 
+const GUILD_ID = "1465445442987888743";
+
 try {
-  console.log(`Registering ${commandData.length} slash commands...`);
+  // Clear global commands (removes duplicates)
+  console.log("Clearing global commands...");
   await rest.put(Routes.applicationCommands(process.env.DISCORD_CLIENT_ID!), {
-    body: commandData,
+    body: [],
   });
+
+  // Register guild-specific commands
+  console.log(`Registering ${commandData.length} slash commands to guild...`);
+  await rest.put(
+    Routes.applicationGuildCommands(process.env.DISCORD_CLIENT_ID!, GUILD_ID),
+    { body: commandData }
+  );
   console.log("Successfully registered commands.");
 } catch (error) {
   console.error(error);
