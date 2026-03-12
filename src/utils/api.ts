@@ -1,14 +1,32 @@
-interface CharacterResult {
+export interface CharacterResult {
   id: string;
   name: string;
+  bio: string | null;
   party: string;
+  partyId: string;
   partyColor: string;
+  partyUrl: string;
   state: string;
   stateCode: string;
+  stateUrl: string;
+  countryId: string;
+  countryUrl: string;
   position: string;
+  officeType: string | null;
+  politicalInfluence: number;
+  nationalInfluence: number;
+  favorability: number;
+  infamy: number;
+  funds: number;
+  actions: number;
+  donorBaseLevel: number;
+  policies: { economic: number; social: number };
   avatarUrl: string | null;
   discordAvatarUrl: string | null;
+  discordUsername: string | null;
   profileUrl: string;
+  createdAt: string;
+  activeElection: string | null;
 }
 
 interface LookupResponse {
@@ -128,14 +146,14 @@ export async function getParty(id: string): Promise<PartyResponse> {
 
 // --- Elections ---
 
-interface ElectionCandidate {
+export interface ElectionCandidate {
   characterId: string;
   characterName: string;
   party: string;
   partyColor: string;
 }
 
-interface Election {
+export interface Election {
   id: string;
   electionType: string;
   state: string;
@@ -253,6 +271,200 @@ export async function getTurnStatus(): Promise<TurnStatus> {
   const url = new URL("/api/game/turn/status", process.env.GAME_API_URL);
 
   const response = await fetch(url.toString());
+
+  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  return response.json();
+}
+
+// --- Career ---
+
+export interface CareerEvent {
+  type: "elected" | "lost_election" | "resigned" | "appointed" | "removed";
+  office: string;
+  officeRaw: { type: string; state: string };
+  party: string;
+  electionId: string | null;
+  date: string;
+}
+
+interface CareerResponse {
+  found: boolean;
+  characterId: string;
+  characterName: string;
+  career: CareerEvent[];
+}
+
+export async function getCareer(params: {
+  characterId?: string;
+  discordId?: string;
+  name?: string;
+}): Promise<CareerResponse> {
+  const url = new URL("/api/discord-bot/career", process.env.GAME_API_URL);
+  if (params.characterId) url.searchParams.set("characterId", params.characterId);
+  if (params.discordId) url.searchParams.set("discordId", params.discordId);
+  if (params.name) url.searchParams.set("name", params.name);
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+  });
+
+  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  return response.json();
+}
+
+// --- Achievements ---
+
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: "milestone" | "election" | "legislation" | "social" | "action" | "special";
+  isHidden: boolean;
+  isHighlighted: boolean;
+  earnedAt: string;
+}
+
+interface AchievementsResponse {
+  found: boolean;
+  characterId: string;
+  characterName: string;
+  achievements: Achievement[];
+}
+
+export async function getAchievements(params: {
+  characterId?: string;
+  discordId?: string;
+  name?: string;
+}): Promise<AchievementsResponse> {
+  const url = new URL("/api/discord-bot/achievements", process.env.GAME_API_URL);
+  if (params.characterId) url.searchParams.set("characterId", params.characterId);
+  if (params.discordId) url.searchParams.set("discordId", params.discordId);
+  if (params.name) url.searchParams.set("name", params.name);
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+  });
+
+  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  return response.json();
+}
+
+// --- Race Detail ---
+
+export interface RaceEndorsement {
+  type: string;
+  name: string;
+}
+
+export interface RaceCandidate {
+  id: string;
+  characterId: string;
+  characterName: string;
+  avatarUrl: string | null;
+  party: string;
+  partyId: string;
+  partyColor: string;
+  isNPP: boolean;
+  favorability: number;
+  politicalInfluence: number;
+  economicPosition: number;
+  socialPosition: number;
+  primaryScore: number;
+  sharePct: number;
+  endorsementCount: number;
+  endorsements: RaceEndorsement[];
+  runningMateName: string | null;
+  campaignFunds: number;
+  profileUrl: string;
+}
+
+export interface RaceVoteSnapshot {
+  turn: number;
+  cumulativeVotes: Record<string, number>;
+  sharesPct: Record<string, number>;
+}
+
+export interface RaceVotes {
+  totalVotes: number;
+  candidateNames: Record<string, string>;
+  candidateParties: Record<string, string>;
+  finalized: boolean;
+  seatsEstimate: number | null;
+  electoralVotes?: Record<string, number>;
+  latestSnapshot: RaceVoteSnapshot | null;
+}
+
+export interface RaceElection {
+  id: string;
+  electionType: string;
+  state: string;
+  stateName: string;
+  countryId: string;
+  cycle: number;
+  status: string;
+  totalSeats: number;
+  startTime: string | null;
+  endTime: string | null;
+  primaryEndTime: string | null;
+  url: string;
+}
+
+export interface RacePhase {
+  inPrimary: boolean;
+  inGeneral: boolean;
+  isUpcoming: boolean;
+  isEnded: boolean;
+}
+
+export interface RaceIncumbent {
+  name: string;
+  party: string;
+}
+
+export interface RaceDetailResponse {
+  found: boolean;
+  mode: "detail";
+  election: RaceElection;
+  phase: RacePhase;
+  incumbent: RaceIncumbent | null;
+  candidates: RaceCandidate[];
+  primarySnapshots: unknown[];
+  votes: RaceVotes;
+  gameState: { currentTurn: number; isActive: boolean };
+}
+
+interface RaceListResponse {
+  found: boolean;
+  mode: "list";
+  elections: Array<{
+    id: string;
+    electionType: string;
+    state: string;
+    stateName: string;
+    status: string;
+    startTime: string | null;
+    endTime: string | null;
+  }>;
+}
+
+export type RaceResponse = RaceDetailResponse | RaceListResponse;
+
+export async function getRace(params: {
+  country?: string;
+  state?: string;
+  race?: string;
+  electionId?: string;
+}): Promise<RaceResponse> {
+  const url = new URL("/api/discord-bot/race", process.env.GAME_API_URL);
+  if (params.country) url.searchParams.set("country", params.country);
+  if (params.state) url.searchParams.set("state", params.state);
+  if (params.race) url.searchParams.set("race", params.race);
+  if (params.electionId) url.searchParams.set("electionId", params.electionId);
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+  });
 
   if (!response.ok) throw new Error(`API error: ${response.status}`);
   return response.json();
