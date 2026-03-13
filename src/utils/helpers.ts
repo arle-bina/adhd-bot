@@ -14,7 +14,18 @@ export function errorMessage(error: unknown): string {
   if (msg.includes("401")) return `Bot configuration error${code} — contact an admin.`;
   if (msg.includes("400")) return `Invalid request${code} — check your inputs.`;
   if (msg.includes("API error")) return `Something went wrong${code}. Try again shortly.`;
-  return "Could not reach the game server. Try again shortly.";
+
+  // AbortSignal.timeout() fires a TimeoutError (a DOMException subclass)
+  if (error instanceof Error && error.name === "TimeoutError") {
+    return "The game server took too long to respond. Try again shortly.";
+  }
+
+  // fetch() throws a TypeError on network-level failures (ECONNREFUSED, ENOTFOUND, etc.)
+  if (error instanceof TypeError && msg === "fetch failed") {
+    return "Could not reach the game server. Try again shortly.";
+  }
+
+  return "An unexpected error occurred. Try again shortly.";
 }
 
 /**
