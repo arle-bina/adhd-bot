@@ -23,7 +23,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     if (!result.found || result.characters.length === 0) {
       await interaction.editReply({
         content:
-          "No characters found linked to your Discord account. Make sure you've connected your account on the website.",
+          "No characters linked to your Discord account. Try `/profile name:YourCharacterName` or connect your Discord on the website.",
       });
       return;
     }
