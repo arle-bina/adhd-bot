@@ -16,6 +16,7 @@ import {
   type CareerEvent,
   type Achievement,
 } from "../utils/api.js";
+import { hexToInt } from "../utils/helpers.js";
 
 export const cooldown = 5;
 
@@ -40,7 +41,7 @@ const CAREER_EMOJI: Record<string, string> = {
 };
 
 function partyColor(char: CharacterResult): number {
-  return parseInt(char.partyColor.replace("#", ""), 16);
+  return hexToInt(char.partyColor);
 }
 
 function policyLabel(val: number): string {
@@ -62,17 +63,17 @@ function buildProfileEmbed(char: CharacterResult): EmbedBuilder {
 
   embed.addFields(
     { name: "Position", value: char.position || "None", inline: true },
-    { name: "Party", value: `[${char.party}](${char.partyUrl})`, inline: true },
-    { name: "State", value: `[${char.state}](${char.stateUrl})`, inline: true },
-    { name: "PI", value: String(char.politicalInfluence), inline: true },
-    { name: "NPI", value: String(char.nationalInfluence), inline: true },
-    { name: "Approval", value: `${char.favorability}%`, inline: true },
-    { name: "Infamy", value: String(char.infamy), inline: true },
-    { name: "Actions", value: String(char.actions), inline: true },
-    { name: "Donor Base", value: String(char.donorBaseLevel), inline: true },
-    { name: "Economic", value: policyLabel(char.policies.economic), inline: true },
-    { name: "Social", value: policyLabel(char.policies.social), inline: true },
-    { name: "Funds", value: `$${char.funds.toLocaleString()}`, inline: true },
+    { name: "Party", value: char.partyUrl ? `[${char.party}](${char.partyUrl})` : (char.party || "Unknown"), inline: true },
+    { name: "State", value: char.stateUrl ? `[${char.state}](${char.stateUrl})` : (char.state || "Unknown"), inline: true },
+    { name: "PI", value: String(char.politicalInfluence ?? 0), inline: true },
+    { name: "NPI", value: String(char.nationalInfluence ?? 0), inline: true },
+    { name: "Approval", value: `${char.favorability ?? 0}%`, inline: true },
+    { name: "Infamy", value: String(char.infamy ?? 0), inline: true },
+    { name: "Actions", value: String(char.actions ?? 0), inline: true },
+    { name: "Donor Base", value: String(char.donorBaseLevel ?? 0), inline: true },
+    { name: "Economic", value: policyLabel(char.policies?.economic ?? 0), inline: true },
+    { name: "Social", value: policyLabel(char.policies?.social ?? 0), inline: true },
+    { name: "Funds", value: `$${(char.funds ?? 0).toLocaleString()}`, inline: true },
   );
 
   if (char.createdAt) {

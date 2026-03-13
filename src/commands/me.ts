@@ -7,6 +7,7 @@ import {
   ButtonStyle,
 } from "discord.js";
 import { lookupByDiscordId } from "../utils/api.js";
+import { hexToInt } from "../utils/helpers.js";
 
 export const cooldown = 5;
 
@@ -31,7 +32,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const embeds = result.characters.slice(0, 5).map((char) => {
       const embed = new EmbedBuilder()
         .setTitle(char.name)
-        .setColor(parseInt(char.partyColor.replace("#", ""), 16))
+        .setColor(hexToInt(char.partyColor))
         .addFields(
           { name: "Position", value: char.position || "None", inline: true },
           { name: "Party", value: char.party, inline: true },
