@@ -41,9 +41,16 @@ function extractDetail(error: unknown): ErrorDetail {
         }
       : { endpoint: undefined, status: undefined, responseBody: undefined };
 
+    // If this error's message is unhelpful but it has a cause, prefer the cause's message
+    const cause = (error as Error & { cause?: unknown }).cause;
+    let message = error.message;
+    if ((!message || message === "0") && cause instanceof Error && cause.message) {
+      message = cause.message;
+    }
+
     return {
       name: error.name,
-      message: error.message,
+      message,
       code: (error as NodeJS.ErrnoException).code,
       stack: error.stack,
       ...apiFields,
@@ -119,6 +126,66 @@ function buildStackExcerpt(error: unknown): string {
 // Human-readable summary (used in embed title)
 // ---------------------------------------------------------------------------
 
+/** Collect error codes by walking .cause chains and AggregateError sub-errors. */
+function collectErrorCodes(err: unknown, depth = 0): string[] {
+  if (depth > 5) return [];
+  const codes: string[] = [];
+  if (err instanceof Error) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code) codes.push(code);
+    // Walk .cause chain
+    const cause = (err as Error & { cause?: unknown }).cause;
+    if (cause) codes.push(...collectErrorCodes(cause, depth + 1));
+    // Recurse into AggregateError sub-errors
+    if ("errors" in err && Array.isArray((err as AggregateError).errors)) {
+      for (const sub of (err as AggregateError).errors) {
+        codes.push(...collectErrorCodes(sub, depth + 1));
+      }
+    }
+  }
+  return codes;
+}
+
+const NETWORK_CODE_LABELS: Record<string, string> = {
+  ECONNREFUSED: "connection refused",
+  ENOTFOUND: "DNS lookup failed",
+  ETIMEDOUT: "connection timed out",
+  ECONNRESET: "connection reset",
+  UND_ERR_CONNECT_TIMEOUT: "connection timed out",
+  UND_ERR_SOCKET: "socket error",
+};
+
+/** Try to produce a user-friendly message from a .cause (typically from TypeError: fetch failed). */
+function describeNetworkCause(cause: unknown): string | null {
+  const codes = collectErrorCodes(cause);
+  const unique = [...new Set(codes)];
+  if (unique.length === 0) return null;
+
+  const labels = unique.map((c) => NETWORK_CODE_LABELS[c] ?? c);
+  return `Could not reach the game server — ${labels.join(", ")}. Try again shortly.`;
+}
+
+/** Try to produce a user-friendly message from an AggregateError (common from Node fetch). */
+function describeAggregateNetwork(err: AggregateError): string | null {
+  const codes = collectErrorCodes(err);
+  const unique = [...new Set(codes)];
+  if (unique.length > 0) {
+    const labels = unique.map((c) => NETWORK_CODE_LABELS[c] ?? c);
+    return `Could not reach the game server — ${labels.join(", ")}. Try again shortly.`;
+  }
+
+  // Generic undici AggregateError with unhelpful "Received one or more errors" message
+  if (
+    err.message.includes("Received one or more errors") ||
+    err.message === "" ||
+    err.message === "0"
+  ) {
+    return "Could not reach the game server — connection failed. Try again shortly.";
+  }
+
+  return null;
+}
+
 export function errorMessage(error: unknown): string {
   const msg = error instanceof Error ? error.message : String(error);
 
@@ -156,23 +223,27 @@ export function errorMessage(error: unknown): string {
   }
 
   if (error instanceof TypeError && msg === "fetch failed") {
-    return "Could not reach the game server — connection refused or DNS failure. Try again shortly.";
+    // Node's undici often wraps the real error in .cause
+    const networkMsg = describeNetworkCause((error as Error & { cause?: unknown }).cause);
+    return networkMsg ?? "Could not reach the game server — connection refused or DNS failure. Try again shortly.";
   }
 
-  // --- AggregateError — summarise the sub-errors instead of the useless wrapper message ---
+  // --- AggregateError — usually a network failure from fetch ---
   if (
     error instanceof Error &&
     "errors" in error &&
     Array.isArray((error as AggregateError).errors)
   ) {
+    const networkMsg = describeAggregateNetwork(error as AggregateError);
+    if (networkMsg) return networkMsg;
+
     const subs = (error as AggregateError).errors as Error[];
-    const codes = subs
-      .map((e) => (e as NodeJS.ErrnoException).code)
-      .filter(Boolean);
-    if (codes.length > 0) {
-      return `Network failure: ${[...new Set(codes)].join(", ")}`;
+    const subMsgs = subs
+      .map((e) => (e instanceof Error ? e.message : String(e)))
+      .filter((m) => m && m !== "0" && m !== "undefined");
+    if (subMsgs.length === 0) {
+      return "Could not reach the game server — connection failed. Try again shortly.";
     }
-    const subMsgs = subs.map((e) => (e instanceof Error ? e.message : String(e)));
     return `Multiple errors: ${subMsgs.join("; ").slice(0, 200)}`;
   }
 
