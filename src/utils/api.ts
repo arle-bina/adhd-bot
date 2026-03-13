@@ -1,3 +1,32 @@
+// ---------------------------------------------------------------------------
+// Custom error class that carries HTTP context for better error messages
+// ---------------------------------------------------------------------------
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly endpoint: string;
+  readonly responseBody: string;
+
+  constructor(status: number, endpoint: string, responseBody: string) {
+    const summary = responseBody.slice(0, 200) || "(empty response)";
+    super(`API ${status} from ${endpoint}: ${summary}`);
+    this.name = "ApiError";
+    this.status = status;
+    this.endpoint = endpoint;
+    this.responseBody = responseBody;
+  }
+}
+
+async function throwApiError(response: Response, endpoint: string): Promise<never> {
+  let body = "";
+  try {
+    body = await response.text();
+  } catch {
+    body = "(could not read response body)";
+  }
+  throw new ApiError(response.status, endpoint, body);
+}
+
 export interface CharacterResult {
   id: string;
   name: string;
@@ -58,9 +87,7 @@ export async function lookupByName(name: string): Promise<LookupResponse> {
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status}`);
-  }
+  if (!response.ok) await throwApiError(response, "/api/discord-bot/lookup");
 
   const raw = await response.json();
   return normalizeLookupResponse(raw);
@@ -75,9 +102,7 @@ export async function lookupByDiscordId(discordId: string): Promise<LookupRespon
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status}`);
-  }
+  if (!response.ok) await throwApiError(response, "/api/discord-bot/lookup");
 
   const raw = await response.json();
   return normalizeLookupResponse(raw);
@@ -124,7 +149,7 @@ export async function getLeaderboard(params: {
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }
 
@@ -166,7 +191,7 @@ export async function getParty(id: string): Promise<PartyResponse> {
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }
 
@@ -207,7 +232,7 @@ export async function getElections(params: {
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }
 
@@ -246,7 +271,7 @@ export async function getState(id: string): Promise<StateResponse> {
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }
 
@@ -283,7 +308,7 @@ export async function getNews(params: {
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }
 
@@ -303,7 +328,7 @@ export async function getTurnStatus(): Promise<TurnStatus> {
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }
 
@@ -340,7 +365,7 @@ export async function getCareer(params: {
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }
 
@@ -379,7 +404,7 @@ export async function getAchievements(params: {
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }
 
@@ -500,6 +525,6 @@ export async function getRace(params: {
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }
