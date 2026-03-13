@@ -26,18 +26,30 @@ interface ErrorDetail {
   message: string;
   code: string | undefined;
   stack: string | undefined;
+  endpoint: string | undefined;
+  status: number | undefined;
+  responseBody: string | undefined;
 }
 
 function extractDetail(error: unknown): ErrorDetail {
   if (error instanceof Error) {
+    const apiFields = error.name === "ApiError"
+      ? {
+          endpoint: (error as Error & { endpoint: string }).endpoint,
+          status: (error as Error & { status: number }).status,
+          responseBody: (error as Error & { responseBody: string }).responseBody,
+        }
+      : { endpoint: undefined, status: undefined, responseBody: undefined };
+
     return {
       name: error.name,
       message: error.message,
       code: (error as NodeJS.ErrnoException).code,
       stack: error.stack,
+      ...apiFields,
     };
   }
-  return { name: "Error", message: String(error), code: undefined, stack: undefined };
+  return { name: "Error", message: String(error), code: undefined, stack: undefined, endpoint: undefined, status: undefined, responseBody: undefined };
 }
 
 /** Unwrap AggregateError (and nested ones) into a flat list of sub-errors. */
@@ -109,6 +121,28 @@ function buildStackExcerpt(error: unknown): string {
 
 export function errorMessage(error: unknown): string {
   const msg = error instanceof Error ? error.message : String(error);
+
+  // --- ApiError from our own api.ts — richest information available ---
+  if (error instanceof Error && error.name === "ApiError") {
+    const apiErr = error as Error & { status: number; endpoint: string; responseBody: string };
+    const { status, endpoint, responseBody } = apiErr;
+
+    if (status === 401) return `Authentication failed (401) on ${endpoint} — bot API key may be invalid. Contact an admin.`;
+    if (status === 403) return `Forbidden (403) on ${endpoint} — bot does not have permission. Contact an admin.`;
+    if (status === 404) return `Not found (404) on ${endpoint} — this API endpoint may not exist or the resource was not found.`;
+    if (status === 400) {
+      const detail = responseBody.slice(0, 150);
+      return `Bad request (400) on ${endpoint}: ${detail || "check your inputs."}`;
+    }
+    if (status === 429) return `Rate limited (429) on ${endpoint} — too many requests. Try again in a minute.`;
+    if (status >= 500) {
+      const detail = responseBody.slice(0, 100);
+      return `Game server error (${status}) on ${endpoint}: ${detail || "the server had an internal error. Try again shortly."}`;
+    }
+    return `API error (${status}) on ${endpoint}: ${responseBody.slice(0, 150) || "unknown error"}`;
+  }
+
+  // --- Legacy API error format (fallback) ---
   const statusMatch = msg.match(/\b(\d{3})\b/);
   const code = statusMatch ? ` (${statusMatch[1]})` : "";
 
@@ -116,15 +150,16 @@ export function errorMessage(error: unknown): string {
   if (msg.includes("400")) return `Invalid request${code} — check your inputs.`;
   if (msg.includes("API error")) return `Game API error${code}. Try again shortly.`;
 
+  // --- Network / timeout errors ---
   if (error instanceof Error && error.name === "TimeoutError") {
-    return "The game server took too long to respond. Try again shortly.";
+    return "The game server took too long to respond (10s timeout). Try again shortly.";
   }
 
   if (error instanceof TypeError && msg === "fetch failed") {
-    return "Could not reach the game server. Try again shortly.";
+    return "Could not reach the game server — connection refused or DNS failure. Try again shortly.";
   }
 
-  // AggregateError — summarise the sub-errors instead of showing the useless wrapper message
+  // --- AggregateError — summarise the sub-errors instead of the useless wrapper message ---
   if (
     error instanceof Error &&
     "errors" in error &&
@@ -141,7 +176,17 @@ export function errorMessage(error: unknown): string {
     return `Multiple errors: ${subMsgs.join("; ").slice(0, 200)}`;
   }
 
-  return `Unexpected error: ${msg.slice(0, 200)}`;
+  // --- Discord.js API errors ---
+  if (error instanceof Error && "code" in error && "requestBody" in error) {
+    const discordCode = (error as Error & { code: number }).code;
+    return `Discord API error (code ${discordCode}): ${msg.slice(0, 200)}`;
+  }
+
+  // --- Catch-all: show error name + message for maximum clarity ---
+  const name = error instanceof Error ? error.name : "Error";
+  const errCode = error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined;
+  const codeStr = errCode ? ` [${errCode}]` : "";
+  return `${name}${codeStr}: ${msg.slice(0, 200)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -181,9 +226,19 @@ function buildErrorPages(
       const parts: string[] = [];
       parts.push(`**Type:** \`${err.name}\``);
       if (err.code) parts.push(`**Code:** \`${err.code}\``);
+      if (err.status) parts.push(`**HTTP Status:** \`${err.status}\``);
+      if (err.endpoint) parts.push(`**Endpoint:** \`${err.endpoint}\``);
       parts.push(`**Message:** ${err.message.slice(0, 300)}`);
 
       embed.addFields({ name: label, value: parts.join("\n").slice(0, 1024) });
+
+      // Show API response body if available (separate field for readability)
+      if (err.responseBody && err.responseBody.length > 0) {
+        embed.addFields({
+          name: "API Response",
+          value: `\`\`\`\n${err.responseBody.slice(0, 900)}\n\`\`\``,
+        });
+      }
     }
 
     // Show stack excerpt on the first page

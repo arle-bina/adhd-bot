@@ -11,7 +11,7 @@ import { dirname, join } from "path";
 import { validateEnv } from "./utils/env.js";
 import { buildCategoryEmbed, buildSelectMenu } from "./commands/help.js";
 import { checkCooldown } from "./utils/cooldown.js";
-import { errorMessage } from "./utils/helpers.js";
+import { errorMessage, replyWithError } from "./utils/helpers.js";
 
 validateEnv();
 
@@ -94,16 +94,30 @@ client.on("interactionCreate", async (interaction) => {
   try {
     await command.execute(interaction);
   } catch (error) {
-    console.error("Command error:", error);
-    const summary = errorMessage(error);
-    const reply = {
-      content: `**/${interaction.commandName}** failed: ${summary.slice(0, 300)}`,
-      ephemeral: true,
-    };
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(reply);
-    } else {
-      await interaction.reply(reply);
+    // If the interaction hasn't been deferred yet, defer it so replyWithError
+    // can use editReply (embeds require a deferred or replied interaction).
+    try {
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.deferReply({ ephemeral: true });
+      }
+      await replyWithError(interaction, interaction.commandName, error);
+    } catch (replyError) {
+      // Last resort: if even the error embed fails, send plain text
+      console.error("Failed to send error embed:", replyError);
+      const summary = errorMessage(error);
+      const fallback = {
+        content: `**/${interaction.commandName}** failed: ${summary.slice(0, 300)}`,
+        ephemeral: true,
+      };
+      try {
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp(fallback);
+        } else {
+          await interaction.reply(fallback);
+        }
+      } catch {
+        // Nothing more we can do
+      }
     }
   }
 });
