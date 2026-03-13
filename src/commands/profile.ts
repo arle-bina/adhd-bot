@@ -153,25 +153,20 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const name = interaction.options.getString("name");
   const user = interaction.options.getUser("user");
 
-  if (!name && !user) {
-    await interaction.reply({
-      content: "Please provide either a character name or a Discord user.",
-      ephemeral: true,
-    });
-    return;
-  }
-
   await interaction.deferReply();
 
   try {
-    const result = user ? await lookupByDiscordId(user.id) : await lookupByName(name!);
+    const result = name
+      ? await lookupByName(name)
+      : await lookupByDiscordId(user?.id ?? interaction.user.id);
 
     if (!result.found || result.characters.length === 0) {
-      await interaction.editReply({
-        content: user
+      const message = name
+        ? `No characters found matching "${name}".`
+        : user
           ? `No linked account found for ${user.username}.`
-          : `No characters found matching "${name}".`,
-      });
+          : "No characters linked to your Discord account. Try `/profile name:YourCharacterName` or connect your account on the website.";
+      await interaction.editReply({ content: message });
       return;
     }
 
