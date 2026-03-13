@@ -1,5 +1,9 @@
-export function hexToInt(hex: string): number {
-  return parseInt(hex.replace('#', ''), 16);
+const DEFAULT_EMBED_COLOR = 0x5865f2; // Discord blurple
+
+export function hexToInt(hex: string | null | undefined): number {
+  if (!hex) return DEFAULT_EMBED_COLOR;
+  const parsed = parseInt(hex.replace("#", ""), 16);
+  return Number.isNaN(parsed) ? DEFAULT_EMBED_COLOR : parsed;
 }
 
 export function errorMessage(error: unknown): string {

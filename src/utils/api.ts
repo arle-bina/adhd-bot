@@ -3,14 +3,14 @@ export interface CharacterResult {
   name: string;
   bio: string | null;
   party: string;
-  partyId: string;
-  partyColor: string;
-  partyUrl: string;
+  partyId: string | null;
+  partyColor: string | null;
+  partyUrl: string | null;
   state: string;
-  stateCode: string;
-  stateUrl: string;
-  countryId: string;
-  countryUrl: string;
+  stateCode: string | null;
+  stateUrl: string | null;
+  countryId: string | null;
+  countryUrl: string | null;
   position: string;
   officeType: string | null;
   politicalInfluence: number;
@@ -19,13 +19,13 @@ export interface CharacterResult {
   infamy: number;
   funds: number;
   actions: number;
-  donorBaseLevel: number;
-  policies: { economic: number; social: number };
+  donorBaseLevel: number | null;
+  policies: { economic: number; social: number } | null;
   avatarUrl: string | null;
   discordAvatarUrl: string | null;
   discordUsername: string | null;
   profileUrl: string;
-  createdAt: string;
+  createdAt: string | null;
   activeElection: string | null;
 }
 
