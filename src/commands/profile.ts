@@ -45,7 +45,7 @@ function partyColor(char: CharacterResult): number {
 }
 
 function policyLabel(val: number): string {
-  const clamped = Math.max(-100, Math.min(100, val));
+  const clamped = Math.round(Math.max(-100, Math.min(100, val)));
   const dir = clamped > 10 ? "Left" : clamped < -10 ? "Right" : "Centre";
   return `${dir} (${clamped > 0 ? "+" : ""}${clamped})`;
 }
@@ -65,15 +65,15 @@ function buildProfileEmbed(char: CharacterResult): EmbedBuilder {
     { name: "Position", value: char.position || "None", inline: true },
     { name: "Party", value: char.partyUrl ? `[${char.party}](${char.partyUrl})` : (char.party || "Unknown"), inline: true },
     { name: "State", value: char.stateUrl ? `[${char.state}](${char.stateUrl})` : (char.state || "Unknown"), inline: true },
-    { name: "PI", value: String(char.politicalInfluence ?? 0), inline: true },
-    { name: "NPI", value: String(char.nationalInfluence ?? 0), inline: true },
-    { name: "Approval", value: `${char.favorability ?? 0}%`, inline: true },
-    { name: "Infamy", value: String(char.infamy ?? 0), inline: true },
-    { name: "Actions", value: String(char.actions ?? 0), inline: true },
-    { name: "Donor Base", value: String(char.donorBaseLevel ?? 0), inline: true },
+    { name: "PI", value: String(Math.round(char.politicalInfluence ?? 0)), inline: true },
+    { name: "NPI", value: String(Math.round(char.nationalInfluence ?? 0)), inline: true },
+    { name: "Approval", value: `${Math.round(char.favorability ?? 0)}%`, inline: true },
+    { name: "Infamy", value: String(Math.round(char.infamy ?? 0)), inline: true },
+    { name: "Actions", value: String(Math.round(char.actions ?? 0)), inline: true },
+    { name: "Donor Base", value: String(Math.round(char.donorBaseLevel ?? 0)), inline: true },
     { name: "Economic", value: policyLabel(char.policies?.economic ?? 0), inline: true },
     { name: "Social", value: policyLabel(char.policies?.social ?? 0), inline: true },
-    { name: "Funds", value: `$${(char.funds ?? 0).toLocaleString()}`, inline: true },
+    { name: "Funds", value: `$${Math.round(char.funds ?? 0).toLocaleString()}`, inline: true },
   );
 
   if (char.createdAt) {
@@ -155,8 +155,9 @@ function buildTabRow(active: Tab, disabled = false): ActionRowBuilder<ButtonBuil
 export async function execute(interaction: ChatInputCommandInteraction) {
   const name = interaction.options.getString("name");
   const user = interaction.options.getUser("user");
+  const isSelf = !name && !user;
 
-  await interaction.deferReply();
+  await interaction.deferReply({ ephemeral: isSelf });
 
   try {
     const result = name
@@ -168,7 +169,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         ? `No characters found matching "${name}".`
         : user
           ? `No linked account found for ${user.username}.`
-          : "No characters linked to your Discord account. Try `/profile name:YourCharacterName` or connect your account on the website.";
+          : "Your Discord account isn't linked to any characters yet. To link your account, go to **Settings** in [A House Divided](https://www.ahousedividedgame.com/) and connect your Discord.";
       await interaction.editReply({ content: message });
       return;
     }
