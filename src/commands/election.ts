@@ -323,6 +323,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     });
   } catch (error) {
     console.error("Election command error:", error);
-    await interaction.editReply({ content: errorMessage(error) });
+    await interaction.editReply({ content: errorMessage(error, "election") });
   }
 }

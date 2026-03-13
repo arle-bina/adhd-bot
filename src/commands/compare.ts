@@ -66,6 +66,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
     console.error("Compare error:", error);
-    await interaction.editReply({ content: errorMessage(error) });
+    await interaction.editReply({ content: errorMessage(error, "compare") });
   }
 }

@@ -96,6 +96,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
     console.error("Leaderboard error:", error);
-    await interaction.editReply({ content: errorMessage(error) });
+    await interaction.editReply({ content: errorMessage(error, "leaderboard") });
   }
 }

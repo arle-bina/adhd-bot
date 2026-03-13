@@ -80,6 +80,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
     console.error("Elections error:", error);
-    await interaction.editReply({ content: errorMessage(error) });
+    await interaction.editReply({ content: errorMessage(error, "elections") });
   }
 }

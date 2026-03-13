@@ -16,7 +16,7 @@ import {
   type CareerEvent,
   type Achievement,
 } from "../utils/api.js";
-import { hexToInt } from "../utils/helpers.js";
+import { errorMessage, hexToInt } from "../utils/helpers.js";
 
 export const cooldown = 5;
 
@@ -231,6 +231,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     });
   } catch (error) {
     console.error("Profile error:", error);
-    await interaction.editReply({ content: "An error occurred while looking up the player." });
+    await interaction.editReply({ content: errorMessage(error, "profile") });
   }
 }

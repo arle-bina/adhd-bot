@@ -35,6 +35,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
     console.error("Turn error:", error);
-    await interaction.editReply({ content: errorMessage(error) });
+    await interaction.editReply({ content: errorMessage(error, "turn") });
   }
 }

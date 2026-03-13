@@ -7,7 +7,7 @@ import {
   ButtonStyle,
 } from "discord.js";
 import { lookupByDiscordId } from "../utils/api.js";
-import { hexToInt } from "../utils/helpers.js";
+import { errorMessage, hexToInt } from "../utils/helpers.js";
 
 export const cooldown = 5;
 
@@ -59,6 +59,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     });
   } catch (error) {
     console.error("Me error:", error);
-    await interaction.editReply({ content: "An error occurred while loading your profile." });
+    await interaction.editReply({ content: errorMessage(error, "me") });
   }
 }
