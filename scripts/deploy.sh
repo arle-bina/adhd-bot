@@ -4,9 +4,10 @@ set -e
 
 echo "=== Deploying ADHD Bot ==="
 
-# Pull latest changes
+# Pull latest changes (force reset to match remote)
 echo "Pulling latest changes..."
-git pull
+git fetch origin main
+git reset --hard origin/main
 
 # Install any new dependencies
 echo "Installing dependencies..."
