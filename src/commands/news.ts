@@ -4,7 +4,7 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { getNews } from "../utils/api.js";
-import { logCommandError } from "../utils/helpers.js";
+import { replyWithError } from "../utils/helpers.js";
 
 const categoryNames: Record<string, string> = {
   election: "Elections",
@@ -76,6 +76,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
-    await interaction.editReply({ content: logCommandError("news", error) });
+    await replyWithError(interaction, "news", error);
   }
 }

@@ -4,7 +4,7 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { getLeaderboard, LeaderboardCharacter, LeaderboardMetric } from "../utils/api.js";
-import { logCommandError } from "../utils/helpers.js";
+import { replyWithError } from "../utils/helpers.js";
 
 // Explicit conditional avoids TypeScript's TS7053 "any" error from dynamic key indexing (char[metric]).
 export function getMetricValue(
@@ -95,6 +95,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
-    await interaction.editReply({ content: logCommandError("leaderboard", error) });
+    await replyWithError(interaction, "leaderboard", error);
   }
 }
