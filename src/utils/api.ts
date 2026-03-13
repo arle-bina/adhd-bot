@@ -29,9 +29,22 @@ export interface CharacterResult {
   activeElection: string | null;
 }
 
-interface LookupResponse {
+export interface LookupResponse {
   found: boolean;
   characters: CharacterResult[];
+}
+
+function normalizeLookupResponse(raw: Record<string, unknown>): LookupResponse {
+  // Handle both { found, characters } and { success, data/characters/results } shapes
+  const found = raw.found ?? raw.success ?? false;
+  const characters = raw.characters ?? raw.data ?? raw.results ?? [];
+
+  if (!Array.isArray(characters)) {
+    console.error("Lookup API returned unexpected shape:", JSON.stringify(raw).slice(0, 500));
+    return { found: false, characters: [] };
+  }
+
+  return { found: Boolean(found), characters: characters as CharacterResult[] };
 }
 
 export async function lookupByName(name: string): Promise<LookupResponse> {
@@ -46,7 +59,8 @@ export async function lookupByName(name: string): Promise<LookupResponse> {
     throw new Error(`API error: ${response.status}`);
   }
 
-  return response.json();
+  const raw = await response.json();
+  return normalizeLookupResponse(raw);
 }
 
 export async function lookupByDiscordId(discordId: string): Promise<LookupResponse> {
@@ -61,7 +75,8 @@ export async function lookupByDiscordId(discordId: string): Promise<LookupRespon
     throw new Error(`API error: ${response.status}`);
   }
 
-  return response.json();
+  const raw = await response.json();
+  return normalizeLookupResponse(raw);
 }
 
 // --- Leaderboard ---

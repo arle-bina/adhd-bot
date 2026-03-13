@@ -160,7 +160,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       ? await lookupByName(name)
       : await lookupByDiscordId(user?.id ?? interaction.user.id);
 
-    if (!result.found || result.characters.length === 0) {
+    if (result.characters.length === 0) {
       const message = name
         ? `No characters found matching "${name}".`
         : user
