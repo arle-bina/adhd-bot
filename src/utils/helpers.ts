@@ -44,8 +44,17 @@ function extractDetail(error: unknown): ErrorDetail {
     // If this error's message is unhelpful but it has a cause, prefer the cause's message
     const cause = (error as Error & { cause?: unknown }).cause;
     let message = error.message;
-    if ((!message || message === "0") && cause instanceof Error && cause.message) {
-      message = cause.message;
+    const isUninformativeMessage =
+      !message ||
+      message === "0" ||
+      message.includes("Received one or more errors") ||
+      /^\d+,/.test(message);
+    if (isUninformativeMessage) {
+      if (cause instanceof Error && cause.message) {
+        message = cause.message;
+      } else {
+        message = "Connection failed — network or DNS error.";
+      }
     }
 
     return {
