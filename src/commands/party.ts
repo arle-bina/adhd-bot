@@ -4,7 +4,7 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { getParty } from "../utils/api.js";
-import { hexToInt, errorMessage } from "../utils/helpers.js";
+import { hexToInt, logCommandError } from "../utils/helpers.js";
 
 export function ideologyLabel(economic: number, social: number): string {
   const econ = economic < -20 ? "Left" : economic > 20 ? "Right" : "Center";
@@ -68,7 +68,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
-    console.error("Party error:", error);
-    await interaction.editReply({ content: errorMessage(error) });
+    await interaction.editReply({ content: logCommandError("party", error) });
   }
 }

@@ -4,7 +4,7 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { getElections } from "../utils/api.js";
-import { errorMessage } from "../utils/helpers.js";
+import { logCommandError } from "../utils/helpers.js";
 
 export function formatElectionType(type: string): string {
   const map: Record<string, string> = {
@@ -79,7 +79,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
-    console.error("Elections error:", error);
-    await interaction.editReply({ content: errorMessage(error) });
+    await interaction.editReply({ content: logCommandError("elections", error) });
   }
 }

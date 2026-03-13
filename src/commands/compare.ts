@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from "discord.js";
 import { lookupByName } from "../utils/api.js";
-import { errorMessage, hexToInt } from "../utils/helpers.js";
+import { hexToInt, logCommandError } from "../utils/helpers.js";
 
 export const cooldown = 5;
 
@@ -65,7 +65,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
-    console.error("Compare error:", error);
-    await interaction.editReply({ content: errorMessage(error) });
+    await interaction.editReply({ content: logCommandError("compare", error) });
   }
 }
