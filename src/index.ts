@@ -94,7 +94,11 @@ client.on("interactionCreate", async (interaction) => {
     await command.execute(interaction);
   } catch (error) {
     console.error("Command error:", error);
-    const reply = { content: "There was an error executing this command.", ephemeral: true };
+    const msg = error instanceof Error ? error.message : String(error);
+    const reply = {
+      content: `**/${interaction.commandName}** failed: ${msg.slice(0, 300)}`,
+      ephemeral: true,
+    };
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp(reply);
     } else {
