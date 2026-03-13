@@ -82,7 +82,9 @@ function buildProfileEmbed(char: CharacterResult): EmbedBuilder {
   }
 
   if (char.activeElection) {
-    embed.addFields({ name: "Active Election", value: char.activeElection, inline: false });
+    const electionType = char.activeElection.electionType.charAt(0).toUpperCase() + char.activeElection.electionType.slice(1);
+    const electionState = char.activeElection.electionState;
+    embed.addFields({ name: "Active Election", value: `${electionType} (${electionState})`, inline: false });
   }
 
   if (char.avatarUrl) embed.setThumbnail(char.avatarUrl);

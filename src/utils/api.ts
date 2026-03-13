@@ -55,7 +55,12 @@ export interface CharacterResult {
   discordUsername: string | null;
   profileUrl: string;
   createdAt: string | null;
-  activeElection: string | null;
+  activeElection: {
+    electionId: string;
+    electionType: string;
+    electionState: string;
+    enteredAt: string;
+  } | null;
 }
 
 export interface LookupResponse {
