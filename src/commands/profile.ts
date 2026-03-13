@@ -16,7 +16,7 @@ import {
   type CareerEvent,
   type Achievement,
 } from "../utils/api.js";
-import { hexToInt, logCommandError } from "../utils/helpers.js";
+import { hexToInt, replyWithError } from "../utils/helpers.js";
 
 export const cooldown = 5;
 
@@ -230,6 +230,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       interaction.editReply({ components: [buildTabRow(activeTab, true)] }).catch(() => {});
     });
   } catch (error) {
-    await interaction.editReply({ content: logCommandError("profile", error) });
+    await replyWithError(interaction, "profile", error);
   }
 }

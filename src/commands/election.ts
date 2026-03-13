@@ -15,7 +15,7 @@ import {
   type RaceDetailResponse,
 } from "../utils/api.js";
 import { formatElectionType } from "./elections.js";
-import { logCommandError } from "../utils/helpers.js";
+import { replyWithError } from "../utils/helpers.js";
 
 export const cooldown = 5;
 
@@ -322,6 +322,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       }
     });
   } catch (error) {
-    await interaction.editReply({ content: logCommandError("election", error) });
+    await replyWithError(interaction, "election", error);
   }
 }

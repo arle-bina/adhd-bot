@@ -7,7 +7,7 @@ import {
   ButtonStyle,
 } from "discord.js";
 import { lookupByDiscordId } from "../utils/api.js";
-import { hexToInt, logCommandError } from "../utils/helpers.js";
+import { hexToInt, replyWithError } from "../utils/helpers.js";
 
 export const cooldown = 5;
 
@@ -58,6 +58,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       components: buttons.length > 0 ? [row] : [],
     });
   } catch (error) {
-    await interaction.editReply({ content: logCommandError("me", error) });
+    await replyWithError(interaction, "me", error);
   }
 }

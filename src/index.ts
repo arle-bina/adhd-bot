@@ -11,6 +11,7 @@ import { dirname, join } from "path";
 import { validateEnv } from "./utils/env.js";
 import { buildCategoryEmbed, buildSelectMenu } from "./commands/help.js";
 import { checkCooldown } from "./utils/cooldown.js";
+import { errorMessage } from "./utils/helpers.js";
 
 validateEnv();
 
@@ -94,9 +95,9 @@ client.on("interactionCreate", async (interaction) => {
     await command.execute(interaction);
   } catch (error) {
     console.error("Command error:", error);
-    const msg = error instanceof Error ? error.message : String(error);
+    const summary = errorMessage(error);
     const reply = {
-      content: `**/${interaction.commandName}** failed: ${msg.slice(0, 300)}`,
+      content: `**/${interaction.commandName}** failed: ${summary.slice(0, 300)}`,
       ephemeral: true,
     };
     if (interaction.replied || interaction.deferred) {

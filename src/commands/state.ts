@@ -4,7 +4,7 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { getState } from "../utils/api.js";
-import { logCommandError } from "../utils/helpers.js";
+import { replyWithError } from "../utils/helpers.js";
 
 export function formatOfficeType(type: string): string {
   const map: Record<string, string> = {
@@ -75,6 +75,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
-    await interaction.editReply({ content: logCommandError("state", error) });
+    await replyWithError(interaction, "state", error);
   }
 }
