@@ -20,7 +20,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   try {
     const result = await lookupByDiscordId(interaction.user.id);
 
-    if (!result.found || result.characters.length === 0) {
+    if (result.characters.length === 0) {
       await interaction.editReply({
         content:
           "No characters linked to your Discord account. Try `/profile name:YourCharacterName` or connect your Discord on the website.",
