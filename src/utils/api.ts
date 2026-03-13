@@ -47,12 +47,15 @@ function normalizeLookupResponse(raw: Record<string, unknown>): LookupResponse {
   return { found: Boolean(found), characters: characters as CharacterResult[] };
 }
 
+const FETCH_TIMEOUT_MS = 10_000;
+
 export async function lookupByName(name: string): Promise<LookupResponse> {
   const url = new URL("/api/discord-bot/lookup", process.env.GAME_API_URL);
   url.searchParams.set("name", name);
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -69,6 +72,7 @@ export async function lookupByDiscordId(discordId: string): Promise<LookupRespon
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -117,6 +121,7 @@ export async function getLeaderboard(params: {
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) throw new Error(`API error: ${response.status}`);
@@ -158,6 +163,7 @@ export async function getParty(id: string): Promise<PartyResponse> {
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) throw new Error(`API error: ${response.status}`);
@@ -198,6 +204,7 @@ export async function getElections(params: {
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) throw new Error(`API error: ${response.status}`);
@@ -236,6 +243,7 @@ export async function getState(id: string): Promise<StateResponse> {
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) throw new Error(`API error: ${response.status}`);
@@ -272,6 +280,7 @@ export async function getNews(params: {
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) throw new Error(`API error: ${response.status}`);
@@ -290,7 +299,9 @@ export interface TurnStatus {
 export async function getTurnStatus(): Promise<TurnStatus> {
   const url = new URL("/api/game/turn/status", process.env.GAME_API_URL);
 
-  const response = await fetch(url.toString());
+  const response = await fetch(url.toString(), {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
 
   if (!response.ok) throw new Error(`API error: ${response.status}`);
   return response.json();
@@ -326,6 +337,7 @@ export async function getCareer(params: {
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) throw new Error(`API error: ${response.status}`);
@@ -364,6 +376,7 @@ export async function getAchievements(params: {
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) throw new Error(`API error: ${response.status}`);
@@ -484,6 +497,7 @@ export async function getRace(params: {
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) throw new Error(`API error: ${response.status}`);
