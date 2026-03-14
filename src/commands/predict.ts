@@ -40,7 +40,8 @@ export const data = new SlashCommandBuilder()
       )
   );
 
-function normalizeColor(color: string): string {
+function normalizeColor(color: string | null | undefined): string {
+  if (!color) return "#808080";
   return color.startsWith("#") ? color : `#${color}`;
 }
 
