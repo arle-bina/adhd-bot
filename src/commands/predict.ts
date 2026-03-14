@@ -88,6 +88,16 @@ async function buildParliamentChartUrl(entries: PredictionPartyEntry[]): Promise
   return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(config))}&w=500&h=300&bkg=%2336393f`;
 }
 
+function addOtherEntry(entries: PredictionPartyEntry[], totalSeats: number): PredictionPartyEntry[] {
+  const assignedSeats = entries.reduce((sum, e) => sum + e.seats, 0);
+  const remaining = totalSeats - assignedSeats;
+  if (remaining <= 0) return entries;
+  return [
+    ...entries,
+    { party: "other", partyName: "Other", partyColor: "#808080", seats: remaining },
+  ];
+}
+
 function buildSeatsText(entries: PredictionPartyEntry[]): string {
   return entries.map((e) => `**${e.partyName}** — ${e.seats}`).join("\n") || "None";
 }
@@ -104,7 +114,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const showProjected = result.inGeneral && result.projected.length > 0;
     const primaryEntries = showProjected ? result.projected : result.current;
 
-    const totalSeats = primaryEntries.reduce((sum, e) => sum + e.seats, 0);
+    const totalSeats = result.totalSeats;
     const metaParts: string[] = [];
     if (result.cycle != null) metaParts.push(`Cycle ${result.cycle}`);
     if (race === "senate" && result.activeSenateClass != null) {
@@ -124,7 +134,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       ? buildSeatsText(result.projected)
       : `_No general elections active._\n\n${buildSeatsText(result.current)}`;
 
-    const page1ChartUrl = await buildParliamentChartUrl(primaryEntries);
+    const page1ChartEntries = addOtherEntry(primaryEntries, totalSeats);
+    const page1ChartUrl = await buildParliamentChartUrl(page1ChartEntries);
     const page1 = new EmbedBuilder()
       .setTitle(page1Title)
       .setColor(embedColor)
@@ -138,7 +149,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     // Page 2: current seats
-    const page2ChartUrl = await buildParliamentChartUrl(result.current);
+    const page2ChartEntries = addOtherEntry(result.current, totalSeats);
+    const page2ChartUrl = await buildParliamentChartUrl(page2ChartEntries);
     const page2 = new EmbedBuilder()
       .setTitle(`📊 ${result.chamberName} — Current Seats`)
       .setColor(0x2b2d31)
