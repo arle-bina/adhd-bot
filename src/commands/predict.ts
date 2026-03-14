@@ -45,20 +45,33 @@ function normalizeColor(color: string): string {
 }
 
 function buildParliamentChartUrl(entries: PredictionPartyEntry[]): string {
-  const chartData = entries.map((e) => ({
-    value: e.seats,
-    color: normalizeColor(e.partyColor),
-    label: `${e.partyName} (${e.seats})`,
-  }));
+  const labels = entries.map((e) => `${e.partyName} (${e.seats})`);
+  const values = entries.map((e) => e.seats);
+  const colors = entries.map((e) => normalizeColor(e.partyColor));
 
   const config = {
-    type: "parliament",
+    type: "doughnut",
     data: {
-      datasets: [{ data: chartData }],
+      labels,
+      datasets: [
+        {
+          data: values,
+          backgroundColor: colors,
+          borderWidth: 0,
+        },
+      ],
+    },
+    options: {
+      rotation: -90,
+      circumference: 180,
+      plugins: {
+        legend: { display: true, position: "bottom" as const },
+        datalabels: { display: false },
+      },
     },
   };
 
-  return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(config))}&w=500&h=280&bkg=transparent`;
+  return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(config))}&w=500&h=300&bkg=%2336393f`;
 }
 
 function buildSeatsText(entries: PredictionPartyEntry[]): string {
