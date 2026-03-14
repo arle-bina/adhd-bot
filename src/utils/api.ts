@@ -518,7 +518,7 @@ export type RaceResponse = RaceDetailResponse | RaceListResponse;
 export interface PredictionPartyEntry {
   party: string;
   partyName: string;
-  partyColor: string;
+  partyColor: string | null;
   seats: number;
 }
 
