@@ -46,21 +46,16 @@ function normalizeColor(color: string | null | undefined): string {
 }
 
 function buildParliamentChartUrl(entries: PredictionPartyEntry[]): string {
-  const labels = entries.map((e) => `${e.partyName} (${e.seats})`);
-  const values = entries.map((e) => e.seats);
-  const colors = entries.map((e) => normalizeColor(e.partyColor));
-
   const config = {
     type: "doughnut",
     data: {
-      labels,
-      datasets: [
-        {
-          data: values,
-          backgroundColor: colors,
-          borderWidth: 0,
-        },
-      ],
+      labels: entries.map((e) => `${e.partyName} (${e.seats})`),
+      datasets: entries.map((entry) => ({
+        label: entry.partyName,
+        data: [entry.seats],
+        backgroundColor: normalizeColor(entry.partyColor),
+        borderWidth: 0,
+      })),
     },
     options: {
       rotation: -90,
