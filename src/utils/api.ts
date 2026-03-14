@@ -513,6 +513,48 @@ interface RaceListResponse {
 
 export type RaceResponse = RaceDetailResponse | RaceListResponse;
 
+// --- Predict ---
+
+export interface PredictionPartyEntry {
+  party: string;
+  partyName: string;
+  partyColor: string;
+  seats: number;
+}
+
+export interface PredictionResponse {
+  found: true;
+  country: string;
+  countryName: string;
+  race: string;
+  chamberName: string;
+  totalSeats: number;
+  inGeneral: boolean;
+  activeSenateClass?: number | null;
+  cycle?: number | null;
+  current: PredictionPartyEntry[];
+  projected: PredictionPartyEntry[];
+}
+
+export async function getPrediction(params: {
+  country: string;
+  race: string;
+}): Promise<PredictionResponse> {
+  const url = new URL("/api/discord-bot/predict", process.env.GAME_API_URL);
+  url.searchParams.set("country", params.country);
+  url.searchParams.set("race", params.race);
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
+}
+
+// --- Race Detail ---
+
 export async function getRace(params: {
   country?: string;
   state?: string;
