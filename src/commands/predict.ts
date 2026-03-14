@@ -50,12 +50,13 @@ function buildParliamentChartUrl(entries: PredictionPartyEntry[]): string {
     type: "doughnut",
     data: {
       labels: entries.map((e) => `${e.partyName} (${e.seats})`),
-      datasets: entries.map((entry) => ({
-        label: entry.partyName,
-        data: [entry.seats],
-        backgroundColor: normalizeColor(entry.partyColor),
-        borderWidth: 0,
-      })),
+      datasets: [
+        {
+          data: entries.map((e) => e.seats),
+          backgroundColor: entries.map((e) => normalizeColor(e.partyColor)),
+          borderWidth: 0,
+        },
+      ],
     },
     options: {
       rotation: -90,
