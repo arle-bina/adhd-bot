@@ -98,8 +98,24 @@ function addOtherEntry(entries: PredictionPartyEntry[], totalSeats: number): Pre
   ];
 }
 
-function buildSeatsText(entries: PredictionPartyEntry[]): string {
-  return entries.map((e) => `**${e.partyName}** — ${e.seats}`).join("\n") || "None";
+function buildMajorityLabel(entries: PredictionPartyEntry[], totalSeats: number, race: string): string {
+  const majority = Math.floor(totalSeats / 2) + 1;
+  const sorted = [...entries].sort((a, b) => b.seats - a.seats);
+  const largest = sorted[0];
+  if (!largest) return "";
+
+  if (largest.seats >= majority) {
+    return `**${largest.partyName} Majority**`;
+  }
+
+  const noMajorityTerm = race === "commons" ? "Hung Parliament" : "No Majority";
+  return `**${noMajorityTerm}** (${largest.partyName} Largest Party)`;
+}
+
+function buildSeatsText(entries: PredictionPartyEntry[], totalSeats: number, race: string): string {
+  const lines = entries.map((e) => `**${e.partyName}** — ${e.seats}`).join("\n") || "None";
+  const label = buildMajorityLabel(entries, totalSeats, race);
+  return label ? `${label}\n\n${lines}` : lines;
 }
 
 export async function execute(interaction: ChatInputCommandInteraction) {
@@ -131,8 +147,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       : `📊 ${result.chamberName} — Current Seats`;
 
     const page1Desc = showProjected
-      ? buildSeatsText(result.projected)
-      : `_No general elections active._\n\n${buildSeatsText(result.current)}`;
+      ? buildSeatsText(result.projected, totalSeats, race)
+      : `_No general elections active._\n\n${buildSeatsText(result.current, totalSeats, race)}`;
 
     const page1ChartEntries = addOtherEntry(primaryEntries, totalSeats);
     const page1ChartUrl = await buildParliamentChartUrl(page1ChartEntries);
@@ -154,7 +170,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const page2 = new EmbedBuilder()
       .setTitle(`📊 ${result.chamberName} — Current Seats`)
       .setColor(0x2b2d31)
-      .setDescription(buildSeatsText(result.current))
+      .setDescription(buildSeatsText(result.current, totalSeats, race))
       .setImage(page2ChartUrl)
       .setFooter({ text: `${metaLine} · ahousedividedgame.com` });
 
