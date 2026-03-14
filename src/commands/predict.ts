@@ -8,7 +8,7 @@ import {
   ComponentType,
 } from "discord.js";
 import { getPrediction, PredictionPartyEntry, ApiError } from "../utils/api.js";
-import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { replyWithError } from "../utils/helpers.js";
 
 export const cooldown = 5;
 
@@ -45,7 +45,7 @@ function normalizeColor(color: string | null | undefined): string {
   return color.startsWith("#") ? color : `#${color}`;
 }
 
-function buildParliamentChartUrl(entries: PredictionPartyEntry[]): string {
+async function buildParliamentChartUrl(entries: PredictionPartyEntry[]): Promise<string> {
   const config = {
     type: "doughnut",
     data: {
@@ -68,6 +68,23 @@ function buildParliamentChartUrl(entries: PredictionPartyEntry[]): string {
     },
   };
 
+  const response = await fetch("https://quickchart.io/chart/create", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chart: config,
+      width: 500,
+      height: 300,
+      backgroundColor: "#36393f",
+    }),
+  });
+
+  if (response.ok) {
+    const body = (await response.json()) as { success: boolean; url: string };
+    if (body.success) return body.url;
+  }
+
+  // Fallback to GET URL if POST fails
   return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(config))}&w=500&h=300&bkg=%2336393f`;
 }
 
@@ -84,19 +101,19 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   try {
     const result = await getPrediction({ country, race });
 
+    const showProjected = result.inGeneral && result.projected.length > 0;
+    const primaryEntries = showProjected ? result.projected : result.current;
+
+    const totalSeats = primaryEntries.reduce((sum, e) => sum + e.seats, 0);
     const metaParts: string[] = [];
     if (result.cycle != null) metaParts.push(`Cycle ${result.cycle}`);
     if (race === "senate" && result.activeSenateClass != null) {
       metaParts.push(`Class ${result.activeSenateClass}`);
     }
-    metaParts.push(`${result.totalSeats} seats total`);
+    metaParts.push(`${totalSeats} seats total`);
     const metaLine = metaParts.join(" · ");
 
-    const showProjected = result.inGeneral && result.projected.length > 0;
-    const primaryEntries = showProjected ? result.projected : result.current;
-    const embedColor = primaryEntries.length > 0
-      ? hexToInt(primaryEntries[0].partyColor)
-      : hexToInt(null);
+    const embedColor = 0x2b2d31;
 
     // Page 1: predicted (or current if no election running) + parliament chart
     const page1Title = showProjected
@@ -107,11 +124,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       ? buildSeatsText(result.projected)
       : `_No general elections active._\n\n${buildSeatsText(result.current)}`;
 
+    const page1ChartUrl = await buildParliamentChartUrl(primaryEntries);
     const page1 = new EmbedBuilder()
       .setTitle(page1Title)
       .setColor(embedColor)
       .setDescription(page1Desc)
-      .setImage(buildParliamentChartUrl(primaryEntries))
+      .setImage(page1ChartUrl)
       .setFooter({ text: `${metaLine} · ahousedividedgame.com` });
 
     if (!showProjected) {
@@ -120,15 +138,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     // Page 2: current seats
-    const currentColor = result.current.length > 0
-      ? hexToInt(result.current[0].partyColor)
-      : hexToInt(null);
-
+    const page2ChartUrl = await buildParliamentChartUrl(result.current);
     const page2 = new EmbedBuilder()
       .setTitle(`📊 ${result.chamberName} — Current Seats`)
-      .setColor(currentColor)
+      .setColor(0x2b2d31)
       .setDescription(buildSeatsText(result.current))
-      .setImage(buildParliamentChartUrl(result.current))
+      .setImage(page2ChartUrl)
       .setFooter({ text: `${metaLine} · ahousedividedgame.com` });
 
     const pages = [page1, page2];
