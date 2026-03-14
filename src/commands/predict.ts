@@ -2,8 +2,12 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ComponentType,
 } from "discord.js";
-import { getPrediction, ApiError } from "../utils/api.js";
+import { getPrediction, PredictionPartyEntry, ApiError } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
 
 export const cooldown = 5;
@@ -36,6 +40,31 @@ export const data = new SlashCommandBuilder()
       )
   );
 
+function normalizeColor(color: string): string {
+  return color.startsWith("#") ? color : `#${color}`;
+}
+
+function buildParliamentChartUrl(entries: PredictionPartyEntry[]): string {
+  const chartData = entries.map((e) => ({
+    value: e.seats,
+    color: normalizeColor(e.partyColor),
+    label: `${e.partyName} (${e.seats})`,
+  }));
+
+  const config = {
+    type: "parliament",
+    data: {
+      datasets: [{ data: chartData }],
+    },
+  };
+
+  return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(config))}&w=500&h=280&bkg=transparent`;
+}
+
+function buildSeatsText(entries: PredictionPartyEntry[]): string {
+  return entries.map((e) => `**${e.partyName}** — ${e.seats}`).join("\n") || "None";
+}
+
 export async function execute(interaction: ChatInputCommandInteraction) {
   const country = interaction.options.getString("country", true);
   const race = interaction.options.getString("race", true);
@@ -45,47 +74,98 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   try {
     const result = await getPrediction({ country, race });
 
-    const embedColor = result.projected.length > 0
-      ? hexToInt(result.projected[0].partyColor)
+    const metaParts: string[] = [];
+    if (result.cycle != null) metaParts.push(`Cycle ${result.cycle}`);
+    if (race === "senate" && result.activeSenateClass != null) {
+      metaParts.push(`Class ${result.activeSenateClass}`);
+    }
+    metaParts.push(`${result.totalSeats} seats total`);
+    const metaLine = metaParts.join(" · ");
+
+    const showProjected = result.inGeneral && result.projected.length > 0;
+    const primaryEntries = showProjected ? result.projected : result.current;
+    const embedColor = primaryEntries.length > 0
+      ? hexToInt(primaryEntries[0].partyColor)
       : hexToInt(null);
 
-    const embed = new EmbedBuilder()
-      .setTitle(`📊 ${result.chamberName} Seat Prediction`)
+    // Page 1: predicted (or current if no election running) + parliament chart
+    const page1Title = showProjected
+      ? `📊 ${result.chamberName} — Predicted Seats`
+      : `📊 ${result.chamberName} — Current Seats`;
+
+    const page1Desc = showProjected
+      ? buildSeatsText(result.projected)
+      : `_No general elections active._\n\n${buildSeatsText(result.current)}`;
+
+    const page1 = new EmbedBuilder()
+      .setTitle(page1Title)
       .setColor(embedColor)
-      .setFooter({ text: `ahousedivided.com · ${result.countryName}` });
+      .setDescription(page1Desc)
+      .setImage(buildParliamentChartUrl(primaryEntries))
+      .setFooter({ text: `${metaLine} · ahousedividedgame.com` });
 
-    if (!result.inGeneral) {
-      embed.setDescription("No general elections active — showing current seats only.");
+    if (!showProjected) {
+      await interaction.editReply({ embeds: [page1] });
+      return;
     }
 
-    // Current Seats field
-    const currentLines = result.current
-      .map((entry) => `${entry.partyName}: ${entry.seats}`)
-      .join("\n");
-    embed.addFields({ name: "Current Seats", value: currentLines || "None" });
+    // Page 2: current seats
+    const currentColor = result.current.length > 0
+      ? hexToInt(result.current[0].partyColor)
+      : hexToInt(null);
 
-    // Projected Seats field (only when general elections are active)
-    if (result.inGeneral) {
-      const projectedLines = result.projected
-        .map((entry) => `${entry.partyName}: ${entry.seats}`)
-        .join("\n");
-      embed.addFields({ name: "Projected Seats", value: projectedLines || "None" });
+    const page2 = new EmbedBuilder()
+      .setTitle(`📊 ${result.chamberName} — Current Seats`)
+      .setColor(currentColor)
+      .setDescription(buildSeatsText(result.current))
+      .setImage(buildParliamentChartUrl(result.current))
+      .setFooter({ text: `${metaLine} · ahousedividedgame.com` });
+
+    const pages = [page1, page2];
+
+    function buildRow(activePage: number): ActionRowBuilder<ButtonBuilder> {
+      return new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId("predict_projected")
+          .setLabel("Predicted")
+          .setStyle(activePage === 0 ? ButtonStyle.Primary : ButtonStyle.Secondary)
+          .setDisabled(activePage === 0),
+        new ButtonBuilder()
+          .setCustomId("predict_current")
+          .setLabel("Current")
+          .setStyle(activePage === 1 ? ButtonStyle.Primary : ButtonStyle.Secondary)
+          .setDisabled(activePage === 1),
+      );
     }
 
-    // Senate Class inline field
-    if (race === "senate" && result.activeSenateClass != null) {
-      embed.addFields({ name: "Senate Class", value: `Class ${result.activeSenateClass}`, inline: true });
-    }
+    let currentPage = 0;
+    const message = await interaction.editReply({
+      embeds: [pages[0]],
+      components: [buildRow(0)],
+    });
 
-    // Cycle inline field
-    if (result.cycle != null) {
-      embed.addFields({ name: "Cycle", value: `${result.cycle}`, inline: true });
-    }
+    const collector = message.createMessageComponentCollector({
+      componentType: ComponentType.Button,
+      time: 120_000,
+    });
 
-    // Total Seats inline field
-    embed.addFields({ name: "Total Seats", value: `${result.totalSeats}`, inline: true });
+    collector.on("collect", async (btn) => {
+      if (btn.user.id !== interaction.user.id) {
+        await btn.reply({ content: "Use your own /predict command.", ephemeral: true });
+        return;
+      }
+      await btn.deferUpdate();
+      currentPage = btn.customId === "predict_projected" ? 0 : 1;
+      await btn.editReply({
+        embeds: [pages[currentPage]],
+        components: [buildRow(currentPage)],
+      });
+    });
 
-    await interaction.editReply({ embeds: [embed] });
+    collector.on("end", () => {
+      interaction.editReply({ components: [] }).catch(() => {});
+    });
+
   } catch (error) {
     if (error instanceof ApiError) {
       if (error.status === 400) {
