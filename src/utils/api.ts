@@ -211,6 +211,7 @@ export interface ElectionCandidate {
 
 export interface Election {
   id: string;
+  seatId: string | null;
   electionType: string;
   state: string;
   status: "upcoming" | "active";
@@ -460,6 +461,7 @@ export interface RaceVotes {
 
 export interface RaceElection {
   id: string;
+  seatId: string | null;
   electionType: string;
   state: string;
   stateName: string;
@@ -502,6 +504,7 @@ interface RaceListResponse {
   mode: "list";
   elections: Array<{
     id: string;
+    seatId: string | null;
     electionType: string;
     state: string;
     stateName: string;
