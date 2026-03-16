@@ -18,9 +18,12 @@ validateEnv();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+import type { AutocompleteInteraction } from "discord.js";
+
 interface Command {
   data: { name: string };
   execute: (interaction: ChatInputCommandInteraction) => Promise<void>;
+  autocomplete?: (interaction: AutocompleteInteraction) => Promise<void>;
   cooldown?: number;
 }
 
@@ -70,6 +73,18 @@ client.on("interactionCreate", async (interaction) => {
     const embed = buildCategoryEmbed(interaction.values[0]);
     if (!embed) return;
     await interaction.update({ embeds: [embed], components: [buildSelectMenu()] });
+    return;
+  }
+
+  if (interaction.isAutocomplete()) {
+    const acCommand = commands.get(interaction.commandName);
+    if (acCommand?.autocomplete) {
+      try {
+        await acCommand.autocomplete(interaction);
+      } catch (error) {
+        console.error(`Autocomplete error for /${interaction.commandName}:`, error);
+      }
+    }
     return;
   }
 
