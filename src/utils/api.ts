@@ -556,6 +556,77 @@ export async function getPrediction(params: {
   return response.json();
 }
 
+// --- Corporation ---
+
+export interface CorporationListItem {
+  id: string;
+  name: string;
+}
+
+interface CorporationListResponse {
+  corporations: CorporationListItem[];
+}
+
+export interface CorporationSector {
+  stateName: string;
+  revenue: number;
+  growthRate: number;
+  workers: number;
+}
+
+export interface CorporationData {
+  id: string;
+  name: string;
+  description: string | null;
+  typeLabel: string;
+  brandColor: string | null;
+  logoUrl: string | null;
+  corpUrl: string;
+  headquartersStateName: string;
+  ceoName: string | null;
+  ceoProfileUrl: string | null;
+  liquidCapital: number;
+  sharePrice: number;
+  marketCap: number;
+  dailyRevenue: number;
+  dailyCosts: number;
+  dailyIncome: number;
+  marketingBudget: number;
+  marketingStrength: number;
+  sectors: CorporationSector[];
+}
+
+interface CorporationResponse {
+  found: boolean;
+  corporation?: CorporationData;
+}
+
+export async function getCorporationList(): Promise<CorporationListResponse> {
+  const url = new URL("/api/discord-bot/corporation", process.env.GAME_API_URL);
+  url.searchParams.set("list", "true");
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
+}
+
+export async function getCorporation(name: string): Promise<CorporationResponse> {
+  const url = new URL("/api/discord-bot/corporation", process.env.GAME_API_URL);
+  url.searchParams.set("name", name);
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
+}
+
 // --- Race Detail ---
 
 export async function getRace(params: {
