@@ -32,13 +32,14 @@ async function getList(): Promise<CorporationListItem[]> {
 // Currency / number formatting helpers
 // ---------------------------------------------------------------------------
 
-function currency(n: number): string {
-  return "$" + n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+function currency(n: number | undefined | null): string {
+  return "$" + (n ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 
-function incomePrefix(n: number): string {
-  const sign = n >= 0 ? "+" : "-";
-  return `${sign}${currency(Math.abs(n))}`;
+function incomePrefix(n: number | undefined | null): string {
+  const v = n ?? 0;
+  const sign = v >= 0 ? "+" : "-";
+  return `${sign}${currency(Math.abs(v))}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,14 +117,14 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       { name: "HQ", value: corp.headquartersStateName, inline: true },
       { name: "CEO", value: ceoValue, inline: true },
       { name: "Liquid Capital", value: currency(corp.liquidCapital), inline: true },
-      { name: "Share Price", value: `$${corp.sharePrice.toFixed(2)}`, inline: true },
+      { name: "Share Price", value: `$${(corp.sharePrice ?? 0).toFixed(2)}`, inline: true },
       { name: "Market Cap", value: currency(corp.marketCap), inline: true },
       { name: "Daily Revenue", value: currency(corp.dailyRevenue), inline: true },
       { name: "Daily Costs", value: currency(corp.dailyCosts), inline: true },
       { name: "Daily Income", value: incomePrefix(corp.dailyIncome), inline: true },
       {
         name: "Marketing",
-        value: `Budget: ${currency(corp.marketingBudget)} · Strength: ${corp.marketingStrength}`,
+        value: `Budget: ${currency(corp.marketingBudget)} · Strength: ${corp.marketingStrength ?? 0}`,
         inline: false,
       },
     );
@@ -133,7 +134,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       const maxShow = 5;
       const lines = corp.sectors.slice(0, maxShow).map(
         (s) =>
-          `${s.stateName} — ${currency(s.revenue)} rev · ${s.growthRate}% growth · ${s.workers} workers`
+          `${s.stateName ?? "Unknown"} — ${currency(s.revenue)} rev · ${s.growthRate ?? 0}% growth · ${s.workers ?? 0} workers`
       );
       if (corp.sectors.length > maxShow) {
         lines.push(`…and ${corp.sectors.length - maxShow} more`);

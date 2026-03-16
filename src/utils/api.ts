@@ -568,10 +568,10 @@ interface CorporationListResponse {
 }
 
 export interface CorporationSector {
-  stateName: string;
-  revenue: number;
-  growthRate: number;
-  workers: number;
+  stateName: string | null;
+  revenue: number | null;
+  growthRate: number | null;
+  workers: number | null;
 }
 
 export interface CorporationData {
@@ -585,14 +585,14 @@ export interface CorporationData {
   headquartersStateName: string;
   ceoName: string | null;
   ceoProfileUrl: string | null;
-  liquidCapital: number;
-  sharePrice: number;
-  marketCap: number;
-  dailyRevenue: number;
-  dailyCosts: number;
-  dailyIncome: number;
-  marketingBudget: number;
-  marketingStrength: number;
+  liquidCapital: number | null;
+  sharePrice: number | null;
+  marketCap: number | null;
+  dailyRevenue: number | null;
+  dailyCosts: number | null;
+  dailyIncome: number | null;
+  marketingBudget: number | null;
+  marketingStrength: number | null;
   sectors: CorporationSector[];
 }
 
@@ -640,6 +640,76 @@ export async function getRace(params: {
   if (params.state) url.searchParams.set("state", params.state);
   if (params.race) url.searchParams.set("race", params.race);
   if (params.electionId) url.searchParams.set("electionId", params.electionId);
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
+}
+
+// --- Sectors ---
+
+export type SectorType =
+  | "financial"
+  | "media"
+  | "manufacturing"
+  | "healthcare"
+  | "retail"
+  | "automobiles"
+  | "technology"
+  | "energy"
+  | "agriculture"
+  | "real_estate"
+  | "defense"
+  | "telecommunications"
+  | "entertainment";
+
+export interface OwnedSector {
+  corporationName: string;
+  stateName: string;
+  revenue: number;
+  growthRate: number;
+  workers: number;
+}
+
+export interface UnownedSector {
+  stateName: string;
+  unownedRevenue: number;
+  totalMarket: number;
+}
+
+interface SectorsResponseBase {
+  found: boolean;
+  sectorLabel: string;
+  page: number;
+  totalPages: number;
+  totalItems: number;
+}
+
+export interface OwnedSectorsResponse extends SectorsResponseBase {
+  mode: "owned";
+  sectors: OwnedSector[];
+}
+
+export interface UnownedSectorsResponse extends SectorsResponseBase {
+  mode: "unowned";
+  sectors: UnownedSector[];
+}
+
+export type SectorsResponse = OwnedSectorsResponse | UnownedSectorsResponse;
+
+export async function getSectors(params: {
+  type: SectorType;
+  unowned?: boolean;
+  page?: number;
+}): Promise<SectorsResponse> {
+  const url = new URL("/api/discord-bot/sectors", process.env.GAME_API_URL);
+  url.searchParams.set("type", params.type);
+  if (params.unowned != null) url.searchParams.set("unowned", String(params.unowned));
+  if (params.page != null) url.searchParams.set("page", String(params.page));
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
