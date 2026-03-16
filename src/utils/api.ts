@@ -568,10 +568,10 @@ interface CorporationListResponse {
 }
 
 export interface CorporationSector {
-  stateName: string;
-  revenue: number;
-  growthRate: number;
-  workers: number;
+  stateName: string | null;
+  revenue: number | null;
+  growthRate: number | null;
+  workers: number | null;
 }
 
 export interface CorporationData {
@@ -585,14 +585,14 @@ export interface CorporationData {
   headquartersStateName: string;
   ceoName: string | null;
   ceoProfileUrl: string | null;
-  liquidCapital: number;
-  sharePrice: number;
-  marketCap: number;
-  dailyRevenue: number;
-  dailyCosts: number;
-  dailyIncome: number;
-  marketingBudget: number;
-  marketingStrength: number;
+  liquidCapital: number | null;
+  sharePrice: number | null;
+  marketCap: number | null;
+  dailyRevenue: number | null;
+  dailyCosts: number | null;
+  dailyIncome: number | null;
+  marketingBudget: number | null;
+  marketingStrength: number | null;
   sectors: CorporationSector[];
 }
 
