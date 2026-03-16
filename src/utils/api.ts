@@ -593,7 +593,7 @@ export interface CorporationData {
   dailyIncome: number | null;
   marketingBudget: number | null;
   marketingStrength: number | null;
-  sectors: CorporationSector[];
+  sectors: CorporationSector[] | null;
 }
 
 interface CorporationResponse {

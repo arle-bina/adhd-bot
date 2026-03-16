@@ -130,17 +130,18 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     );
 
     // Sectors
-    if (corp.sectors.length > 0) {
+    const sectors = corp.sectors ?? [];
+    if (sectors.length > 0) {
       const maxShow = 5;
-      const lines = corp.sectors.slice(0, maxShow).map(
+      const lines = sectors.slice(0, maxShow).map(
         (s) =>
           `${s.stateName ?? "Unknown"} — ${currency(s.revenue)} rev · ${s.growthRate ?? 0}% growth · ${s.workers ?? 0} workers`
       );
-      if (corp.sectors.length > maxShow) {
-        lines.push(`…and ${corp.sectors.length - maxShow} more`);
+      if (sectors.length > maxShow) {
+        lines.push(`…and ${sectors.length - maxShow} more`);
       }
       embed.addFields({
-        name: `Sectors (${corp.sectors.length})`,
+        name: `Sectors (${sectors.length})`,
         value: lines.join("\n").slice(0, 1024),
         inline: false,
       });
