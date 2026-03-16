@@ -556,6 +556,61 @@ export async function getPrediction(params: {
   return response.json();
 }
 
+// --- Sectors ---
+
+export interface OwnedSector {
+  corporationName: string;
+  stateName: string;
+  revenue: number;
+  growthRate: number;
+  workers: number;
+}
+
+export interface UnownedSector {
+  stateName: string;
+  unownedRevenue: number;
+  totalMarket: number;
+}
+
+interface SectorsResponseBase {
+  found: boolean;
+  sectorLabel: string;
+  page: number;
+  totalPages: number;
+  totalItems: number;
+}
+
+export interface OwnedSectorsResponse extends SectorsResponseBase {
+  mode: "owned";
+  sectors: OwnedSector[];
+}
+
+export interface UnownedSectorsResponse extends SectorsResponseBase {
+  mode: "unowned";
+  sectors: UnownedSector[];
+}
+
+export type SectorsResponse = OwnedSectorsResponse | UnownedSectorsResponse;
+
+export async function getSectors(params: {
+  type: string;
+  unowned?: boolean;
+  page?: number;
+}): Promise<SectorsResponse> {
+  const url = new URL("/api/discord-bot/sectors", process.env.GAME_API_URL);
+  url.searchParams.set("type", params.type);
+  if (params.unowned != null) url.searchParams.set("unowned", String(params.unowned));
+  if (params.page != null) url.searchParams.set("page", String(params.page));
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
+}
+
 // --- Corporation ---
 
 export interface CorporationListItem {
