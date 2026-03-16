@@ -568,37 +568,56 @@ interface CorporationListResponse {
 }
 
 export interface CorporationSector {
+  stateId: string;
   stateName: string | null;
   revenue: number | null;
   growthRate: number | null;
   workers: number | null;
 }
 
+export interface CorporationFinancials {
+  totalRevenue: number;
+  maintenanceCosts: number;
+  growthCosts: number;
+  marketingCosts: number;
+  ceoSalaryCost: number;
+  totalCosts: number;
+  income: number;
+}
+
+export interface CorporationCeo {
+  name: string;
+  profileUrl: string;
+}
+
 export interface CorporationData {
   id: string;
+  sequentialId: number;
   name: string;
   description: string | null;
+  type: string;
   typeLabel: string;
   brandColor: string | null;
   logoUrl: string | null;
   corpUrl: string;
+  headquartersState: string;
   headquartersStateName: string;
-  ceoName: string | null;
-  ceoProfileUrl: string | null;
   liquidCapital: number | null;
   sharePrice: number | null;
-  marketCap: number | null;
-  dailyRevenue: number | null;
-  dailyCosts: number | null;
-  dailyIncome: number | null;
+  totalShares: number | null;
+  marketCapitalization: number | null;
   marketingBudget: number | null;
   marketingStrength: number | null;
-  sectors: CorporationSector[] | null;
+  marketingStrengthGrowth: number | null;
+  ceoSalary: number | null;
 }
 
-interface CorporationResponse {
+export interface CorporationResponse {
   found: boolean;
   corporation?: CorporationData;
+  ceo?: CorporationCeo | null;
+  financials?: CorporationFinancials;
+  sectors?: CorporationSector[];
 }
 
 export async function getCorporationList(): Promise<CorporationListResponse> {
