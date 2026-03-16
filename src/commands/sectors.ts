@@ -2,8 +2,12 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ComponentType,
 } from "discord.js";
-import { getSectors, SectorType } from "../utils/api.js";
+import { getSectors, SectorType, OwnedSectorsResponse, UnownedSectorsResponse } from "../utils/api.js";
 import { replyWithError } from "../utils/helpers.js";
 
 export const cooldown = 10;
@@ -46,15 +50,60 @@ export const data = new SlashCommandBuilder()
       .setMinValue(1)
   );
 
+function buildOwnedEmbed(result: OwnedSectorsResponse): EmbedBuilder {
+  const lines = result.sectors.map((sector, index) => {
+    const rank = (result.page - 1) * 10 + index + 1;
+    return `${rank}. **${sector.corporationName}** — ${sector.stateName} · $${sector.revenue.toLocaleString()} rev · ${sector.growthRate.toFixed(1)}% growth · ${sector.workers.toLocaleString()} workers`;
+  });
+
+  return new EmbedBuilder()
+    .setTitle(`🏭 ${result.sectorLabel} Sectors`)
+    .setColor(0x3b82f6)
+    .setDescription(lines.join("\n").slice(0, 4096))
+    .setFooter({
+      text: `Page ${result.page}/${result.totalPages} · ${result.totalItems} total sectors · ahousedividedgame.com`,
+    });
+}
+
+function buildUnownedEmbed(result: UnownedSectorsResponse): EmbedBuilder {
+  const lines = result.sectors.map((sector, index) => {
+    const rank = (result.page - 1) * 10 + index + 1;
+    return `${rank}. **${sector.stateName}** — $${sector.unownedRevenue.toLocaleString()} unowned (of $${sector.totalMarket.toLocaleString()} total)`;
+  });
+
+  return new EmbedBuilder()
+    .setTitle(`🏭 ${result.sectorLabel} — Unowned Market`)
+    .setColor(0x57f287)
+    .setDescription(lines.join("\n").slice(0, 4096))
+    .setFooter({
+      text: `Page ${result.page}/${result.totalPages} · ${result.totalItems} states with unowned market · ahousedividedgame.com`,
+    });
+}
+
+function buildNavRow(page: number, totalPages: number): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId("sectors_prev")
+      .setLabel("◀ Prev")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page <= 1),
+    new ButtonBuilder()
+      .setCustomId("sectors_next")
+      .setLabel("Next ▶")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page >= totalPages),
+  );
+}
+
 export async function execute(interaction: ChatInputCommandInteraction) {
   const type = interaction.options.getString("type", true) as SectorType;
   const unowned = interaction.options.getBoolean("unowned") ?? false;
-  const page = interaction.options.getInteger("page") ?? 1;
+  let page = interaction.options.getInteger("page") ?? 1;
 
   await interaction.deferReply();
 
   try {
-    const result = await getSectors({ type, unowned, page });
+    let result = await getSectors({ type, unowned, page });
 
     if (!result.found || result.sectors.length === 0) {
       const message =
@@ -65,37 +114,53 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       return;
     }
 
-    if (result.mode === "unowned") {
-      const lines = result.sectors.map((sector, index) => {
-        const rank = (result.page - 1) * 10 + index + 1;
-        return `${rank}. **${sector.stateName}** — $${sector.unownedRevenue.toLocaleString()} unowned (of $${sector.totalMarket.toLocaleString()} total)`;
-      });
+    const buildEmbed = () =>
+      result.mode === "unowned"
+        ? buildUnownedEmbed(result as UnownedSectorsResponse)
+        : buildOwnedEmbed(result as OwnedSectorsResponse);
 
-      const embed = new EmbedBuilder()
-        .setTitle(`🏭 ${result.sectorLabel} — Unowned Market`)
-        .setColor(0x57f287)
-        .setDescription(lines.join("\n"))
-        .setFooter({
-          text: `Page ${result.page}/${result.totalPages} · ${result.totalItems} states with unowned market · ahousedivided.com`,
-        });
+    const totalPages = result.totalPages;
 
-      await interaction.editReply({ embeds: [embed] });
-    } else {
-      const lines = result.sectors.map((sector, index) => {
-        const rank = (result.page - 1) * 10 + index + 1;
-        return `${rank}. **${sector.corporationName}** — ${sector.stateName} · $${sector.revenue.toLocaleString()} rev · ${sector.growthRate}% growth · ${sector.workers.toLocaleString()} workers`;
-      });
-
-      const embed = new EmbedBuilder()
-        .setTitle(`🏭 ${result.sectorLabel} Sectors`)
-        .setColor(0x3b82f6)
-        .setDescription(lines.join("\n"))
-        .setFooter({
-          text: `Page ${result.page}/${result.totalPages} · ${result.totalItems} total sectors · ahousedivided.com`,
-        });
-
-      await interaction.editReply({ embeds: [embed] });
+    if (totalPages <= 1) {
+      await interaction.editReply({ embeds: [buildEmbed()] });
+      return;
     }
+
+    const message = await interaction.editReply({
+      embeds: [buildEmbed()],
+      components: [buildNavRow(page, totalPages)],
+    });
+
+    const collector = message.createMessageComponentCollector({
+      componentType: ComponentType.Button,
+      time: 120_000,
+    });
+
+    collector.on("collect", async (btn) => {
+      if (btn.user.id !== interaction.user.id) {
+        await btn.reply({ content: "Use `/sectors` yourself to browse.", ephemeral: true });
+        return;
+      }
+
+      await btn.deferUpdate();
+
+      if (btn.customId === "sectors_prev") page = Math.max(1, page - 1);
+      if (btn.customId === "sectors_next") page = Math.min(totalPages, page + 1);
+
+      try {
+        result = await getSectors({ type, unowned, page });
+        await btn.editReply({
+          embeds: [buildEmbed()],
+          components: [buildNavRow(page, totalPages)],
+        });
+      } catch (error) {
+        await replyWithError(interaction, "sectors", error);
+      }
+    });
+
+    collector.on("end", () => {
+      interaction.editReply({ components: [] }).catch(() => {});
+    });
   } catch (error) {
     await replyWithError(interaction, "sectors", error);
   }
