@@ -98,6 +98,9 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     }
 
     const corp = res.corporation;
+    const ceo = res.ceo ?? null;
+    const financials = res.financials!;
+    const sectors = res.sectors ?? [];
 
     const embed = new EmbedBuilder()
       .setTitle(`🏢 ${corp.name}`.slice(0, 256))
@@ -108,9 +111,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     if (corp.logoUrl) embed.setThumbnail(corp.logoUrl);
     if (corp.description) embed.setDescription(corp.description.slice(0, 4096));
 
-    const ceoValue = corp.ceoName && corp.ceoProfileUrl
-      ? `[${corp.ceoName}](${corp.ceoProfileUrl})`
-      : "None";
+    const ceoValue = ceo ? `[${ceo.name}](${ceo.profileUrl})` : "None";
 
     embed.addFields(
       { name: "Type", value: corp.typeLabel, inline: true },
@@ -118,10 +119,10 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       { name: "CEO", value: ceoValue, inline: true },
       { name: "Liquid Capital", value: currency(corp.liquidCapital), inline: true },
       { name: "Share Price", value: `$${(corp.sharePrice ?? 0).toFixed(2)}`, inline: true },
-      { name: "Market Cap", value: currency(corp.marketCap), inline: true },
-      { name: "Daily Revenue", value: currency(corp.dailyRevenue), inline: true },
-      { name: "Daily Costs", value: currency(corp.dailyCosts), inline: true },
-      { name: "Daily Income", value: incomePrefix(corp.dailyIncome), inline: true },
+      { name: "Market Cap", value: currency(corp.marketCapitalization), inline: true },
+      { name: "Daily Revenue", value: currency(financials.totalRevenue), inline: true },
+      { name: "Daily Costs", value: currency(financials.totalCosts), inline: true },
+      { name: "Daily Income", value: incomePrefix(financials.income), inline: true },
       {
         name: "Marketing",
         value: `Budget: ${currency(corp.marketingBudget)} · Strength: ${corp.marketingStrength ?? 0}`,
@@ -130,7 +131,6 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     );
 
     // Sectors
-    const sectors = corp.sectors ?? [];
     if (sectors.length > 0) {
       const maxShow = 5;
       const lines = sectors.slice(0, maxShow).map(
