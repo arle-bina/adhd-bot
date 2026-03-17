@@ -123,6 +123,17 @@ export const categories: Category[] = [
         description: "Browse all bot commands using this interactive menu.",
         examples: ["/help"],
       },
+      {
+        name: "/serverstats",
+        usage: "/serverstats type:<messages|members> [days]",
+        description:
+          "View server activity over time as a graph. Messages shows daily count and cumulative total. Members shows member count trend.",
+        examples: [
+          "/serverstats type:Messages",
+          "/serverstats type:Members days:7",
+          "/serverstats type:Messages days:90",
+        ],
+      },
     ],
   },
 ];
