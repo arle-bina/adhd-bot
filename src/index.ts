@@ -4,6 +4,7 @@ import {
   Collection,
   EmbedBuilder,
   ChatInputCommandInteraction,
+  ActivityType,
 } from "discord.js";
 import { readdirSync } from "fs";
 import { fileURLToPath } from "url";
@@ -12,6 +13,7 @@ import { validateEnv } from "./utils/env.js";
 import { buildCategoryEmbed, buildSelectMenu } from "./commands/help.js";
 import { checkCooldown } from "./utils/cooldown.js";
 import { errorMessage, replyWithError } from "./utils/helpers.js";
+import { recordMessage, recordMemberCount } from "./utils/statsStore.js";
 
 validateEnv();
 
@@ -28,7 +30,12 @@ interface Command {
 }
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
 });
 
 const commands = new Collection<string, Command>();
@@ -47,6 +54,27 @@ for (const file of commandFiles) {
 
 client.once("ready", () => {
   console.log(`Bot ready as ${client.user?.tag} — ${commands.size} commands loaded`);
+
+  // Set bot presence
+  client.user?.setPresence({
+    activities: [{ name: "My father was a toolmaker", type: ActivityType.Custom }],
+    status: "online",
+  });
+
+  // Snapshot member counts on startup and every hour
+  const snapshotMembers = () => {
+    for (const guild of client.guilds.cache.values()) {
+      recordMemberCount(guild.id, guild.memberCount);
+    }
+  };
+  snapshotMembers();
+  setInterval(snapshotMembers, 60 * 60 * 1000);
+});
+
+// Track messages for server stats
+client.on("messageCreate", (message) => {
+  if (message.author.bot || !message.guild) return;
+  recordMessage(message.guild.id);
 });
 
 client.on("guildMemberAdd", async (member) => {
