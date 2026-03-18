@@ -46,9 +46,13 @@ const commandFiles = readdirSync(join(__dirname, "commands")).filter(
 
 for (const file of commandFiles) {
   const baseName = file.replace(/\.(js|ts)$/, "");
-  const mod = await import(`./commands/${baseName}.js`);
-  if (mod.data && mod.execute) {
-    commands.set(mod.data.name, mod as Command);
+  try {
+    const mod = await import(`./commands/${baseName}.js`);
+    if (mod.data && mod.execute) {
+      commands.set(mod.data.name, mod as Command);
+    }
+  } catch (err) {
+    console.error(`Failed to load command ${baseName}:`, err);
   }
 }
 
