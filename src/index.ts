@@ -5,6 +5,7 @@ import {
   EmbedBuilder,
   ChatInputCommandInteraction,
   ActivityType,
+  Partials,
 } from "discord.js";
 import { readdirSync } from "fs";
 import { fileURLToPath } from "url";
@@ -14,6 +15,7 @@ import { buildCategoryEmbed, buildSelectMenu } from "./commands/help.js";
 import { checkCooldown } from "./utils/cooldown.js";
 import { errorMessage, replyWithError } from "./utils/helpers.js";
 import { recordMessage, recordMemberCount } from "./utils/statsStore.js";
+import { handleStarboardReaction } from "./utils/starboard.js";
 
 validateEnv();
 
@@ -35,7 +37,9 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMessageReactions,
   ],
+  partials: [Partials.Message, Partials.Reaction],
 });
 
 const commands = new Collection<string, Command>();
@@ -79,6 +83,32 @@ client.once("ready", () => {
 client.on("messageCreate", (message) => {
   if (message.author.bot || !message.guild) return;
   recordMessage(message.guild.id);
+});
+
+// Starboard reaction handlers
+client.on("messageReactionAdd", async (reaction, user) => {
+  try {
+    if (user.bot) return;
+    // Fetch partials if needed (reactions on uncached messages)
+    const fullReaction = reaction.partial ? await reaction.fetch() : reaction;
+    if (fullReaction.message.partial) await fullReaction.message.fetch();
+    if (!fullReaction.message.guild) return;
+    await handleStarboardReaction(fullReaction, fullReaction.message.guild);
+  } catch (error) {
+    console.error("Starboard reactionAdd error:", error);
+  }
+});
+
+client.on("messageReactionRemove", async (reaction, user) => {
+  try {
+    if (user.bot) return;
+    const fullReaction = reaction.partial ? await reaction.fetch() : reaction;
+    if (fullReaction.message.partial) await fullReaction.message.fetch();
+    if (!fullReaction.message.guild) return;
+    await handleStarboardReaction(fullReaction, fullReaction.message.guild);
+  } catch (error) {
+    console.error("Starboard reactionRemove error:", error);
+  }
 });
 
 client.on("guildMemberAdd", async (member) => {
