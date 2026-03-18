@@ -26,6 +26,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   try {
     await member.roles.add(process.env.MEMBER_ROLE_ID!);
+    await member.roles.add(process.env.ALPHA_TESTER_ROLE_ID!);
     await interaction.reply({ content: "✅ Welcome! You now have access to the server.", ephemeral: true });
 
     // Best-effort: sync game party/country roles if account is linked

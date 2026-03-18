@@ -61,6 +61,11 @@ export interface CharacterResult {
     electionState: string;
     enteredAt: string;
   } | null;
+  isCeo: boolean;
+  ceoOf: string | null;
+  isInvestor: boolean;
+  portfolioValue: number | null;
+  investorRank: 1 | 2 | 3 | null;
 }
 
 export interface LookupResponse {
