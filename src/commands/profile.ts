@@ -16,6 +16,7 @@ import {
   type CareerEvent,
   type Achievement,
 } from "../utils/api.js";
+import { syncMemberRoles } from "../utils/roles.js";
 
 export const cooldown = 5;
 
@@ -176,6 +177,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     const char = result.characters[0];
+
+    // Best-effort: sync the invoking user's own game roles on every /profile run
+    interaction.guild?.members.fetch(interaction.user.id).then(async (member) => {
+      const selfResult = user?.id === interaction.user.id
+        ? { found: result.found, characters: result.characters }
+        : await lookupByDiscordId(interaction.user.id);
+      if (selfResult.found && selfResult.characters.length > 0) {
+        await syncMemberRoles(member, selfResult.characters[0]);
+      }
+    }).catch(() => {});
+
     const extras =
       result.characters.length > 1
         ? `\n-# ${result.characters.length - 1} more result(s) — try a more specific name.`
