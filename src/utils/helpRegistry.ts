@@ -134,6 +134,18 @@ export const categories: Category[] = [
           "/serverstats type:Messages days:90",
         ],
       },
+      {
+        name: "/starboard",
+        usage: "/starboard [channel] [threshold] [emoji] [self-star] [enabled]",
+        description:
+          "Configure the starboard — messages that earn enough star reactions are reposted to a dedicated channel. Requires Manage Server permission. Run with no options to view current config.",
+        examples: [
+          "/starboard channel:#starboard",
+          "/starboard threshold:5 emoji:🌟",
+          "/starboard enabled:false",
+          "/starboard",
+        ],
+      },
     ],
   },
 ];
