@@ -19,14 +19,14 @@ async function getOrCreateRole(guild: Guild, name: string, color: number): Promi
 
 export interface CharForSync {
   party: string;
-  partyColor: string;
-  countryId: string;
+  partyColor: string | null;
+  countryId: string | null;
 }
 
 export async function syncMemberRoles(member: GuildMember, char: CharForSync): Promise<void> {
   const guild = member.guild;
-  const partyColorInt = parseInt(char.partyColor.replace("#", ""), 16);
-  const country = COUNTRY_ROLES[char.countryId];
+  const partyColorInt = char.partyColor ? parseInt(char.partyColor.replace("#", ""), 16) : 0x5865f2;
+  const country = char.countryId ? COUNTRY_ROLES[char.countryId] : undefined;
 
   // Ensure roles exist
   const partyRoleId = await getOrCreateRole(guild, char.party, partyColorInt);

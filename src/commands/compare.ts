@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from "discord.js";
 import { lookupByName } from "../utils/api.js";
-import { errorMessage } from "../utils/helpers.js";
+import { hexToInt, replyWithError } from "../utils/helpers.js";
 
 export const cooldown = 5;
 
@@ -43,7 +43,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     const embed = new EmbedBuilder()
       .setTitle(`⚔️  ${a.name}  vs  ${b.name}`)
-      .setColor(parseInt(a.partyColor.replace("#", ""), 16))
+      .setColor(hexToInt(a.partyColor))
       .addFields(
         { name: a.name, value: `[View Profile](${a.profileUrl})`, inline: true },
         { name: "\u200b", value: "\u200b", inline: true },
@@ -65,7 +65,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
-    console.error("Compare error:", error);
-    await interaction.editReply({ content: errorMessage(error) });
+    await replyWithError(interaction, "compare", error);
   }
 }

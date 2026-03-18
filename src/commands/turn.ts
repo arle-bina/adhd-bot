@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from "discord.js";
 import { getTurnStatus } from "../utils/api.js";
-import { errorMessage } from "../utils/helpers.js";
+import { replyWithError } from "../utils/helpers.js";
 
 const TURNS_PER_YEAR = 48;
 
@@ -34,7 +34,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
-    console.error("Turn error:", error);
-    await interaction.editReply({ content: errorMessage(error) });
+    await replyWithError(interaction, "turn", error);
   }
 }

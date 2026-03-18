@@ -1,16 +1,45 @@
+// ---------------------------------------------------------------------------
+// Custom error class that carries HTTP context for better error messages
+// ---------------------------------------------------------------------------
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly endpoint: string;
+  readonly responseBody: string;
+
+  constructor(status: number, endpoint: string, responseBody: string) {
+    const summary = responseBody.slice(0, 200) || "(empty response)";
+    super(`API ${status} from ${endpoint}: ${summary}`);
+    this.name = "ApiError";
+    this.status = status;
+    this.endpoint = endpoint;
+    this.responseBody = responseBody;
+  }
+}
+
+async function throwApiError(response: Response, endpoint: string): Promise<never> {
+  let body = "";
+  try {
+    body = await response.text();
+  } catch {
+    body = "(could not read response body)";
+  }
+  throw new ApiError(response.status, endpoint, body);
+}
+
 export interface CharacterResult {
   id: string;
   name: string;
   bio: string | null;
   party: string;
-  partyId: string;
-  partyColor: string;
-  partyUrl: string;
+  partyId: string | null;
+  partyColor: string | null;
+  partyUrl: string | null;
   state: string;
-  stateCode: string;
-  stateUrl: string;
-  countryId: string;
-  countryUrl: string;
+  stateCode: string | null;
+  stateUrl: string | null;
+  countryId: string | null;
+  countryUrl: string | null;
   position: string;
   officeType: string | null;
   politicalInfluence: number;
@@ -19,20 +48,40 @@ export interface CharacterResult {
   infamy: number;
   funds: number;
   actions: number;
-  donorBaseLevel: number;
-  policies: { economic: number; social: number };
+  donorBaseLevel: number | null;
+  policies: { economic: number; social: number } | null;
   avatarUrl: string | null;
   discordAvatarUrl: string | null;
   discordUsername: string | null;
   profileUrl: string;
-  createdAt: string;
-  activeElection: string | null;
+  createdAt: string | null;
+  activeElection: {
+    electionId: string;
+    electionType: string;
+    electionState: string;
+    enteredAt: string;
+  } | null;
 }
 
-interface LookupResponse {
+export interface LookupResponse {
   found: boolean;
   characters: CharacterResult[];
 }
+
+function normalizeLookupResponse(raw: Record<string, unknown>): LookupResponse {
+  // Handle both { found, characters } and { success, data/characters/results } shapes
+  const found = raw.found ?? raw.success ?? false;
+  const characters = raw.characters ?? raw.data ?? raw.results ?? [];
+
+  if (!Array.isArray(characters)) {
+    console.error("Lookup API returned unexpected shape:", JSON.stringify(raw).slice(0, 500));
+    return { found: false, characters: [] };
+  }
+
+  return { found: Boolean(found), characters: characters as CharacterResult[] };
+}
+
+const FETCH_TIMEOUT_MS = 10_000;
 
 export async function lookupByName(name: string): Promise<LookupResponse> {
   const url = new URL("/api/discord-bot/lookup", process.env.GAME_API_URL);
@@ -40,13 +89,13 @@ export async function lookupByName(name: string): Promise<LookupResponse> {
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status}`);
-  }
+  if (!response.ok) await throwApiError(response, "/api/discord-bot/lookup");
 
-  return response.json();
+  const raw = await response.json();
+  return normalizeLookupResponse(raw);
 }
 
 export async function lookupByDiscordId(discordId: string): Promise<LookupResponse> {
@@ -55,13 +104,13 @@ export async function lookupByDiscordId(discordId: string): Promise<LookupRespon
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status}`);
-  }
+  if (!response.ok) await throwApiError(response, "/api/discord-bot/lookup");
 
-  return response.json();
+  const raw = await response.json();
+  return normalizeLookupResponse(raw);
 }
 
 // --- Leaderboard ---
@@ -102,9 +151,10 @@ export async function getLeaderboard(params: {
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }
 
@@ -143,9 +193,10 @@ export async function getParty(id: string): Promise<PartyResponse> {
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }
 
@@ -160,6 +211,7 @@ export interface ElectionCandidate {
 
 export interface Election {
   id: string;
+  seatId: string | null;
   electionType: string;
   state: string;
   status: "upcoming" | "active";
@@ -183,9 +235,10 @@ export async function getElections(params: {
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }
 
@@ -221,9 +274,10 @@ export async function getState(id: string): Promise<StateResponse> {
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }
 
@@ -257,9 +311,10 @@ export async function getNews(params: {
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }
 
@@ -275,9 +330,11 @@ export interface TurnStatus {
 export async function getTurnStatus(): Promise<TurnStatus> {
   const url = new URL("/api/game/turn/status", process.env.GAME_API_URL);
 
-  const response = await fetch(url.toString());
+  const response = await fetch(url.toString(), {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
 
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }
 
@@ -311,9 +368,10 @@ export async function getCareer(params: {
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }
 
@@ -349,9 +407,10 @@ export async function getAchievements(params: {
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }
 
@@ -402,6 +461,7 @@ export interface RaceVotes {
 
 export interface RaceElection {
   id: string;
+  seatId: string | null;
   electionType: string;
   state: string;
   stateName: string;
@@ -444,6 +504,7 @@ interface RaceListResponse {
   mode: "list";
   elections: Array<{
     id: string;
+    seatId: string | null;
     electionType: string;
     state: string;
     stateName: string;
@@ -454,6 +515,138 @@ interface RaceListResponse {
 }
 
 export type RaceResponse = RaceDetailResponse | RaceListResponse;
+
+// --- Predict ---
+
+export interface PredictionPartyEntry {
+  party: string;
+  partyName: string;
+  partyColor: string | null;
+  seats: number;
+}
+
+export interface PredictionResponse {
+  found: true;
+  country: string;
+  countryName: string;
+  race: string;
+  chamberName: string;
+  totalSeats: number;
+  inGeneral: boolean;
+  activeSenateClass?: number | null;
+  cycle?: number | null;
+  current: PredictionPartyEntry[];
+  projected: PredictionPartyEntry[];
+}
+
+export async function getPrediction(params: {
+  country: string;
+  race: string;
+}): Promise<PredictionResponse> {
+  const url = new URL("/api/discord-bot/predict", process.env.GAME_API_URL);
+  url.searchParams.set("country", params.country);
+  url.searchParams.set("race", params.race);
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
+}
+
+// --- Corporation ---
+
+export interface CorporationListItem {
+  id: string;
+  name: string;
+}
+
+interface CorporationListResponse {
+  corporations: CorporationListItem[];
+}
+
+export interface CorporationSector {
+  stateId: string;
+  stateName: string | null;
+  revenue: number | null;
+  growthRate: number | null;
+  workers: number | null;
+}
+
+export interface CorporationFinancials {
+  totalRevenue: number;
+  maintenanceCosts: number;
+  growthCosts: number;
+  marketingCosts: number;
+  ceoSalaryCost: number;
+  totalCosts: number;
+  income: number;
+}
+
+export interface CorporationCeo {
+  name: string;
+  profileUrl: string;
+}
+
+export interface CorporationData {
+  id: string;
+  sequentialId: number;
+  name: string;
+  description: string | null;
+  type: string;
+  typeLabel: string;
+  brandColor: string | null;
+  logoUrl: string | null;
+  corpUrl: string;
+  headquartersState: string;
+  headquartersStateName: string;
+  liquidCapital: number | null;
+  sharePrice: number | null;
+  totalShares: number | null;
+  marketCapitalization: number | null;
+  marketingBudget: number | null;
+  marketingStrength: number | null;
+  marketingStrengthGrowth: number | null;
+  ceoSalary: number | null;
+}
+
+export interface CorporationResponse {
+  found: boolean;
+  corporation?: CorporationData;
+  ceo?: CorporationCeo | null;
+  financials?: CorporationFinancials;
+  sectors?: CorporationSector[];
+}
+
+export async function getCorporationList(): Promise<CorporationListResponse> {
+  const url = new URL("/api/discord-bot/corporation", process.env.GAME_API_URL);
+  url.searchParams.set("list", "true");
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
+}
+
+export async function getCorporation(name: string): Promise<CorporationResponse> {
+  const url = new URL("/api/discord-bot/corporation", process.env.GAME_API_URL);
+  url.searchParams.set("name", name);
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
+}
+
+// --- Race Detail ---
 
 export async function getRace(params: {
   country?: string;
@@ -469,8 +662,79 @@ export async function getRace(params: {
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
+}
+
+// --- Sectors ---
+
+export type SectorType =
+  | "financial"
+  | "media"
+  | "manufacturing"
+  | "healthcare"
+  | "retail"
+  | "automobiles"
+  | "technology"
+  | "energy"
+  | "agriculture"
+  | "real_estate"
+  | "defense"
+  | "telecommunications"
+  | "entertainment";
+
+export interface OwnedSector {
+  corporationName: string;
+  stateName: string;
+  revenue: number;
+  growthRate: number;
+  workers: number;
+}
+
+export interface UnownedSector {
+  stateName: string;
+  unownedRevenue: number;
+  totalMarket: number;
+}
+
+interface SectorsResponseBase {
+  found: boolean;
+  sectorLabel: string;
+  page: number;
+  totalPages: number;
+  totalItems: number;
+}
+
+export interface OwnedSectorsResponse extends SectorsResponseBase {
+  mode: "owned";
+  sectors: OwnedSector[];
+}
+
+export interface UnownedSectorsResponse extends SectorsResponseBase {
+  mode: "unowned";
+  sectors: UnownedSector[];
+}
+
+export type SectorsResponse = OwnedSectorsResponse | UnownedSectorsResponse;
+
+export async function getSectors(params: {
+  type: SectorType;
+  unowned?: boolean;
+  page?: number;
+}): Promise<SectorsResponse> {
+  const url = new URL("/api/discord-bot/sectors", process.env.GAME_API_URL);
+  url.searchParams.set("type", params.type);
+  if (params.unowned != null) url.searchParams.set("unowned", String(params.unowned));
+  if (params.page != null) url.searchParams.set("page", String(params.page));
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }

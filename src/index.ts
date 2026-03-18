@@ -4,6 +4,7 @@ import {
   Collection,
   EmbedBuilder,
   ChatInputCommandInteraction,
+  ActivityType,
 } from "discord.js";
 import { readdirSync } from "fs";
 import { fileURLToPath } from "url";
@@ -11,20 +12,30 @@ import { dirname, join } from "path";
 import { validateEnv } from "./utils/env.js";
 import { buildCategoryEmbed, buildSelectMenu } from "./commands/help.js";
 import { checkCooldown } from "./utils/cooldown.js";
+import { errorMessage, replyWithError } from "./utils/helpers.js";
+import { recordMessage, recordMemberCount } from "./utils/statsStore.js";
 
 validateEnv();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+import type { AutocompleteInteraction } from "discord.js";
+
 interface Command {
   data: { name: string };
   execute: (interaction: ChatInputCommandInteraction) => Promise<void>;
+  autocomplete?: (interaction: AutocompleteInteraction) => Promise<void>;
   cooldown?: number;
 }
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
 });
 
 const commands = new Collection<string, Command>();
@@ -43,6 +54,27 @@ for (const file of commandFiles) {
 
 client.once("ready", () => {
   console.log(`Bot ready as ${client.user?.tag} — ${commands.size} commands loaded`);
+
+  // Set bot presence
+  client.user?.setPresence({
+    activities: [{ name: "My father was a toolmaker", type: ActivityType.Custom }],
+    status: "online",
+  });
+
+  // Snapshot member counts on startup and every hour
+  const snapshotMembers = () => {
+    for (const guild of client.guilds.cache.values()) {
+      recordMemberCount(guild.id, guild.memberCount);
+    }
+  };
+  snapshotMembers();
+  setInterval(snapshotMembers, 60 * 60 * 1000);
+});
+
+// Track messages for server stats
+client.on("messageCreate", (message) => {
+  if (message.author.bot || !message.guild) return;
+  recordMessage(message.guild.id);
 });
 
 client.on("guildMemberAdd", async (member) => {
@@ -72,6 +104,18 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
+  if (interaction.isAutocomplete()) {
+    const acCommand = commands.get(interaction.commandName);
+    if (acCommand?.autocomplete) {
+      try {
+        await acCommand.autocomplete(interaction);
+      } catch (error) {
+        console.error(`Autocomplete error for /${interaction.commandName}:`, error);
+      }
+    }
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   const command = commands.get(interaction.commandName);
@@ -93,12 +137,30 @@ client.on("interactionCreate", async (interaction) => {
   try {
     await command.execute(interaction);
   } catch (error) {
-    console.error("Command error:", error);
-    const reply = { content: "There was an error executing this command.", ephemeral: true };
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(reply);
-    } else {
-      await interaction.reply(reply);
+    // If the interaction hasn't been deferred yet, defer it so replyWithError
+    // can use editReply (embeds require a deferred or replied interaction).
+    try {
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.deferReply({ ephemeral: true });
+      }
+      await replyWithError(interaction, interaction.commandName, error);
+    } catch (replyError) {
+      // Last resort: if even the error embed fails, send plain text
+      console.error("Failed to send error embed:", replyError);
+      const summary = errorMessage(error);
+      const fallback = {
+        content: `**/${interaction.commandName}** failed: ${summary.slice(0, 300)}`,
+        ephemeral: true,
+      };
+      try {
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp(fallback);
+        } else {
+          await interaction.reply(fallback);
+        }
+      } catch {
+        // Nothing more we can do
+      }
     }
   }
 });

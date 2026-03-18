@@ -15,7 +15,7 @@ import {
   type RaceDetailResponse,
 } from "../utils/api.js";
 import { formatElectionType } from "./elections.js";
-import { errorMessage } from "../utils/helpers.js";
+import { replyWithError } from "../utils/helpers.js";
 
 export const cooldown = 5;
 
@@ -75,9 +75,10 @@ function buildListEmbed(elections: Election[], country: string, state?: string):
     const emoji = RACE_EMOJI[e.electionType] ?? "🗳️";
     const type = formatElectionType(e.electionType);
     const timeStr = e.endTime ? ` · ends <t:${ts(e.endTime)}:R>` : "";
+    const seatIdStr = e.seatId ? ` · \`${e.seatId}\`` : "";
     const names =
       e.candidates.length > 0 ? e.candidates.map((c) => c.characterName).join(", ") : "No candidates yet";
-    return `${emoji} **${type} — ${e.state}** (${e.status})${timeStr}\n${names}`;
+    return `${emoji} **${type} — ${e.state}** (${e.status})${timeStr}${seatIdStr}\n${names}`;
   });
 
   const embed = new EmbedBuilder()
@@ -192,12 +193,14 @@ function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
     lines.push(`Total votes: **${votes.totalVotes.toLocaleString()}**${seatStr}`);
   }
 
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setTitle(`${emoji} ${type} — ${election.stateName} · Cycle ${election.cycle}`.slice(0, 256))
     .setColor(leadingColor(detail))
     .setURL(election.url)
     .setDescription(lines.join("\n").slice(0, 4096))
-    .setFooter({ text: "ahousedividedgame.com" });
+    .setFooter({ text: election.seatId ? `Race ID: ${election.seatId}` : "ahousedividedgame.com" });
+
+  return embed;
 }
 
 function buildDetailRow(electionUrl: string, disabled = false): ActionRowBuilder<ButtonBuilder> {
@@ -322,7 +325,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       }
     });
   } catch (error) {
-    console.error("Election command error:", error);
-    await interaction.editReply({ content: errorMessage(error) });
+    await replyWithError(interaction, "election", error);
   }
 }

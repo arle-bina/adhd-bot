@@ -17,6 +17,7 @@ import {
   type Achievement,
 } from "../utils/api.js";
 import { syncMemberRoles } from "../utils/roles.js";
+import { hexToInt, replyWithError } from "../utils/helpers.js";
 
 export const cooldown = 5;
 
@@ -41,11 +42,11 @@ const CAREER_EMOJI: Record<string, string> = {
 };
 
 function partyColor(char: CharacterResult): number {
-  return parseInt(char.partyColor.replace("#", ""), 16);
+  return hexToInt(char.partyColor);
 }
 
 function policyLabel(val: number): string {
-  const clamped = Math.max(-100, Math.min(100, val));
+  const clamped = Math.round(Math.max(-100, Math.min(100, val)));
   const dir = clamped > 10 ? "Left" : clamped < -10 ? "Right" : "Centre";
   return `${dir} (${clamped > 0 ? "+" : ""}${clamped})`;
 }
@@ -63,17 +64,17 @@ function buildProfileEmbed(char: CharacterResult): EmbedBuilder {
 
   embed.addFields(
     { name: "Position", value: char.position || "None", inline: true },
-    { name: "Party", value: `[${char.party}](${char.partyUrl})`, inline: true },
-    { name: "State", value: `[${char.state}](${char.stateUrl})`, inline: true },
-    { name: "PI", value: String(char.politicalInfluence), inline: true },
-    { name: "NPI", value: String(char.nationalInfluence), inline: true },
-    { name: "Approval", value: `${char.favorability}%`, inline: true },
-    { name: "Infamy", value: String(char.infamy), inline: true },
-    { name: "Actions", value: String(char.actions), inline: true },
-    { name: "Donor Base", value: String(char.donorBaseLevel), inline: true },
-    { name: "Economic", value: policyLabel(char.policies.economic), inline: true },
-    { name: "Social", value: policyLabel(char.policies.social), inline: true },
-    { name: "Funds", value: `$${char.funds.toLocaleString()}`, inline: true },
+    { name: "Party", value: char.partyUrl ? `[${char.party}](${char.partyUrl})` : (char.party || "Unknown"), inline: true },
+    { name: "State", value: char.stateUrl ? `[${char.state}](${char.stateUrl})` : (char.state || "Unknown"), inline: true },
+    { name: "PI", value: String(Math.round(char.politicalInfluence ?? 0)), inline: true },
+    { name: "NPI", value: String(Math.round(char.nationalInfluence ?? 0)), inline: true },
+    { name: "Approval", value: `${Math.round(char.favorability ?? 0)}%`, inline: true },
+    { name: "Infamy", value: String(Math.round(char.infamy ?? 0)), inline: true },
+    { name: "Actions", value: String(Math.round(char.actions ?? 0)), inline: true },
+    { name: "Donor Base", value: String(Math.round(char.donorBaseLevel ?? 0)), inline: true },
+    { name: "Economic", value: policyLabel(char.policies?.economic ?? 0), inline: true },
+    { name: "Social", value: policyLabel(char.policies?.social ?? 0), inline: true },
+    { name: "Funds", value: `$${Math.round(char.funds ?? 0).toLocaleString()}`, inline: true },
   );
 
   if (char.createdAt) {
@@ -82,7 +83,9 @@ function buildProfileEmbed(char: CharacterResult): EmbedBuilder {
   }
 
   if (char.activeElection) {
-    embed.addFields({ name: "Active Election", value: char.activeElection, inline: false });
+    const electionType = char.activeElection.electionType.charAt(0).toUpperCase() + char.activeElection.electionType.slice(1);
+    const electionState = char.activeElection.electionState;
+    embed.addFields({ name: "Active Election", value: `${electionType} (${electionState})`, inline: false });
   }
 
   if (char.avatarUrl) embed.setThumbnail(char.avatarUrl);
@@ -153,26 +156,22 @@ function buildTabRow(active: Tab, disabled = false): ActionRowBuilder<ButtonBuil
 export async function execute(interaction: ChatInputCommandInteraction) {
   const name = interaction.options.getString("name");
   const user = interaction.options.getUser("user");
+  const isSelf = !name && !user;
 
-  if (!name && !user) {
-    await interaction.reply({
-      content: "Please provide either a character name or a Discord user.",
-      ephemeral: true,
-    });
-    return;
-  }
-
-  await interaction.deferReply();
+  await interaction.deferReply({ ephemeral: isSelf });
 
   try {
-    const result = user ? await lookupByDiscordId(user.id) : await lookupByName(name!);
+    const result = name
+      ? await lookupByName(name)
+      : await lookupByDiscordId(user?.id ?? interaction.user.id);
 
-    if (!result.found || result.characters.length === 0) {
-      await interaction.editReply({
-        content: user
+    if (result.characters.length === 0) {
+      const message = name
+        ? `No characters found matching "${name}".`
+        : user
           ? `No linked account found for ${user.username}.`
-          : `No characters found matching "${name}".`,
-      });
+          : "Your Discord account isn't linked to any characters yet. To link your account, go to **Settings** in [A House Divided](https://www.ahousedividedgame.com/) and connect your Discord.";
+      await interaction.editReply({ content: message });
       return;
     }
 
@@ -246,7 +245,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       interaction.editReply({ components: [buildTabRow(activeTab, true)] }).catch(() => {});
     });
   } catch (error) {
-    console.error("Profile error:", error);
-    await interaction.editReply({ content: "An error occurred while looking up the player." });
+    await replyWithError(interaction, "profile", error);
   }
 }
