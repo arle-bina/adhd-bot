@@ -23,21 +23,32 @@ export const data = new SlashCommandBuilder()
   .addStringOption((option) =>
     option
       .setName("id")
-      .setDescription("Party ID/slug (e.g. democrat, republican, labour)")
+      .setDescription("Party ID number (e.g. 1, 2, 3)")
       .setRequired(true)
+  )
+  .addStringOption((option) =>
+    option
+      .setName("country")
+      .setDescription("Country code (e.g. US, UK)")
+      .setRequired(true)
+      .addChoices(
+        { name: "United States", value: "US" },
+        { name: "United Kingdom", value: "UK" },
+      )
   );
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   const id = interaction.options.getString("id", true);
+  const country = interaction.options.getString("country", true);
 
   await interaction.deferReply();
 
   try {
-    const result = await getParty(id);
+    const result = await getParty(id, country);
 
     if (!result.found || !result.party) {
       await interaction.editReply({
-        content: "Party not found. Try the slug, e.g. `democrat`, `republican`, `labour`.",
+        content: "Party not found. Use the party ID number (e.g. `1`, `2`) with the correct country.",
       });
       return;
     }

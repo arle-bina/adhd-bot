@@ -192,9 +192,10 @@ interface PartyResponse {
   party?: PartyData;
 }
 
-export async function getParty(id: string): Promise<PartyResponse> {
+export async function getParty(id: string, country: string): Promise<PartyResponse> {
   const url = new URL("/api/discord-bot/party", process.env.GAME_API_URL);
   url.searchParams.set("id", id);
+  url.searchParams.set("country", country);
 
   const response = await fetch(url.toString(), {
     headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
