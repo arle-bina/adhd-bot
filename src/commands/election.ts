@@ -114,8 +114,15 @@ function buildSelectMenuRow(elections: Election[]): ActionRowBuilder<StringSelec
 
 // --- Detail view ---
 
+function parseColor(hex: string | null | undefined): number {
+  if (!hex) return 0x5865f2;
+  const clean = hex.startsWith("#") ? hex.slice(1) : hex;
+  const parsed = parseInt(clean, 16);
+  return isNaN(parsed) ? 0x5865f2 : parsed;
+}
+
 function leadingColor(detail: RaceDetailResponse): number {
-  const snapshot = detail.votes.latestSnapshot;
+  const snapshot = detail.votes?.latestSnapshot;
   let topId: string | null = null;
   let topPct = -1;
 
@@ -129,23 +136,30 @@ function leadingColor(detail: RaceDetailResponse): number {
   }
 
   const lead = topId ? detail.candidates.find((c) => c.id === topId) : detail.candidates[0];
-  return lead ? parseInt(lead.partyColor.replace("#", ""), 16) : 0x5865f2;
+  return parseColor(lead?.partyColor);
 }
 
 function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
-  const { election, phase, incumbent, candidates, votes } = detail;
+  const { election, phase, incumbent, candidates } = detail;
+  const votes = detail.votes ?? ({} as typeof detail.votes);
   const emoji = RACE_EMOJI[election.electionType] ?? "🗳️";
   const type = formatElectionType(election.electionType);
 
   let phaseStr: string;
-  if (phase.isUpcoming && election.startTime) {
-    phaseStr = `⏳ **Upcoming** — starts <t:${ts(election.startTime)}:R>`;
-  } else if (phase.inPrimary && election.primaryEndTime) {
-    phaseStr = `🟡 **Primary** — ends <t:${ts(election.primaryEndTime)}:R>`;
-  } else if (phase.inGeneral && election.endTime) {
-    phaseStr = `🟢 **General** — ends <t:${ts(election.endTime)}:R>`;
+  if (phase.isUpcoming) {
+    phaseStr = election.startTime
+      ? `⏳ **Upcoming** — starts <t:${ts(election.startTime)}:R>`
+      : "⏳ **Upcoming**";
+  } else if (phase.inPrimary) {
+    phaseStr = election.primaryEndTime
+      ? `🟡 **Primary phase** — ends <t:${ts(election.primaryEndTime)}:R>`
+      : "🟡 **Primary phase**";
+  } else if (phase.inGeneral) {
+    phaseStr = election.endTime
+      ? `🟢 **General election** — ends <t:${ts(election.endTime)}:R>`
+      : "🟢 **General election**";
   } else {
-    phaseStr = "🏁 **Ended**";
+    phaseStr = "🏁 **Election complete**";
   }
 
   const lines: string[] = [phaseStr];
@@ -154,47 +168,71 @@ function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
     lines.push(`Incumbent: **${incumbent.name}** (${incumbent.party})`);
   }
 
-  const showVotes = phase.inGeneral || phase.isEnded;
-  const snapshot = votes.latestSnapshot;
-  const sorted = [...candidates].sort((a, b) => b.sharePct - a.sharePct);
-
   lines.push("");
 
-  for (const c of sorted) {
-    const npp = c.isNPP ? " 🤖" : "";
-    const header = `**[${c.characterName}](${c.profileUrl})**${npp} · ${c.party}`;
+  if (candidates.length === 0) {
+    lines.push("_No candidates have entered this race yet._");
+  } else if (phase.inPrimary) {
+    // Group candidates by party
+    const byParty = new Map<string, typeof candidates>();
+    for (const c of [...candidates].sort((a, b) => b.sharePct - a.sharePct)) {
+      const group = byParty.get(c.party) ?? [];
+      group.push(c);
+      byParty.set(c.party, group);
+    }
+    for (const [party, members] of byParty) {
+      lines.push(`**${party}**`);
+      for (const c of members) {
+        const npp = c.isNPP ? " 🤖" : "";
+        const name = `[${c.characterName}](${c.profileUrl})${npp}`;
+        lines.push(
+          `${name} — Score: **${c.primaryScore}** · Share: ${c.sharePct.toFixed(1)}% · Fav: ${c.favorability}% · Funds: $${c.campaignFunds.toLocaleString()}`
+        );
+      }
+      lines.push("");
+    }
+  } else {
+    // General / ended / upcoming with candidates
+    const snapshot = votes.latestSnapshot ?? null;
+    const showVotes = (phase.inGeneral || phase.isEnded) && snapshot != null;
+    const sorted = [...candidates].sort((a, b) => b.sharePct - a.sharePct);
 
-    let voteLine = "";
-    if (showVotes && snapshot) {
-      const pct = snapshot.sharesPct[c.id] ?? c.sharePct;
-      const count = snapshot.cumulativeVotes[c.id] ?? 0;
-      voteLine = `\`${voteBar(pct)}\` **${pct.toFixed(1)}%** · ${count.toLocaleString()} votes`;
-    } else if (phase.inPrimary) {
-      voteLine = `Primary score: **${c.primaryScore}**`;
+    for (const c of sorted) {
+      const npp = c.isNPP ? " 🤖" : "";
+      const header = `**[${c.characterName}](${c.profileUrl})**${npp} · ${c.party}`;
+
+      let voteLine = "";
+      if (showVotes && snapshot) {
+        const pct = snapshot.sharesPct[c.id] ?? c.sharePct;
+        const count = snapshot.cumulativeVotes[c.id] ?? 0;
+        voteLine = `\`${voteBar(pct)}\` **${pct.toFixed(1)}%** · ${count.toLocaleString()} votes`;
+      }
+
+      const evLine =
+        votes.electoralVotes && votes.electoralVotes[c.id] != null
+          ? ` · EV: ${votes.electoralVotes[c.id]}`
+          : "";
+
+      const stats = `PI: ${c.politicalInfluence} · Fav: ${c.favorability}% · Funds: $${c.campaignFunds.toLocaleString()} · Endorsements: ${c.endorsementCount}${evLine}`;
+
+      const block = [header, voteLine, stats, c.runningMateName ? `Running mate: ${c.runningMateName}` : ""]
+        .filter(Boolean)
+        .join("\n");
+
+      lines.push(block);
     }
 
-    const evLine =
-      votes.electoralVotes && votes.electoralVotes[c.id] !== undefined
-        ? ` · EV: ${votes.electoralVotes[c.id]}`
-        : "";
-
-    const stats = `PI: ${c.politicalInfluence} · Fav: ${c.favorability}% · Funds: $${c.campaignFunds.toLocaleString()} · Endorsements: ${c.endorsementCount}${evLine}`;
-
-    const block = [header, voteLine, stats, c.runningMateName ? `Running mate: ${c.runningMateName}` : ""]
-      .filter(Boolean)
-      .join("\n");
-
-    lines.push(block);
+    const totalVotes = votes.totalVotes ?? 0;
+    if ((phase.inGeneral || phase.isEnded) && totalVotes > 0) {
+      lines.push("");
+      const seatStr = votes.seatsEstimate != null ? ` · Projected seats: ${votes.seatsEstimate}` : "";
+      lines.push(`Total votes: **${totalVotes.toLocaleString()}**${seatStr}`);
+    }
   }
 
-  if (showVotes && votes.totalVotes > 0) {
-    lines.push("");
-    const seatStr = votes.seatsEstimate != null ? ` · Projected seats: ${votes.seatsEstimate}` : "";
-    lines.push(`Total votes: **${votes.totalVotes.toLocaleString()}**${seatStr}`);
-  }
-
+  const cycleStr = election.cycle != null ? ` · Cycle ${election.cycle}` : "";
   const embed = new EmbedBuilder()
-    .setTitle(`${emoji} ${type} — ${election.stateName} · Cycle ${election.cycle}`.slice(0, 256))
+    .setTitle(`${emoji} ${type} — ${election.stateName}${cycleStr}`.slice(0, 256))
     .setColor(leadingColor(detail))
     .setURL(election.url)
     .setDescription(lines.join("\n").slice(0, 4096))

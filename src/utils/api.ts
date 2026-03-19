@@ -726,6 +726,33 @@ export interface UnownedSectorsResponse extends SectorsResponseBase {
 
 export type SectorsResponse = OwnedSectorsResponse | UnownedSectorsResponse;
 
+// --- Sync Roles ---
+
+export interface SyncRolesDetails {
+  partyName: string;
+  partyColor: string | null;
+  officeName: string | null;
+}
+
+export interface SyncRolesResponse {
+  found: boolean;
+  roles: string[];
+  details: SyncRolesDetails;
+}
+
+export async function getSyncRoles(discordId: string): Promise<SyncRolesResponse> {
+  const url = new URL("/api/discord-bot/sync-roles", process.env.GAME_API_URL);
+  url.searchParams.set("discordId", discordId);
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
+}
+
 export async function getSectors(params: {
   type: SectorType;
   unowned?: boolean;

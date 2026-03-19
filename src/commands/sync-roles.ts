@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits } from "discord.js";
-import { lookupByDiscordId } from "../utils/api.js";
+import { getSyncRoles } from "../utils/api.js";
 import { syncMemberRoles } from "../utils/roles.js";
 
 export const cooldown = 30;
@@ -30,9 +30,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     for (const member of humans) {
       try {
-        const result = await lookupByDiscordId(member.id);
-        if (result.found && result.characters.length > 0) {
-          await syncMemberRoles(member, result.characters[0]);
+        const result = await getSyncRoles(member.id);
+        if (result.found && result.roles.length > 0) {
+          await syncMemberRoles(member, result.roles, result.details);
           synced++;
         } else {
           skipped++;

@@ -3,7 +3,7 @@ import {
   ChatInputCommandInteraction,
   GuildMember,
 } from "discord.js";
-import { lookupByDiscordId } from "../utils/api.js";
+import { getSyncRoles } from "../utils/api.js";
 import { syncMemberRoles } from "../utils/roles.js";
 
 export const data = new SlashCommandBuilder()
@@ -29,10 +29,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await member.roles.add(process.env.ALPHA_TESTER_ROLE_ID!);
     await interaction.reply({ content: "✅ Welcome! You now have access to the server.", ephemeral: true });
 
-    // Best-effort: sync game party/country roles if account is linked
-    lookupByDiscordId(interaction.user.id).then(async (result) => {
-      if (result.found && result.characters.length > 0) {
-        await syncMemberRoles(member as GuildMember, result.characters[0]);
+    // Best-effort: sync game roles if account is linked
+    getSyncRoles(interaction.user.id).then(async (result) => {
+      if (result.found && result.roles.length > 0) {
+        await syncMemberRoles(member as GuildMember, result.roles, result.details);
       }
     }).catch(() => {});
   } catch (error) {

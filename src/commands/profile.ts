@@ -12,6 +12,7 @@ import {
   lookupByDiscordId,
   getCareer,
   getAchievements,
+  getSyncRoles,
   type CharacterResult,
   type CareerEvent,
   type Achievement,
@@ -179,11 +180,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     // Best-effort: sync the invoking user's own game roles on every /profile run
     interaction.guild?.members.fetch(interaction.user.id).then(async (member) => {
-      const selfResult = user?.id === interaction.user.id
-        ? { found: result.found, characters: result.characters }
-        : await lookupByDiscordId(interaction.user.id);
-      if (selfResult.found && selfResult.characters.length > 0) {
-        await syncMemberRoles(member, selfResult.characters[0]);
+      const syncResult = await getSyncRoles(interaction.user.id);
+      if (syncResult.found && syncResult.roles.length > 0) {
+        await syncMemberRoles(member, syncResult.roles, syncResult.details);
       }
     }).catch(() => {});
 

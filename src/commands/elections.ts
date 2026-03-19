@@ -10,6 +10,7 @@ export function formatElectionType(type: string): string {
   const map: Record<string, string> = {
     senate: "Senate",
     house: "House",
+    stateSenate: "State Senate",
     governor: "Governor",
     president: "Presidential",
     commons: "Commons",

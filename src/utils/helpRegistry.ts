@@ -67,6 +67,24 @@ export const categories: Category[] = [
         examples: ["/elections", "/elections country:US state:CA"],
       },
       {
+        name: "/election",
+        usage: "/election country:<US|UK> [state] [race]",
+        description:
+          "Drill into a specific race — shows phase (upcoming/primary/general/ended), candidate standings, vote shares, and a link to the election page. Omit state and race to browse all elections for a country.",
+        examples: [
+          "/election country:US state:CA race:Senate",
+          "/election country:UK state:UK_SCO race:Commons",
+          "/election country:US",
+        ],
+      },
+      {
+        name: "/predict",
+        usage: "/predict country:<country> race:<chamber>",
+        description:
+          "Projected seat totals for a legislative chamber, with a parliament chart. Shows current seats vs predicted outcome during active elections.",
+        examples: ["/predict country:US race:Senate", "/predict country:UK race:Commons"],
+      },
+      {
         name: "/party",
         usage: "/party id:<slug>",
         description:
@@ -79,6 +97,32 @@ export const categories: Category[] = [
         description:
           "State or region overview — population, voting system (RCV or FPTP), and all current office holders.",
         examples: ["/state id:CA", "/state id:TX", "/state id:UK_ENG"],
+      },
+    ],
+  },
+  {
+    label: "Economy",
+    emoji: "💼",
+    color: 0x3b82f6,
+    description: "Track corporations and industry sectors.",
+    commands: [
+      {
+        name: "/corporation",
+        usage: "/corporation name:<name>",
+        description:
+          "Look up a corporation — type, HQ, CEO, financials, market cap, and top sectors. Supports autocomplete.",
+        examples: ["/corporation name:Apex Media", "/corporation name:National Rail"],
+      },
+      {
+        name: "/sectors",
+        usage: "/sectors type:<industry> [unowned] [page]",
+        description:
+          "Browse sector ownership by industry type — revenue, growth rate, and worker count per state. Toggle unowned to see untapped market.",
+        examples: [
+          "/sectors type:Technology",
+          "/sectors type:Energy unowned:true",
+          "/sectors type:Media page:2",
+        ],
       },
     ],
   },
@@ -116,6 +160,13 @@ export const categories: Category[] = [
         description:
           "Accept the server rules and gain full access. Run this once after reading the rules in the welcome channel.",
         examples: ["/accept"],
+      },
+      {
+        name: "/ticket",
+        usage: "/ticket",
+        description:
+          "Open a support ticket — choose Bug Report, Suggestion, or Moderation Issue. A private channel will be created for the conversation.",
+        examples: ["/ticket"],
       },
       {
         name: "/help",
