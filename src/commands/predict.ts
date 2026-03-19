@@ -36,30 +36,53 @@ export const data = new SlashCommandBuilder()
       )
   );
 
-function normalizeColor(color: string | null | undefined): string {
-  if (!color) return "#808080";
-  return color.startsWith("#") ? color : `#${color}`;
+const FALLBACK_PALETTE = [
+  "#e6194b", "#3cb44b", "#4363d8", "#f58231", "#911eb4",
+  "#42d4f4", "#f032e6", "#bfef45", "#fabed4", "#469990",
+  "#dcbeff", "#9A6324", "#fffac8", "#800000", "#aaffc3",
+];
+
+function normalizeColor(color: string | null | undefined, index: number): string {
+  if (color) return color.startsWith("#") ? color : `#${color}`;
+  return FALLBACK_PALETTE[index % FALLBACK_PALETTE.length];
 }
 
-async function buildParliamentChartUrl(entries: PredictionPartyEntry[]): Promise<string> {
+async function buildParliamentChartUrl(entries: PredictionPartyEntry[], totalSeats: number): Promise<string> {
+  const colors = entries.map((e, i) => normalizeColor(e.partyColor, i));
+
   const config = {
-    type: "doughnut",
+    type: "doughnut" as const,
     data: {
       labels: entries.map((e) => `${e.partyName} (${e.seats})`),
       datasets: [
         {
           data: entries.map((e) => e.seats),
-          backgroundColor: entries.map((e) => normalizeColor(e.partyColor)),
-          borderWidth: 0,
+          backgroundColor: colors,
+          borderColor: "#2b2d31",
+          borderWidth: 2,
         },
       ],
     },
     options: {
       rotation: -90,
       circumference: 180,
+      cutout: "40%",
+      layout: { padding: { bottom: 0 } },
       plugins: {
-        legend: { display: true, position: "bottom" as const },
-        datalabels: { display: false },
+        legend: {
+          display: true,
+          position: "bottom" as const,
+          labels: { color: "#dcddde", font: { size: 11 }, padding: 12, usePointStyle: true, pointStyle: "rectRounded" },
+        },
+        datalabels: {
+          display: (ctx: { dataIndex: number }) => {
+            const value = entries[ctx.dataIndex]?.seats ?? 0;
+            return value / totalSeats > 0.06;
+          },
+          color: "#fff",
+          font: { weight: "bold" as const, size: 13 },
+          formatter: (_: number, ctx: { dataIndex: number }) => entries[ctx.dataIndex]?.seats ?? "",
+        },
       },
     },
   };
@@ -69,9 +92,10 @@ async function buildParliamentChartUrl(entries: PredictionPartyEntry[]): Promise
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       chart: config,
-      width: 500,
-      height: 300,
-      backgroundColor: "#36393f",
+      width: 600,
+      height: 350,
+      backgroundColor: "#2b2d31",
+      version: "4",
     }),
   });
 
@@ -80,8 +104,7 @@ async function buildParliamentChartUrl(entries: PredictionPartyEntry[]): Promise
     if (body.success) return body.url;
   }
 
-  // Fallback to GET URL if POST fails
-  return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(config))}&w=500&h=300&bkg=%2336393f`;
+  return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(config))}&w=600&h=350&bkg=%232b2d31&v=4`;
 }
 
 function addOtherEntry(entries: PredictionPartyEntry[], totalSeats: number): PredictionPartyEntry[] {
@@ -142,7 +165,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     if (!showProjected) {
       // No active general — just show current composition
       const chartEntries = addOtherEntry(result.current, totalSeats);
-      const chartUrl = await buildParliamentChartUrl(chartEntries);
+      const chartUrl = await buildParliamentChartUrl(chartEntries, totalSeats);
       const majorityLabel = buildMajorityLabel(result.current, totalSeats, race);
 
       const embed = new EmbedBuilder()
@@ -161,7 +184,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const currentLabel = buildMajorityLabel(result.current, totalSeats, race);
 
     // Don't add "Other" slice — show the actual projected breakdown only
-    const chartUrl = await buildParliamentChartUrl(result.projected);
+    const chartUrl = await buildParliamentChartUrl(result.projected, totalSeats);
 
     const embed = new EmbedBuilder()
       .setTitle(`📊 ${result.chamberName}`)
