@@ -6,6 +6,11 @@ import {
   ChatInputCommandInteraction,
   ActivityType,
   Partials,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  ActionRowBuilder,
+  TextChannel,
 } from "discord.js";
 import { readdirSync } from "fs";
 import { fileURLToPath } from "url";
@@ -16,7 +21,7 @@ import { checkCooldown } from "./utils/cooldown.js";
 import { errorMessage, replyWithError } from "./utils/helpers.js";
 import { recordMessage, recordMemberCount } from "./utils/statsStore.js";
 import { handleStarboardReaction } from "./utils/starboard.js";
-import { handlePanelReaction, handleLockReaction } from "./utils/tickets.js";
+import { handleLockReaction } from "./utils/tickets.js";
 
 validateEnv();
 
@@ -97,9 +102,6 @@ client.on("messageReactionAdd", async (reaction, user) => {
     // Resolve partial user
     const fullUser = user.partial ? await user.fetch() : user;
 
-    // Ticket panel reactions
-    await handlePanelReaction(fullReaction, fullUser, fullReaction.message.guild);
-
     // Ticket lock reaction (🔒)
     await handleLockReaction(fullReaction, fullUser, fullReaction.message.guild);
 
@@ -149,13 +151,83 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
+  // Ticket panel buttons → show modal
+  if (interaction.isButton() && interaction.customId.startsWith("ticket_panel_")) {
+    try {
+      const category = interaction.customId.replace("ticket_panel_", "");
+      const modal = new ModalBuilder()
+        .setCustomId(`ticket_modal_${category}`)
+        .setTitle("Open a Ticket");
+
+      const subjectInput = new TextInputBuilder()
+        .setCustomId("ticket_subject")
+        .setLabel("Subject")
+        .setPlaceholder("Brief summary of your issue")
+        .setStyle(TextInputStyle.Short)
+        .setMaxLength(100)
+        .setRequired(true);
+
+      const descriptionInput = new TextInputBuilder()
+        .setCustomId("ticket_description")
+        .setLabel("Description (optional)")
+        .setPlaceholder("Any additional details...")
+        .setStyle(TextInputStyle.Paragraph)
+        .setMaxLength(1000)
+        .setRequired(false);
+
+      modal.addComponents(
+        new ActionRowBuilder<TextInputBuilder>().addComponents(subjectInput),
+        new ActionRowBuilder<TextInputBuilder>().addComponents(descriptionInput),
+      );
+
+      await interaction.showModal(modal);
+    } catch (error) {
+      console.error("Ticket panel button error:", error);
+    }
+    return;
+  }
+
+  // Ticket modal submission (from both /ticket and panel buttons)
+  if (interaction.isModalSubmit() && interaction.customId.startsWith("ticket_modal_")) {
+    try {
+      const category = interaction.customId.replace("ticket_modal_", "");
+      // Only handle panel-triggered modals here; /ticket handles its own via awaitModalSubmit
+      // Panel modals come from button interactions, not command interactions
+      if (!interaction.message) {
+        // This is from /ticket's awaitModalSubmit — skip, it handles itself
+        return;
+      }
+      await interaction.deferReply({ ephemeral: true });
+      const { createTicket } = await import("./utils/tickets.js");
+      const subject = interaction.fields.getTextInputValue("ticket_subject");
+      const description = interaction.fields.getTextInputValue("ticket_description") || undefined;
+
+      const result = await createTicket(
+        interaction.guild!,
+        interaction.user.id,
+        interaction.user.username,
+        category as "bug" | "suggestion" | "moderation",
+        { subject, description },
+      );
+
+      if (result.success) {
+        await interaction.editReply({ content: `Ticket created: <#${result.channelId}>` });
+      } else {
+        await interaction.editReply({ content: result.reason });
+      }
+    } catch (error) {
+      console.error("Ticket modal submit error:", error);
+    }
+    return;
+  }
+
+  // Ticket close button
   if (interaction.isButton() && interaction.customId === "ticket_close") {
     try {
       const { closeTicket } = await import("./utils/tickets.js");
       const member = interaction.guild?.members.cache.get(interaction.user.id)
         ?? await interaction.guild?.members.fetch(interaction.user.id);
       if (member && interaction.channel) {
-        const { TextChannel } = await import("discord.js");
         if (interaction.channel instanceof TextChannel) {
           await closeTicket(interaction.channel, member, interaction);
         }

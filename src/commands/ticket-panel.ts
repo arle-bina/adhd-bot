@@ -2,14 +2,16 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   PermissionFlagsBits,
   TextChannel,
 } from "discord.js";
-import { addPanel } from "../utils/ticketStore.js";
 
 export const data = new SlashCommandBuilder()
   .setName("ticket-panel")
-  .setDescription("Post a ticket reaction panel in this channel (admin only)")
+  .setDescription("Post a ticket panel in this channel (admin only)")
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels);
 
 export async function execute(interaction: ChatInputCommandInteraction) {
@@ -22,7 +24,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   const embed = new EmbedBuilder()
     .setTitle("🎫 Support Tickets")
-    .setDescription("React below to open a support ticket:")
+    .setDescription("Click a button below to open a support ticket:")
     .addFields(
       { name: "🐛 Bug Report", value: "Report a bug or issue", inline: true },
       { name: "💡 Suggestion", value: "Suggest a feature or improvement", inline: true },
@@ -31,13 +33,25 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     .setColor(0x5865f2)
     .setFooter({ text: "ahousedividedgame.com" });
 
-  const panelMsg = await (interaction.channel as TextChannel).send({ embeds: [embed] });
+  const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId("ticket_panel_bug")
+      .setLabel("Bug Report")
+      .setEmoji("🐛")
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId("ticket_panel_suggestion")
+      .setLabel("Suggestion")
+      .setEmoji("💡")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId("ticket_panel_moderation")
+      .setLabel("Moderation")
+      .setEmoji("🛡️")
+      .setStyle(ButtonStyle.Primary),
+  );
 
-  await panelMsg.react("🐛");
-  await panelMsg.react("💡");
-  await panelMsg.react("🛡️");
-
-  addPanel(interaction.guild.id, panelMsg.id, interaction.channel.id);
+  await (interaction.channel as TextChannel).send({ embeds: [embed], components: [buttonRow] });
 
   await interaction.editReply({ content: "Ticket panel posted!" });
 }

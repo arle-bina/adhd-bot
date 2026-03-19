@@ -76,11 +76,17 @@ async function getOrCreateCategory(guild: Guild): Promise<string> {
   return created.id;
 }
 
+export interface TicketDetails {
+  subject: string;
+  description?: string;
+}
+
 export async function createTicket(
   guild: Guild,
   userId: string,
   username: string,
   category: TicketCategory,
+  details?: TicketDetails,
 ): Promise<{ success: true; channelId: string } | { success: false; reason: string; existingChannelId?: string }> {
   const lockKey = `${guild.id}:${userId}:${category}`;
   if (creationLocks.has(lockKey)) {
@@ -167,9 +173,16 @@ export async function createTicket(
         { name: "Opened by", value: `<@${userId}>`, inline: true },
         { name: "Category", value: config.label, inline: true },
         { name: "Created", value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
-      )
-      .setFooter({ text: "ahousedividedgame.com" })
-      .setTimestamp();
+      );
+
+    if (details?.subject) {
+      embed.addFields({ name: "Subject", value: details.subject });
+    }
+    if (details?.description) {
+      embed.setDescription(details.description.slice(0, 4096));
+    }
+
+    embed.setFooter({ text: "ahousedividedgame.com" }).setTimestamp();
 
     const closeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
