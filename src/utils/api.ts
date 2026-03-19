@@ -520,7 +520,12 @@ interface RaceListResponse {
   }>;
 }
 
-export type RaceResponse = RaceDetailResponse | RaceListResponse;
+interface RaceNotFoundResponse {
+  found: false;
+  mode?: undefined;
+}
+
+export type RaceResponse = RaceDetailResponse | RaceListResponse | RaceNotFoundResponse;
 
 // --- Predict ---
 

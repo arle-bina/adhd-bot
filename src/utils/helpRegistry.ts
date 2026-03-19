@@ -183,6 +183,34 @@ export const categories: Category[] = [
           "/starboard",
         ],
       },
+      {
+        name: "/close-ticket",
+        usage: "/close-ticket",
+        description:
+          "Close the current ticket channel. Can be used by the ticket creator or moderators.",
+        examples: ["/close-ticket"],
+      },
+      {
+        name: "/ticket-panel",
+        usage: "/ticket-panel",
+        description:
+          "Post a persistent ticket panel with buttons in the current channel. Requires Manage Channels permission.",
+        examples: ["/ticket-panel"],
+      },
+      {
+        name: "/sync-roles",
+        usage: "/sync-roles",
+        description:
+          "Backfill party and country roles for all linked members. Requires Manage Roles permission.",
+        examples: ["/sync-roles"],
+      },
+      {
+        name: "/version",
+        usage: "/version",
+        description:
+          "Show the bot's current version, commit hash, uptime, and last deploy time.",
+        examples: ["/version"],
+      },
     ],
   },
 ];

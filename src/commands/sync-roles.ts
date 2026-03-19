@@ -27,22 +27,38 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     let synced = 0;
     let skipped = 0;
     let failed = 0;
+    let processed = 0;
+    const CONCURRENCY = 5;
 
-    for (const member of humans) {
-      try {
-        const result = await getSyncRoles(member.id);
-        if (result.found && result.roles.length > 0) {
-          await syncMemberRoles(member, result.roles, result.details);
-          synced++;
+    // Process members in parallel batches
+    for (let i = 0; i < humans.length; i += CONCURRENCY) {
+      const batch = humans.slice(i, i + CONCURRENCY);
+      const results = await Promise.allSettled(
+        batch.map(async (member) => {
+          const result = await getSyncRoles(member.id);
+          if (result.found && result.roles.length > 0) {
+            await syncMemberRoles(member, result.roles, result.details);
+            return "synced" as const;
+          }
+          return "skipped" as const;
+        }),
+      );
+
+      for (const r of results) {
+        if (r.status === "fulfilled") {
+          if (r.value === "synced") synced++;
+          else skipped++;
         } else {
-          skipped++;
+          failed++;
         }
-      } catch {
-        failed++;
       }
 
-      // Avoid hammering the API
-      await new Promise((r) => setTimeout(r, 250));
+      processed += batch.length;
+      if (processed % 25 === 0 || processed === humans.length) {
+        await interaction.editReply({
+          content: `Syncing… ${processed}/${humans.length} processed.`,
+        }).catch(() => {});
+      }
     }
 
     await interaction.editReply({

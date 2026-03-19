@@ -9,9 +9,7 @@ import {
   StringSelectMenuOptionBuilder,
 } from "discord.js";
 import {
-  getElections,
   getRace,
-  type Election,
   type RaceDetailResponse,
 } from "../utils/api.js";
 import { formatElectionType } from "./elections.js";
@@ -67,18 +65,26 @@ function ts(iso: string): number {
   return Math.floor(new Date(iso).getTime() / 1000);
 }
 
-// --- List view ---
+// --- List view (from race API list mode) ---
 
-function buildListEmbed(elections: Election[], country: string, state?: string): EmbedBuilder {
+interface ListElection {
+  id: string;
+  seatId: string | null;
+  electionType: string;
+  state: string;
+  stateName: string;
+  status: string;
+  startTime: string | null;
+  endTime: string | null;
+}
+
+function buildListEmbed(elections: ListElection[], country: string, state?: string): EmbedBuilder {
   const subtitle = state ? ` · ${state}` : "";
   const lines = elections.slice(0, 25).map((e) => {
     const emoji = RACE_EMOJI[e.electionType] ?? "🗳️";
     const type = formatElectionType(e.electionType);
     const timeStr = e.endTime ? ` · ends <t:${ts(e.endTime)}:R>` : "";
-    const seatIdStr = e.seatId ? ` · \`${e.seatId}\`` : "";
-    const names =
-      e.candidates.length > 0 ? e.candidates.map((c) => c.characterName).join(", ") : "No candidates yet";
-    return `${emoji} **${type} — ${e.state}** (${e.status})${timeStr}${seatIdStr}\n${names}`;
+    return `${emoji} **${type} — ${e.stateName ?? e.state}** (${e.status})${timeStr}`;
   });
 
   const embed = new EmbedBuilder()
@@ -94,13 +100,13 @@ function buildListEmbed(elections: Election[], country: string, state?: string):
   return embed;
 }
 
-function buildSelectMenuRow(elections: Election[]): ActionRowBuilder<StringSelectMenuBuilder> | null {
+function buildSelectMenuRow(elections: ListElection[]): ActionRowBuilder<StringSelectMenuBuilder> | null {
   const sliced = elections.slice(0, 25);
   if (sliced.length === 0) return null;
 
   const options = sliced.map((e) => {
     const type = formatElectionType(e.electionType);
-    const label = `${type} — ${e.state}`.slice(0, 100);
+    const label = `${type} — ${e.stateName ?? e.state}`.slice(0, 100);
     return new StringSelectMenuOptionBuilder().setLabel(label).setValue(e.id);
   });
 
@@ -262,13 +268,32 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply();
 
   try {
-    let listCache: Election[] | null = null;
+    let listCache: ListElection[] | null = null;
     const raceCache = new Map<string, RaceDetailResponse>();
 
-    async function fetchList(): Promise<Election[]> {
+    async function fetchList(): Promise<ListElection[]> {
       if (listCache) return listCache;
-      const res = await getElections({ country, state });
-      listCache = res.elections;
+      const res = await getRace({ country, state });
+      if (!res.found) {
+        listCache = [];
+        return listCache;
+      }
+      if (res.mode === "list") {
+        listCache = res.elections;
+      } else {
+        // Detail mode returned when only one race matches — wrap for list
+        listCache = [{
+          id: res.election.id,
+          seatId: res.election.seatId,
+          electionType: res.election.electionType,
+          state: res.election.state,
+          stateName: res.election.stateName,
+          status: res.election.status,
+          startTime: res.election.startTime,
+          endTime: res.election.endTime,
+        }];
+        raceCache.set(res.election.id, res);
+      }
       return listCache;
     }
 
@@ -285,7 +310,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           : { country, state, race: params.race }
       );
 
-      if (res.mode !== "detail") return null;
+      if (!res.found || res.mode !== "detail") return null;
       raceCache.set(key, res);
       return res;
     }

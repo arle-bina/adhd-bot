@@ -6,11 +6,27 @@ import {
 } from "discord.js";
 import { ChartJSNodeCanvas } from "chartjs-node-canvas";
 import type { ChartConfiguration } from "chart.js";
+import { registerFont } from "canvas";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { getStats } from "../utils/statsStore.js";
 
 export const cooldown = 10;
 
-const chartCanvas = new ChartJSNodeCanvas({ width: 800, height: 400, backgroundColour: "#2b2d31" });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const FONT_PATH = join(__dirname, "..", "..", "assets", "DejaVuSans.ttf");
+
+registerFont(FONT_PATH, { family: "DejaVu Sans" });
+
+const chartCanvas = new ChartJSNodeCanvas({
+  width: 800,
+  height: 400,
+  backgroundColour: "#2b2d31",
+  chartCallback: (ChartJS) => {
+    ChartJS.defaults.font.family = "DejaVu Sans";
+  },
+});
 
 export const data = new SlashCommandBuilder()
   .setName("serverstats")
