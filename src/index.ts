@@ -16,6 +16,7 @@ import { checkCooldown } from "./utils/cooldown.js";
 import { errorMessage, replyWithError } from "./utils/helpers.js";
 import { recordMessage, recordMemberCount } from "./utils/statsStore.js";
 import { handleStarboardReaction } from "./utils/starboard.js";
+import { handlePanelReaction, handleLockReaction } from "./utils/tickets.js";
 
 validateEnv();
 
@@ -65,7 +66,7 @@ client.once("ready", () => {
 
   // Set bot presence
   client.user?.setPresence({
-    activities: [{ name: "My father was a toolmaker", type: ActivityType.Custom }],
+    activities: [{ name: "/ticket for support", type: ActivityType.Custom }],
     status: "online",
   });
 
@@ -85,17 +86,27 @@ client.on("messageCreate", (message) => {
   recordMessage(message.guild.id);
 });
 
-// Starboard reaction handlers
+// Reaction handlers (tickets + starboard)
 client.on("messageReactionAdd", async (reaction, user) => {
   try {
     if (user.bot) return;
-    // Fetch partials if needed (reactions on uncached messages)
     const fullReaction = reaction.partial ? await reaction.fetch() : reaction;
     if (fullReaction.message.partial) await fullReaction.message.fetch();
     if (!fullReaction.message.guild) return;
+
+    // Resolve partial user
+    const fullUser = user.partial ? await user.fetch() : user;
+
+    // Ticket panel reactions
+    await handlePanelReaction(fullReaction, fullUser, fullReaction.message.guild);
+
+    // Ticket lock reaction (🔒)
+    await handleLockReaction(fullReaction, fullUser, fullReaction.message.guild);
+
+    // Starboard
     await handleStarboardReaction(fullReaction, fullReaction.message.guild);
   } catch (error) {
-    console.error("Starboard reactionAdd error:", error);
+    console.error("reactionAdd error:", error);
   }
 });
 
@@ -135,6 +146,23 @@ client.on("interactionCreate", async (interaction) => {
     const embed = buildCategoryEmbed(interaction.values[0]);
     if (!embed) return;
     await interaction.update({ embeds: [embed], components: [buildSelectMenu()] });
+    return;
+  }
+
+  if (interaction.isButton() && interaction.customId === "ticket_close") {
+    try {
+      const { closeTicket } = await import("./utils/tickets.js");
+      const member = interaction.guild?.members.cache.get(interaction.user.id)
+        ?? await interaction.guild?.members.fetch(interaction.user.id);
+      if (member && interaction.channel) {
+        const { TextChannel } = await import("discord.js");
+        if (interaction.channel instanceof TextChannel) {
+          await closeTicket(interaction.channel, member, interaction);
+        }
+      }
+    } catch (error) {
+      console.error("Ticket close button error:", error);
+    }
     return;
   }
 
