@@ -187,12 +187,14 @@ function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
       byParty.set(c.party, group);
     }
     for (const [party, members] of byParty) {
+      const unopposed = members.length === 1;
       lines.push(`**${party}**`);
       for (const c of members) {
         const npp = c.isNPP ? " 🤖" : "";
-        const name = `[${c.characterName}](${c.profileUrl})${npp}`;
+        const name = c.profileUrl ? `[${c.characterName}](${c.profileUrl})${npp}` : `${c.characterName}${npp}`;
+        const share = unopposed ? "Unopposed" : `Share: ${(c.sharePct ?? 0).toFixed(1)}%`;
         lines.push(
-          `${name} — Score: **${c.primaryScore ?? 0}** · Share: ${(c.sharePct ?? 0).toFixed(1)}% · Fav: ${c.favorability ?? 0}% · Funds: $${(c.campaignFunds ?? 0).toLocaleString()}`
+          `${name} — Score: **${Math.round(c.primaryScore ?? 0)}** · ${share} · Fav: ${Math.round(c.favorability ?? 0)}% · Funds: $${(c.campaignFunds ?? 0).toLocaleString()}`
         );
       }
       lines.push("");
@@ -205,11 +207,14 @@ function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
 
     for (const c of sorted) {
       const npp = c.isNPP ? " 🤖" : "";
-      const header = `**[${c.characterName}](${c.profileUrl})**${npp} · ${c.party}`;
+      const nameStr = c.profileUrl
+        ? `**[${c.characterName}](${c.profileUrl})**${npp}`
+        : `**${c.characterName}**${npp}`;
+      const header = `${nameStr} · ${c.party}`;
 
       let voteLine = "";
       if (showVotes && snapshot) {
-        const pct = snapshot.sharesPct[c.id] ?? c.sharePct;
+        const pct = snapshot.sharesPct[c.id] ?? c.sharePct ?? 0;
         const count = snapshot.cumulativeVotes[c.id] ?? 0;
         voteLine = `\`${voteBar(pct)}\` **${pct.toFixed(1)}%** · ${count.toLocaleString()} votes`;
       }
@@ -219,7 +224,7 @@ function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
           ? ` · EV: ${votes.electoralVotes[c.id]}`
           : "";
 
-      const stats = `PI: ${c.politicalInfluence ?? 0} · Fav: ${c.favorability ?? 0}% · Funds: $${(c.campaignFunds ?? 0).toLocaleString()} · Endorsements: ${c.endorsementCount ?? 0}${evLine}`;
+      const stats = `PI: ${c.politicalInfluence ?? 0} · Fav: ${Math.round(c.favorability ?? 0)}% · Funds: $${(c.campaignFunds ?? 0).toLocaleString()}${evLine}`;
 
       const block = [header, voteLine, stats, c.runningMateName ? `Running mate: ${c.runningMateName}` : ""]
         .filter(Boolean)
