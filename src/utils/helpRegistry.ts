@@ -94,13 +94,12 @@ export const categories: Category[] = [
     commands: [
       {
         name: "/corporation",
-        usage: "/corporation name:<name> [view]",
+        usage: "/corporation name:<name>",
         description:
-          "Look up a corporation with three views: Overview (default) shows type, HQ, CEO, capital, shares, revenue, costs, shareholders, and sectors. Bonds shows outstanding debt instruments with coupon, price, and YTM. Financials shows a full income statement, balance sheet, share structure, credit rating, and sector P&L.",
+          "Look up a corporation with tabbed views. Overview (default) shows type, HQ, CEO, capital, shares, revenue, costs, shareholders, and sectors. Use the Bonds and Financials buttons to switch tabs.",
         examples: [
           "/corporation name:Apex Media",
-          "/corporation name:National Rail view:Bonds",
-          "/corporation name:Apex Media view:Financials",
+          "/corporation name:National Rail",
         ],
       },
       {

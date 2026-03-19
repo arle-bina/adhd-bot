@@ -1,6 +1,9 @@
 import {
   SlashCommandBuilder,
   EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   type ChatInputCommandInteraction,
   type AutocompleteInteraction,
 } from "discord.js";
@@ -11,6 +14,7 @@ import {
   getFinancials,
   ApiError,
   type CorporationListItem,
+  type CorporationResponse,
   type BondsResponse,
   type FinancialsResponse,
 } from "../utils/api.js";
@@ -88,33 +92,42 @@ export const data = new SlashCommandBuilder()
       .setDescription("Corporation name")
       .setRequired(true)
       .setAutocomplete(true)
-  )
-  .addStringOption((o) =>
-    o
-      .setName("view")
-      .setDescription("What to display (default: Overview)")
-      .addChoices(
-        { name: "Overview", value: "overview" },
-        { name: "Bonds", value: "bonds" },
-        { name: "Financials", value: "financials" },
-      )
   );
 
 export const cooldown = 5;
 
 // ---------------------------------------------------------------------------
-// View: Overview
+// Button row builder
 // ---------------------------------------------------------------------------
 
-async function handleOverview(interaction: ChatInputCommandInteraction, name: string): Promise<void> {
-  const res = await getCorporation(name);
+type Tab = "overview" | "bonds" | "financials";
 
-  if (!res.found || !res.corporation) {
-    await interaction.editReply({ content: "Corporation not found." });
-    return;
-  }
+function buildTabRow(active: Tab, disabled = false): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId("corp_tab_overview")
+      .setLabel("Overview")
+      .setStyle(active === "overview" ? ButtonStyle.Primary : ButtonStyle.Secondary)
+      .setDisabled(disabled),
+    new ButtonBuilder()
+      .setCustomId("corp_tab_bonds")
+      .setLabel("Bonds")
+      .setStyle(active === "bonds" ? ButtonStyle.Primary : ButtonStyle.Secondary)
+      .setDisabled(disabled),
+    new ButtonBuilder()
+      .setCustomId("corp_tab_financials")
+      .setLabel("Financials")
+      .setStyle(active === "financials" ? ButtonStyle.Primary : ButtonStyle.Secondary)
+      .setDisabled(disabled),
+  );
+}
 
-  const corp = res.corporation;
+// ---------------------------------------------------------------------------
+// Embed builders (return EmbedBuilder, don't edit the reply)
+// ---------------------------------------------------------------------------
+
+function buildOverviewEmbed(res: CorporationResponse): EmbedBuilder {
+  const corp = res.corporation!;
   const ceo = res.ceo ?? null;
   const financials = res.financials!;
   const sectors = res.sectors ?? [];
@@ -126,7 +139,7 @@ async function handleOverview(interaction: ChatInputCommandInteraction, name: st
     .setTitle(corp.name.slice(0, 256))
     .setURL(corp.corpUrl)
     .setColor(hexToInt(corp.brandColor) || 0x3b82f6)
-    .setFooter({ text: "ahousedividedgame.com \u00b7 Use /corporation view:Bonds or view:Financials for more" });
+    .setFooter({ text: "ahousedividedgame.com" });
 
   if (corp.logoUrl) embed.setThumbnail(corp.logoUrl);
   if (corp.description) embed.setDescription(corp.description.slice(0, 4096));
@@ -147,7 +160,6 @@ async function handleOverview(interaction: ChatInputCommandInteraction, name: st
     { name: "Daily Income", value: incomePrefix(financials.income), inline: true },
   );
 
-  // Dividends — omit if rate is 0
   if ((corp.dividendRate ?? 0) !== 0) {
     embed.addFields({
       name: "Dividends",
@@ -156,7 +168,6 @@ async function handleOverview(interaction: ChatInputCommandInteraction, name: st
     });
   }
 
-  // Credit Rating
   if (creditRating) {
     embed.addFields({
       name: "Credit Rating",
@@ -165,7 +176,6 @@ async function handleOverview(interaction: ChatInputCommandInteraction, name: st
     });
   }
 
-  // Debt — omit if no bonds
   if (bonds.length > 0) {
     const totalDebt = bonds.reduce((sum, b) => sum + (b.totalIssued ?? 0), 0);
     embed.addFields({
@@ -175,13 +185,11 @@ async function handleOverview(interaction: ChatInputCommandInteraction, name: st
     });
   }
 
-  // Shareholders (NOT inline)
   if (shareholders.length > 0) {
     const maxShow = 3;
     const lines = shareholders.slice(0, maxShow).map(
       (s) => `${s.name} \u2014 ${(s.shares ?? 0).toLocaleString("en-US")} (${(s.percentage ?? 0).toFixed(1)}%)`
     );
-    // Public float line
     lines.push(`Public Float \u2014 ${(corp.publicFloat ?? 0).toLocaleString("en-US")} (${(corp.publicFloatPct ?? 0).toFixed(1)}%)`);
     if (shareholders.length > maxShow) {
       lines.push(`\u2026and ${shareholders.length - maxShow} more`);
@@ -193,14 +201,12 @@ async function handleOverview(interaction: ChatInputCommandInteraction, name: st
     });
   }
 
-  // Marketing (NOT inline)
   embed.addFields({
     name: "Marketing",
     value: `Budget: ${currency(corp.marketingBudget)} \u00b7 Strength: ${corp.marketingStrength ?? 0}`,
     inline: false,
   });
 
-  // Sectors (NOT inline)
   if (sectors.length > 0) {
     const maxShow = 5;
     const lines = sectors.slice(0, maxShow).map(
@@ -217,19 +223,16 @@ async function handleOverview(interaction: ChatInputCommandInteraction, name: st
     });
   }
 
-  await interaction.editReply({ embeds: [embed] });
+  return embed;
 }
 
-// ---------------------------------------------------------------------------
-// View: Bonds
-// ---------------------------------------------------------------------------
-
-async function handleBonds(interaction: ChatInputCommandInteraction, name: string): Promise<void> {
-  const res: BondsResponse = await getBonds({ corp: name });
-
+function buildBondsEmbed(res: BondsResponse, name: string): EmbedBuilder {
   if (!res.bonds || res.bonds.length === 0) {
-    await interaction.editReply({ content: `No bonds found for ${name}.` });
-    return;
+    return new EmbedBuilder()
+      .setTitle(`${name} \u2014 Bonds`.slice(0, 256))
+      .setColor(0x3b82f6)
+      .setDescription(`${name} has no outstanding bonds.`)
+      .setFooter({ text: "ahousedividedgame.com" });
   }
 
   const color = hexToInt(res.bonds[0].brandColor) || 0x3b82f6;
@@ -242,7 +245,7 @@ async function handleBonds(interaction: ChatInputCommandInteraction, name: strin
     return `${prefix}**${url}**\n${details}`;
   });
 
-  const embed = new EmbedBuilder()
+  return new EmbedBuilder()
     .setTitle(`${res.filterCorp ?? name} \u2014 Bonds`.slice(0, 256))
     .setColor(color)
     .setDescription(bondLines.join("\n\n").slice(0, 4096))
@@ -250,23 +253,10 @@ async function handleBonds(interaction: ChatInputCommandInteraction, name: strin
       { name: "Total Debt Outstanding", value: currency(res.totalOutstandingDebt), inline: true },
       { name: "Active Bonds", value: String(res.bonds.length), inline: true },
     )
-    .setFooter({ text: "ahousedividedgame.com \u00b7 Use /corporation view:Overview or view:Financials" });
-
-  await interaction.editReply({ embeds: [embed] });
+    .setFooter({ text: "ahousedividedgame.com" });
 }
 
-// ---------------------------------------------------------------------------
-// View: Financials
-// ---------------------------------------------------------------------------
-
-async function handleFinancials(interaction: ChatInputCommandInteraction, name: string): Promise<void> {
-  const res: FinancialsResponse = await getFinancials(name);
-
-  if (!res.found) {
-    await interaction.editReply({ content: "Corporation not found." });
-    return;
-  }
-
+function buildFinancialsEmbed(res: FinancialsResponse): EmbedBuilder {
   const corp = res.corporation;
   const inc = res.incomeStatement;
   const bal = res.balanceSheet;
@@ -283,8 +273,7 @@ async function handleFinancials(interaction: ChatInputCommandInteraction, name: 
 
   if (corp.logoUrl) embed.setThumbnail(corp.logoUrl);
 
-  // Income Statement
-  const W = 14; // column width for dollar values
+  const W = 14;
   const incomeBlock = [
     padDollar("Revenue:       ", inc.totalRevenue, W),
     padDollar("- Operating:   ", inc.costs.operatingTotal, W),
@@ -299,7 +288,6 @@ async function handleFinancials(interaction: ChatInputCommandInteraction, name: 
     inline: false,
   });
 
-  // Balance Sheet
   const balBlock = [
     padDollar("Assets:   ", bal.assets.totalAssets, W),
     padDollar("  Cash:   ", bal.assets.cashOnHand, W),
@@ -313,7 +301,6 @@ async function handleFinancials(interaction: ChatInputCommandInteraction, name: 
     inline: false,
   });
 
-  // Share Structure
   const shareLines: string[] = [
     `Price: ${price(shares.sharePrice)} \u00b7 Market Cap: ${currency(shares.marketCapitalization)}`,
     `Float: ${(shares.publicFloat ?? 0).toLocaleString("en-US")} (${(shares.publicFloatPct ?? 0).toFixed(1)}%)`,
@@ -329,7 +316,6 @@ async function handleFinancials(interaction: ChatInputCommandInteraction, name: 
     inline: false,
   });
 
-  // Credit Rating (inline)
   const comp = credit.components;
   embed.addFields({
     name: "Credit Rating",
@@ -337,14 +323,12 @@ async function handleFinancials(interaction: ChatInputCommandInteraction, name: 
     inline: true,
   });
 
-  // Coupon Rate (inline)
   embed.addFields({
     name: "Coupon Rate",
     value: `${(credit.effectiveCouponRate ?? 0).toFixed(1)}% (Prime: ${(credit.primeRate ?? 0).toFixed(1)}%)`,
     inline: true,
   });
 
-  // Outstanding Bonds (NOT inline)
   if (bonds.length > 0) {
     const bondLines = bonds.map((b) => {
       const prefix = b.defaulted ? "\u26a0\ufe0f " : "";
@@ -363,7 +347,6 @@ async function handleFinancials(interaction: ChatInputCommandInteraction, name: 
     });
   }
 
-  // Sector P&L (NOT inline)
   if (sectors.length > 0) {
     const maxShow = 5;
     const sorted = [...sectors].sort((a, b) => (b.revenue ?? 0) - (a.revenue ?? 0));
@@ -381,7 +364,7 @@ async function handleFinancials(interaction: ChatInputCommandInteraction, name: 
     });
   }
 
-  await interaction.editReply({ embeds: [embed] });
+  return embed;
 }
 
 // ---------------------------------------------------------------------------
@@ -392,20 +375,84 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   await interaction.deferReply();
 
   const name = interaction.options.getString("name", true);
-  const view = interaction.options.getString("view") ?? "overview";
 
   try {
-    switch (view) {
-      case "bonds":
-        await handleBonds(interaction, name);
-        break;
-      case "financials":
-        await handleFinancials(interaction, name);
-        break;
-      default:
-        await handleOverview(interaction, name);
-        break;
+    // Fetch overview on initial load
+    const overviewRes = await getCorporation(name);
+    if (!overviewRes.found || !overviewRes.corporation) {
+      await interaction.editReply({ content: "Corporation not found." });
+      return;
     }
+
+    // Cache API responses so tab switches don't re-fetch unnecessarily
+    let bondsRes: BondsResponse | null = null;
+    let financialsRes: FinancialsResponse | null = null;
+
+    let currentTab: Tab = "overview";
+
+    const message = await interaction.editReply({
+      embeds: [buildOverviewEmbed(overviewRes)],
+      components: [buildTabRow("overview")],
+    });
+
+    const collector = message.createMessageComponentCollector({ time: 90_000 });
+
+    collector.on("collect", async (component) => {
+      if (component.user.id !== interaction.user.id) {
+        await component.reply({ content: "This isn't your command.", ephemeral: true });
+        return;
+      }
+
+      if (!component.isButton() || !component.customId.startsWith("corp_tab_")) return;
+
+      const tab = component.customId.replace("corp_tab_", "") as Tab;
+      if (tab === currentTab) {
+        await component.deferUpdate();
+        return;
+      }
+
+      await component.deferUpdate();
+
+      try {
+        let embed: EmbedBuilder;
+
+        switch (tab) {
+          case "overview":
+            embed = buildOverviewEmbed(overviewRes);
+            break;
+          case "bonds":
+            if (!bondsRes) bondsRes = await getBonds({ corp: name });
+            embed = buildBondsEmbed(bondsRes, name);
+            break;
+          case "financials":
+            if (!financialsRes) {
+              financialsRes = await getFinancials(name);
+              if (!financialsRes.found) {
+                await component.editReply({ content: "Could not load financials." });
+                return;
+              }
+            }
+            embed = buildFinancialsEmbed(financialsRes);
+            break;
+          default:
+            return;
+        }
+
+        currentTab = tab;
+        await component.editReply({
+          embeds: [embed],
+          components: [buildTabRow(tab)],
+        });
+      } catch {
+        await component.editReply({ content: "Failed to load tab data." });
+      }
+    });
+
+    collector.on("end", async () => {
+      await interaction
+        .editReply({ components: [buildTabRow(currentTab, true)] })
+        .catch(() => {});
+    });
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       const msg = "Bot configuration error \u2014 contact an admin.";

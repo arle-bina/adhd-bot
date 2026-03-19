@@ -51,7 +51,7 @@ This repository contains the **Discord bot** — a companion app that connects t
 
 | Command | Description | Options |
 | --- | --- | --- |
-| `/corporation` | Look up a corporation (overview, bonds, or financials view) | `name`, `view` |
+| `/corporation` | Look up a corporation with tabbed views (overview, bonds, financials) | `name` |
 | `/bonds` | Browse the bond market across all corporations | `corp`, `page` |
 | `/sectors` | Browse sector ownership by industry type | `type`, `unowned`, `page` |
 

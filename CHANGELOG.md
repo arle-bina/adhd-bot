@@ -19,7 +19,7 @@ All notable changes to the AHD Discord Bot are documented here.
 
 - `/predict` redesigned — single embed with projected vs current seats side-by-side (inline fields) instead of paginated buttons. Hemicycle parliament chart (half-doughnut) with fallback color palette for null party colours.
 - `/election` rewritten to use `/api/discord-bot/race` endpoint. Supports both list and detail modes with interactive select menu and back button. Fixes null profile links, rounds all numbers, handles unopposed candidates, removes endorsements.
-- `/corporation` now accepts a `view` option (Overview, Bonds, Financials) defaulting to Overview.
+- `/corporation` now uses button tabs (Overview, Bonds, Financials) instead of a single static embed. Overview loads first; clicking a tab fetches and caches that view's data.
 
 ### Removed
 
