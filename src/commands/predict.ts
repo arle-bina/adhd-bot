@@ -124,7 +124,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     const showProjected = result.inGeneral && result.projected.length > 0;
 
-    const totalSeats = result.totalSeats;
+    // totalSeats from API can be 0; fall back to sum of projected or current entries
+    const projectedSum = result.projected.reduce((s, e) => s + e.seats, 0);
+    const currentSum = result.current.reduce((s, e) => s + e.seats, 0);
+    const totalSeats = result.totalSeats || Math.max(projectedSum, currentSum);
     const majority = Math.floor(totalSeats / 2) + 1;
     const metaParts: string[] = [];
     if (result.cycle != null) metaParts.push(`Cycle ${result.cycle}`);
@@ -154,17 +157,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     // Show both current and projected side by side
-    const allocatedSeats = result.projected.reduce((sum, e) => sum + e.seats, 0);
     const projectedLabel = buildMajorityLabel(result.projected, totalSeats, race);
     const currentLabel = buildMajorityLabel(result.current, totalSeats, race);
 
-    const chartEntries = addOtherEntry(result.projected, totalSeats);
-    const chartUrl = await buildParliamentChartUrl(chartEntries);
+    // Don't add "Other" slice — show the actual projected breakdown only
+    const chartUrl = await buildParliamentChartUrl(result.projected);
 
     const embed = new EmbedBuilder()
       .setTitle(`📊 ${result.chamberName}`)
       .setColor(embedColor)
-      .setDescription(`${allocatedSeats} of ${totalSeats} seats allocated · ${majority} needed for majority`)
+      .setDescription(`${projectedSum} of ${totalSeats} seats allocated · ${majority} needed for majority`)
       .addFields(
         {
           name: "Projected",
