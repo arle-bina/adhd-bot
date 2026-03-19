@@ -5,7 +5,7 @@
 ---
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="version 1.0.0" />
+  <img src="https://img.shields.io/badge/version-1.4.0-blue" alt="version 1.4.0" />
   <img src="https://img.shields.io/badge/last%20commit-recent-green" alt="last commit recent" />
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs welcome" />
   <img src="https://img.shields.io/badge/license-proprietary-red" alt="license proprietary" />
@@ -35,17 +35,25 @@ This repository contains the **Discord bot** — a companion app that connects t
 | Command | Description | Options |
 | --- | --- | --- |
 | `/profile` | View a player's character(s) | `name` (character name), `user` (Discord user) |
-| `/me` | View your own character profile (auto-resolved via Discord) | — |
 | `/leaderboard` | Top politicians by influence or favorability | `metric`, `country`, `limit` |
-| `/compare` | Compare two politicians side by side | `politician1`, `politician2` |
 
 ### Politics
 
 | Command | Description | Options |
 | --- | --- | --- |
 | `/elections` | Active and upcoming elections | `country`, `state` |
+| `/election` | Drill into a specific race with candidate standings and vote shares | `country`, `state`, `race` |
+| `/predict` | Projected vs current seat totals with parliament chart | `country`, `race` |
 | `/party` | Look up a political party | `id` (slug, e.g. `labour`) |
 | `/state` | State or region overview with current officials | `id` (e.g. `CA`, `UK_ENG`) |
+
+### Economy
+
+| Command | Description | Options |
+| --- | --- | --- |
+| `/corporation` | Look up a corporation (overview, bonds, or financials view) | `name`, `view` |
+| `/bonds` | Browse the bond market across all corporations | `corp`, `page` |
+| `/sectors` | Browse sector ownership by industry type | `type`, `unowned`, `page` |
 
 ### World
 
@@ -58,8 +66,15 @@ This repository contains the **Discord bot** — a companion app that connects t
 
 | Command | Description | Options |
 | --- | --- | --- |
-| `/accept` | Accept the server rules and gain access to the server | — |
+| `/accept` | Accept the server rules and gain access | — |
+| `/ticket` | Open a support ticket (Bug, Suggestion, or Moderation) | — |
+| `/close-ticket` | Close the current ticket channel | — |
+| `/ticket-panel` | Post a persistent ticket panel with buttons | — |
 | `/help` | Browse all bot commands via an interactive select menu | — |
+| `/serverstats` | View server activity graphs | `type`, `days` |
+| `/starboard` | Configure the starboard | `channel`, `threshold`, `emoji`, `self-star`, `enabled` |
+| `/sync-roles` | Backfill party and country roles for linked members | — |
+| `/version` | Show bot version, commit, and uptime | — |
 
 The bot also sends an **automatic welcome message** when a new member joins, prompting them to read the rules and run `/accept`.
 
@@ -84,23 +99,36 @@ The bot also sends an **automatic welcome message** when a new member joins, pro
 adhd-bot/
 ├── src/
 │   ├── commands/
-│   │   ├── accept.ts        # /accept command (server onboarding)
-│   │   ├── compare.ts       # /compare command
-│   │   ├── elections.ts     # /elections command
-│   │   ├── help.ts          # /help command (interactive menu)
-│   │   ├── leaderboard.ts   # /leaderboard command
-│   │   ├── me.ts            # /me command
-│   │   ├── news.ts          # /news command
-│   │   ├── party.ts         # /party command
-│   │   ├── profile.ts       # /profile command
-│   │   ├── state.ts         # /state command
-│   │   └── turn.ts          # /turn command
+│   │   ├── accept.ts        # /accept (server onboarding)
+│   │   ├── bonds.ts         # /bonds (bond market browser)
+│   │   ├── close-ticket.ts  # /close-ticket
+│   │   ├── corporation.ts   # /corporation (overview/bonds/financials views)
+│   │   ├── election.ts      # /election (race detail with interactive drill-down)
+│   │   ├── elections.ts     # /elections (list view)
+│   │   ├── help.ts          # /help (interactive menu)
+│   │   ├── leaderboard.ts   # /leaderboard
+│   │   ├── news.ts          # /news
+│   │   ├── party.ts         # /party
+│   │   ├── predict.ts       # /predict (seat projection with parliament chart)
+│   │   ├── profile.ts       # /profile
+│   │   ├── sectors.ts       # /sectors
+│   │   ├── serverstats.ts   # /serverstats (activity graphs)
+│   │   ├── starboard.ts     # /starboard config
+│   │   ├── state.ts         # /state
+│   │   ├── sync-roles.ts    # /sync-roles
+│   │   ├── ticket-panel.ts  # /ticket-panel
+│   │   ├── ticket.ts        # /ticket
+│   │   ├── turn.ts          # /turn
+│   │   └── version.ts       # /version
 │   ├── utils/
-│   │   ├── api.ts           # Game API client
+│   │   ├── api.ts           # Game API client (all fetch functions + types)
 │   │   ├── cooldown.ts      # Per-user command cooldown tracker
 │   │   ├── env.ts           # Env validation
 │   │   ├── helpRegistry.ts  # Help menu command metadata (source of truth)
-│   │   └── helpers.ts       # Shared helpers (hexToInt, errorMessage)
+│   │   ├── helpers.ts       # Shared helpers (hexToInt, errorMessage)
+│   │   ├── starboard.ts     # Starboard reaction handler
+│   │   ├── statsStore.ts    # Server stats storage
+│   │   └── tickets.ts       # Ticket system utilities
 │   ├── index.ts             # Bot entry point (auto-discovers commands)
 │   └── register.ts          # Slash command registration (auto-discovers commands)
 ├── tests/

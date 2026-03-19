@@ -94,10 +94,21 @@ export const categories: Category[] = [
     commands: [
       {
         name: "/corporation",
-        usage: "/corporation name:<name>",
+        usage: "/corporation name:<name> [view]",
         description:
-          "Look up a corporation — type, HQ, CEO, financials, market cap, and top sectors. Supports autocomplete.",
-        examples: ["/corporation name:Apex Media", "/corporation name:National Rail"],
+          "Look up a corporation with three views: Overview (default) shows type, HQ, CEO, capital, shares, revenue, costs, shareholders, and sectors. Bonds shows outstanding debt instruments with coupon, price, and YTM. Financials shows a full income statement, balance sheet, share structure, credit rating, and sector P&L.",
+        examples: [
+          "/corporation name:Apex Media",
+          "/corporation name:National Rail view:Bonds",
+          "/corporation name:Apex Media view:Financials",
+        ],
+      },
+      {
+        name: "/bonds",
+        usage: "/bonds [corp] [page]",
+        description:
+          "Browse the bond market — all active bonds across corporations with coupon rates, prices, yields, and maturity. Filter by corporation name (autocomplete). Paginated.",
+        examples: ["/bonds", "/bonds corp:Apex Media", "/bonds page:2"],
       },
       {
         name: "/sectors",

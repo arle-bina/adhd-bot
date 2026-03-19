@@ -4,6 +4,36 @@ All notable changes to the AHD Discord Bot are documented here.
 
 ---
 
+## [1.4.0] — 2026-03-19
+
+### Added
+
+- `/bonds` — standalone bond market browser. Browse all active bonds across corporations with coupon rates, market prices, yield-to-maturity, and maturity timelines. Supports corporation filter (autocomplete) and pagination.
+- `/corporation view:Bonds` — view a corporation's outstanding debt instruments with coupon, price, YTM, and turns remaining.
+- `/corporation view:Financials` — full financial statement: code-block income statement, balance sheet, share structure, credit rating breakdown (D/E, IC, profitability, liquidity), coupon rate, outstanding bonds, and sector P&L.
+- `/corporation` overview now shows shareholders, public float, dividends, credit rating, debt summary, and marketing stats alongside the existing fields.
+- Bond and financial API types added to `api.ts`: `BondEntry`, `BondsResponse`, `FinancialsResponse`, `getBonds()`, `getFinancials()`.
+- Help registry updated with `/bonds` entry and expanded `/corporation` description.
+
+### Changed
+
+- `/predict` redesigned — single embed with projected vs current seats side-by-side (inline fields) instead of paginated buttons. Hemicycle parliament chart (half-doughnut) with fallback color palette for null party colours.
+- `/election` rewritten to use `/api/discord-bot/race` endpoint. Supports both list and detail modes with interactive select menu and back button. Fixes null profile links, rounds all numbers, handles unopposed candidates, removes endorsements.
+- `/corporation` now accepts a `view` option (Overview, Bonds, Financials) defaulting to Overview.
+
+### Removed
+
+- `/me` and `/compare` commands removed.
+
+### Fixed
+
+- Predict chart no longer renders as one colour when party colours are null — uses a 15-colour fallback palette.
+- Predict `totalSeats` fallback when API returns 0 — now derives from sum of projected/current entries.
+- Election embed no longer shows `[name](null)` for candidates without profile URLs.
+- Election numbers (favorability, PI, primary score, campaign funds) properly rounded and null-guarded.
+
+---
+
 ## [1.3.0] — 2026-03-11
 
 ### Added

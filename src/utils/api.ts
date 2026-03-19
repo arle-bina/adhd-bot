@@ -594,6 +594,11 @@ export interface CorporationFinancials {
   ceoSalaryCost: number;
   totalCosts: number;
   income: number;
+  operatingCosts: number;
+  operatingIncome: number;
+  bondInterestCost: number;
+  dailyDividendPayout: number;
+  retainedEarnings: number;
 }
 
 export interface CorporationCeo {
@@ -621,6 +626,9 @@ export interface CorporationData {
   marketingStrength: number | null;
   marketingStrengthGrowth: number | null;
   ceoSalary: number | null;
+  publicFloat: number;
+  publicFloatPct: number;
+  dividendRate: number;
 }
 
 export interface CorporationResponse {
@@ -629,6 +637,10 @@ export interface CorporationResponse {
   ceo?: CorporationCeo | null;
   financials?: CorporationFinancials;
   sectors?: CorporationSector[];
+  shareholders?: Array<{ name: string; shares: number; percentage: number }>;
+  balanceSheet?: { totalAssets: number; cashOnHand: number; sectorNPV: number; totalDebt: number; bookValue: number; totalEquity: number; marketCapitalization: number };
+  creditRating?: { rating: string; compositeScore: number; effectiveCouponRate: number };
+  bonds?: Array<{ id: string; couponRate: number; maturityLabel: string; totalIssued: number; marketPrice: number; turnsRemaining: number; defaulted: boolean }>;
 }
 
 export async function getCorporationList(): Promise<CorporationListResponse> {
@@ -653,6 +665,139 @@ export async function getCorporation(name: string): Promise<CorporationResponse>
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
+}
+
+// --- Bonds ---
+
+export interface BondEntry {
+  id: string;
+  bondUrl: string;
+  corporationName: string;
+  corporationId: number | string;
+  brandColor: string | null;
+  couponRate: number;
+  maturityLabel: string;
+  totalIssued: number;
+  totalUnits: number;
+  publicFloat: number;
+  marketPrice: number;
+  turnsRemaining: number;
+  yieldToMaturity: number;
+  defaulted: boolean;
+  holders: number;
+}
+
+export interface BondsResponse {
+  found: boolean;
+  filterCorp: string | null;
+  bonds: BondEntry[];
+  totalOutstandingDebt: number;
+  pagination: {
+    page: number;
+    perPage: number;
+    totalCount: number;
+    totalPages: number;
+  };
+}
+
+export async function getBonds(params: { corp?: string; page?: number }): Promise<BondsResponse> {
+  const url = new URL("/api/discord-bot/bonds", process.env.GAME_API_URL);
+  if (params.corp) url.searchParams.set("corp", params.corp);
+  if (params.page != null) url.searchParams.set("page", String(params.page));
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
+}
+
+// --- Financials ---
+
+export interface FinancialsResponse {
+  found: boolean;
+  corporation: {
+    name: string;
+    type: string;
+    typeLabel: string;
+    brandColor: string | null;
+    logoUrl: string | null;
+    headquartersStateName: string;
+    ceo: string;
+    corpUrl: string;
+  };
+  incomeStatement: {
+    totalRevenue: number;
+    costs: {
+      maintenance: number;
+      growth: number;
+      marketing: number;
+      ceoSalary: number;
+      operatingTotal: number;
+      bondInterest: number;
+      grandTotal: number;
+    };
+    operatingIncome: number;
+    netIncome: number;
+    dividendRate: number;
+    dailyDividendPayout: number;
+    retainedEarnings: number;
+  };
+  balanceSheet: {
+    assets: { cashOnHand: number; sectorNPV: number; totalAssets: number };
+    liabilities: { outstandingDebt: number; bondCount: number; annualInterestObligation: number; dailyInterestCost: number };
+    equity: { bookValue: number };
+  };
+  shareStructure: {
+    totalShares: number;
+    publicFloat: number;
+    publicFloatPct: number;
+    sharePrice: number;
+    lastTradePrice: number;
+    marketCapitalization: number;
+    shareholders: Array<{ name: string; shares: number; percentage: number; value: number }>;
+  };
+  creditRating: {
+    rating: string;
+    compositeScore: number;
+    components: { debtToEquity: number; interestCoverage: number; profitability: number; liquidity: number };
+    effectiveCouponRate: number;
+    primeRate: number;
+  };
+  bonds: Array<{
+    id: string;
+    bondUrl: string;
+    couponRate: number;
+    maturityLabel: string;
+    totalIssued: number;
+    marketPrice: number;
+    turnsRemaining: number;
+    yieldToMaturity: number;
+    holders: number;
+    defaulted: boolean;
+  }>;
+  sectorBreakdown: Array<{
+    stateId: string;
+    stateName: string;
+    revenue: number;
+    maintenanceCost: number;
+    growthCost: number;
+    profit: number;
+    effectiveMargin: number;
+    growthRate: number;
+    workers: number;
+  }>;
+}
+
+export async function getFinancials(name: string): Promise<FinancialsResponse> {
+  const url = new URL("/api/discord-bot/financials", process.env.GAME_API_URL);
+  url.searchParams.set("name", name);
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
   if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }
