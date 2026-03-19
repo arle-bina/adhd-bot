@@ -224,7 +224,7 @@ function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
           ? ` · EV: ${votes.electoralVotes[c.id]}`
           : "";
 
-      const stats = `PI: ${c.politicalInfluence ?? 0} · Fav: ${Math.round(c.favorability ?? 0)}% · Funds: $${(c.campaignFunds ?? 0).toLocaleString()}${evLine}`;
+      const stats = `PI: ${Math.round(c.politicalInfluence ?? 0)} · Fav: ${Math.round(c.favorability ?? 0)}% · Funds: $${(c.campaignFunds ?? 0).toLocaleString()}${evLine}`;
 
       const block = [header, voteLine, stats, c.runningMateName ? `Running mate: ${c.runningMateName}` : ""]
         .filter(Boolean)

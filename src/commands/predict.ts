@@ -2,10 +2,6 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ComponentType,
 } from "discord.js";
 import { getPrediction, PredictionPartyEntry, ApiError } from "../utils/api.js";
 import { replyWithError } from "../utils/helpers.js";
@@ -112,10 +108,9 @@ function buildMajorityLabel(entries: PredictionPartyEntry[], totalSeats: number,
   return `**${noMajorityTerm}** (${largest.partyName} Largest Party)`;
 }
 
-function buildSeatsText(entries: PredictionPartyEntry[], totalSeats: number, race: string): string {
-  const lines = entries.map((e) => `**${e.partyName}** — ${e.seats}`).join("\n") || "None";
-  const label = buildMajorityLabel(entries, totalSeats, race);
-  return label ? `${label}\n\n${lines}` : lines;
+function buildSeatsColumn(entries: PredictionPartyEntry[]): string {
+  if (entries.length === 0) return "_None_";
+  return entries.map((e) => `**${e.partyName}** — ${e.seats}`).join("\n");
 }
 
 export async function execute(interaction: ChatInputCommandInteraction) {
@@ -128,9 +123,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const result = await getPrediction({ country, race });
 
     const showProjected = result.inGeneral && result.projected.length > 0;
-    const primaryEntries = showProjected ? result.projected : result.current;
 
     const totalSeats = result.totalSeats;
+    const majority = Math.floor(totalSeats / 2) + 1;
     const metaParts: string[] = [];
     if (result.cycle != null) metaParts.push(`Cycle ${result.cycle}`);
     if (race === "senate" && result.activeSenateClass != null) {
@@ -141,83 +136,51 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     const embedColor = 0x2b2d31;
 
-    // Page 1: predicted (or current if no election running) + parliament chart
-    const page1Title = showProjected
-      ? `📊 ${result.chamberName} — Predicted Seats`
-      : `📊 ${result.chamberName} — Current Seats`;
-
-    const page1Desc = showProjected
-      ? buildSeatsText(result.projected, totalSeats, race)
-      : `_No general elections active._\n\n${buildSeatsText(result.current, totalSeats, race)}`;
-
-    const page1ChartEntries = addOtherEntry(primaryEntries, totalSeats);
-    const page1ChartUrl = await buildParliamentChartUrl(page1ChartEntries);
-    const page1 = new EmbedBuilder()
-      .setTitle(page1Title)
-      .setColor(embedColor)
-      .setDescription(page1Desc)
-      .setImage(page1ChartUrl)
-      .setFooter({ text: `${metaLine} · ahousedividedgame.com` });
-
     if (!showProjected) {
-      await interaction.editReply({ embeds: [page1] });
+      // No active general — just show current composition
+      const chartEntries = addOtherEntry(result.current, totalSeats);
+      const chartUrl = await buildParliamentChartUrl(chartEntries);
+      const majorityLabel = buildMajorityLabel(result.current, totalSeats, race);
+
+      const embed = new EmbedBuilder()
+        .setTitle(`📊 ${result.chamberName} — Current Seats`)
+        .setColor(embedColor)
+        .setDescription(`_No general elections active._\n\n${majorityLabel}\n\n${buildSeatsColumn(result.current)}`)
+        .setImage(chartUrl)
+        .setFooter({ text: `${metaLine} · ahousedividedgame.com` });
+
+      await interaction.editReply({ embeds: [embed] });
       return;
     }
 
-    // Page 2: current seats
-    const page2ChartEntries = addOtherEntry(result.current, totalSeats);
-    const page2ChartUrl = await buildParliamentChartUrl(page2ChartEntries);
-    const page2 = new EmbedBuilder()
-      .setTitle(`📊 ${result.chamberName} — Current Seats`)
-      .setColor(0x2b2d31)
-      .setDescription(buildSeatsText(result.current, totalSeats, race))
-      .setImage(page2ChartUrl)
-      .setFooter({ text: `${metaLine} · ahousedividedgame.com` });
+    // Show both current and projected side by side
+    const allocatedSeats = result.projected.reduce((sum, e) => sum + e.seats, 0);
+    const projectedLabel = buildMajorityLabel(result.projected, totalSeats, race);
+    const currentLabel = buildMajorityLabel(result.current, totalSeats, race);
 
-    const pages = [page1, page2];
+    const chartEntries = addOtherEntry(result.projected, totalSeats);
+    const chartUrl = await buildParliamentChartUrl(chartEntries);
 
-    function buildRow(activePage: number): ActionRowBuilder<ButtonBuilder> {
-      return new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-          .setCustomId("predict_projected")
-          .setLabel("Predicted")
-          .setStyle(activePage === 0 ? ButtonStyle.Primary : ButtonStyle.Secondary)
-          .setDisabled(activePage === 0),
-        new ButtonBuilder()
-          .setCustomId("predict_current")
-          .setLabel("Current")
-          .setStyle(activePage === 1 ? ButtonStyle.Primary : ButtonStyle.Secondary)
-          .setDisabled(activePage === 1),
-      );
-    }
+    const embed = new EmbedBuilder()
+      .setTitle(`📊 ${result.chamberName}`)
+      .setColor(embedColor)
+      .setDescription(`${allocatedSeats} of ${totalSeats} seats allocated · ${majority} needed for majority`)
+      .addFields(
+        {
+          name: "Projected",
+          value: `${projectedLabel}\n\n${buildSeatsColumn(result.projected)}`,
+          inline: true,
+        },
+        {
+          name: "Current",
+          value: `${currentLabel}\n\n${buildSeatsColumn(result.current)}`,
+          inline: true,
+        },
+      )
+      .setImage(chartUrl)
+      .setFooter({ text: `Projection based on current vote tallies · updates each turn · ${metaLine} · ahousedividedgame.com` });
 
-    let currentPage = 0;
-    const message = await interaction.editReply({
-      embeds: [pages[0]],
-      components: [buildRow(0)],
-    });
-
-    const collector = message.createMessageComponentCollector({
-      componentType: ComponentType.Button,
-      time: 120_000,
-    });
-
-    collector.on("collect", async (btn) => {
-      if (btn.user.id !== interaction.user.id) {
-        await btn.reply({ content: "Use your own /predict command.", ephemeral: true });
-        return;
-      }
-      await btn.deferUpdate();
-      currentPage = btn.customId === "predict_projected" ? 0 : 1;
-      await btn.editReply({
-        embeds: [pages[currentPage]],
-        components: [buildRow(currentPage)],
-      });
-    });
-
-    collector.on("end", () => {
-      interaction.editReply({ components: [] }).catch(() => {});
-    });
+    await interaction.editReply({ embeds: [embed] });
 
   } catch (error) {
     if (error instanceof ApiError) {
