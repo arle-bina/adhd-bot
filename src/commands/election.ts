@@ -192,7 +192,7 @@ function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
         const npp = c.isNPP ? " 🤖" : "";
         const name = `[${c.characterName}](${c.profileUrl})${npp}`;
         lines.push(
-          `${name} — Score: **${c.primaryScore}** · Share: ${c.sharePct.toFixed(1)}% · Fav: ${c.favorability}% · Funds: $${c.campaignFunds.toLocaleString()}`
+          `${name} — Score: **${c.primaryScore ?? 0}** · Share: ${(c.sharePct ?? 0).toFixed(1)}% · Fav: ${c.favorability ?? 0}% · Funds: $${(c.campaignFunds ?? 0).toLocaleString()}`
         );
       }
       lines.push("");
@@ -219,7 +219,7 @@ function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
           ? ` · EV: ${votes.electoralVotes[c.id]}`
           : "";
 
-      const stats = `PI: ${c.politicalInfluence} · Fav: ${c.favorability}% · Funds: $${c.campaignFunds.toLocaleString()} · Endorsements: ${c.endorsementCount}${evLine}`;
+      const stats = `PI: ${c.politicalInfluence ?? 0} · Fav: ${c.favorability ?? 0}% · Funds: $${(c.campaignFunds ?? 0).toLocaleString()} · Endorsements: ${c.endorsementCount ?? 0}${evLine}`;
 
       const block = [header, voteLine, stats, c.runningMateName ? `Running mate: ${c.runningMateName}` : ""]
         .filter(Boolean)
