@@ -58,7 +58,12 @@ function resolveRole(
 async function getOrCreateRole(guild: Guild, name: string, color: number): Promise<string> {
   const existing = guild.roles.cache.find((r) => r.name === name);
   if (existing) return existing.id;
-  const created = await guild.roles.create({ name, color, reason: "AHD Bot — auto role" });
+  const created = await guild.roles.create({
+    name,
+    color,
+    permissions: [],
+    reason: "AHD Bot — auto role",
+  });
   return created.id;
 }
 
