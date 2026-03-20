@@ -98,10 +98,14 @@ export async function syncMemberRoles(
   ]);
 
   // Protected role IDs that should never be removed
+  const additionalProtected = process.env.PROTECTED_ROLE_IDS
+    ? process.env.PROTECTED_ROLE_IDS.split(",").map((id) => id.trim())
+    : [];
   const protectedIds = new Set<string>([
     guild.roles.everyone.id,
     ...(process.env.MEMBER_ROLE_ID ? [process.env.MEMBER_ROLE_ID] : []),
     ...(process.env.ALPHA_TESTER_ROLE_ID ? [process.env.ALPHA_TESTER_ROLE_ID] : []),
+    ...additionalProtected,
   ]);
 
   // Remove tracked roles that are absent from the desired set
