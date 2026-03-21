@@ -21,7 +21,7 @@ import { checkCooldown } from "./utils/cooldown.js";
 import { errorMessage, replyWithError } from "./utils/helpers.js";
 import { recordMessage, recordMemberCount } from "./utils/statsStore.js";
 import { handleStarboardReaction } from "./utils/starboard.js";
-import { handleLockReaction } from "./utils/tickets.js";
+import { handleLockReaction, TICKET_CLOSE_MODAL_PREFIX, handleTicketCloseModalSubmit } from "./utils/tickets.js";
 
 validateEnv();
 
@@ -183,6 +183,16 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.showModal(modal);
     } catch (error) {
       console.error("Ticket panel button error:", error);
+    }
+    return;
+  }
+
+  // Ticket close — resolution modal (/close-ticket, Close button, or 🔒 flow)
+  if (interaction.isModalSubmit() && interaction.customId.startsWith(TICKET_CLOSE_MODAL_PREFIX)) {
+    try {
+      await handleTicketCloseModalSubmit(interaction);
+    } catch (error) {
+      console.error("Ticket close modal error:", error);
     }
     return;
   }

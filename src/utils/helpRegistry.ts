@@ -197,7 +197,7 @@ export const categories: Category[] = [
         name: "/close-ticket",
         usage: "/close-ticket",
         description:
-          "Close the current ticket channel. Can be used by the ticket creator or moderators.",
+          "Close the current ticket channel. Opens a form for a resolution message; staff closing someone else's ticket must fill it so the opener gets a DM.",
         examples: ["/close-ticket"],
       },
       {

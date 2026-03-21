@@ -8,11 +8,15 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ComponentType,
+  ModalBuilder,
   TextChannel,
+  TextInputBuilder,
+  TextInputStyle,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
   type Message,
   type MessageReaction,
+  type ModalSubmitInteraction,
   type User,
 } from "discord.js";
 import {
@@ -41,6 +45,25 @@ export const PANEL_EMOJI_MAP: Record<string, TicketCategory> = {
 
 // In-memory lock to prevent race conditions on double-click
 const creationLocks = new Set<string>();
+
+export const TICKET_CLOSE_MODAL_PREFIX = "ticket_close_modal_";
+
+function buildTicketCloseModal(channelId: string): ModalBuilder {
+  const resolutionInput = new TextInputBuilder()
+    .setCustomId("ticket_resolution_message")
+    .setLabel("Resolution message for the opener")
+    .setPlaceholder(
+      "Required when staff closes someone else's ticket. Shown to them via DM when the ticket closes.",
+    )
+    .setStyle(TextInputStyle.Paragraph)
+    .setMaxLength(1000)
+    .setRequired(false);
+
+  return new ModalBuilder()
+    .setCustomId(`${TICKET_CLOSE_MODAL_PREFIX}${channelId}`)
+    .setTitle("Close ticket")
+    .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(resolutionInput));
+}
 
 function sanitizeUsername(username: string): string {
   return username
@@ -234,6 +257,7 @@ function buildTranscriptText(
   ticket: { ticketNumber: number; category: TicketCategory; userId: string; createdAt: string },
   closerId: string,
   messages: Message[],
+  resolutionMessage?: string,
 ): string {
   const config = CATEGORY_CONFIG[ticket.category];
   const lines: string[] = [
@@ -243,8 +267,11 @@ function buildTranscriptText(
     `Created: ${ticket.createdAt}`,
     `Closed: ${new Date().toISOString()}`,
     `Messages: ${messages.length}`,
-    "---",
   ];
+  if (resolutionMessage) {
+    lines.push(`Resolution (to opener): ${resolutionMessage}`);
+  }
+  lines.push("---");
 
   for (const msg of messages) {
     const ts = msg.createdAt.toISOString().slice(0, 19).replace("T", " ");
@@ -254,6 +281,152 @@ function buildTranscriptText(
   }
 
   return lines.join("\n");
+}
+
+/** Whether the opener received the resolution DM (only relevant when staff closed for someone else). */
+async function finalizeTicketClose(
+  channel: TextChannel,
+  closer: GuildMember,
+  ticket: NonNullable<ReturnType<typeof getTicketByChannel>>,
+  resolutionMessage: string,
+): Promise<boolean> {
+  const guild = channel.guild;
+  const messages = await fetchAllMessages(channel, 500);
+  const transcript = buildTranscriptText(ticket, closer.id, messages, resolutionMessage || undefined);
+  const truncated = messages.length >= 500;
+
+  const config = CATEGORY_CONFIG[ticket.category];
+  const paddedNum = String(ticket.ticketNumber).padStart(4, "0");
+  const created = new Date(ticket.createdAt);
+  const duration = Math.floor((Date.now() - created.getTime()) / 60000);
+  const durationStr = duration < 60 ? `${duration}m` : `${Math.floor(duration / 60)}h ${duration % 60}m`;
+
+  const logFields: { name: string; value: string; inline?: boolean }[] = [
+    { name: "Type", value: `${config.emoji} ${config.label}`, inline: true },
+    { name: "Opened by", value: `<@${ticket.userId}>`, inline: true },
+    { name: "Closed by", value: `<@${closer.id}>`, inline: true },
+    { name: "Duration", value: durationStr, inline: true },
+    { name: "Messages", value: String(messages.length), inline: true },
+  ];
+  if (resolutionMessage) {
+    logFields.push({
+      name: "Resolution",
+      value: resolutionMessage.length > 1024 ? `${resolutionMessage.slice(0, 1021)}...` : resolutionMessage,
+    });
+  }
+
+  const logEmbed = new EmbedBuilder()
+    .setTitle(`🎫 Ticket Closed — #${paddedNum}`)
+    .setColor(0x95a5a6)
+    .addFields(logFields)
+    .setFooter({
+      text: truncated ? "Transcript truncated at 500 messages · ahousedividedgame.com" : "ahousedividedgame.com",
+    })
+    .setTimestamp();
+
+  const logChannelId = process.env.TICKET_LOG_CHANNEL_ID ?? "1483974417628270593";
+  if (logChannelId) {
+    const logChannel = guild.channels.cache.get(logChannelId) as TextChannel | undefined;
+    if (logChannel) {
+      const buffer = Buffer.from(transcript, "utf-8");
+      await logChannel
+        .send({
+          embeds: [logEmbed],
+          files: [{ attachment: buffer, name: `ticket-${paddedNum}.txt` }],
+        })
+        .catch((err) => console.error("Failed to post transcript:", err));
+    }
+  }
+
+  const staffClosedForSomeoneElse =
+    closer.permissions.has(PermissionFlagsBits.ManageChannels) && closer.id !== ticket.userId;
+  let resolutionDmDelivered = false;
+  if (staffClosedForSomeoneElse && resolutionMessage) {
+    try {
+      const opener = await closer.client.users.fetch(ticket.userId);
+      const header = `Your **${config.label}** ticket has been closed by ${closer.user.tag}.\n\n**Resolution**\n`;
+      const maxRes = Math.max(0, 4096 - header.length);
+      const dmEmbed = new EmbedBuilder()
+        .setTitle(`Ticket #${paddedNum} closed`)
+        .setColor(0x95a5a6)
+        .setDescription(`${header}${resolutionMessage.slice(0, maxRes)}`)
+        .setFooter({ text: "ahousedividedgame.com" })
+        .setTimestamp();
+      await opener.send({ embeds: [dmEmbed] });
+      resolutionDmDelivered = true;
+    } catch {
+      // DMs disabled — staff still closed the ticket
+    }
+  }
+
+  removeTicket(guild.id, channel.id);
+  await channel.delete(`Ticket #${paddedNum} closed by ${closer.user.tag}`).catch(() => {});
+  return resolutionDmDelivered;
+}
+
+export async function handleTicketCloseModalSubmit(interaction: ModalSubmitInteraction): Promise<void> {
+  if (!interaction.guild || !interaction.channelId) {
+    await interaction.reply({ content: "This can only be used inside a server ticket channel.", ephemeral: true });
+    return;
+  }
+
+  const channelId = interaction.customId.slice(TICKET_CLOSE_MODAL_PREFIX.length);
+  if (channelId !== interaction.channelId) {
+    await interaction.reply({ content: "This form does not match the current channel.", ephemeral: true });
+    return;
+  }
+
+  const channel = interaction.guild.channels.cache.get(channelId);
+  if (!channel?.isTextBased() || channel.type !== ChannelType.GuildText) {
+    await interaction.reply({ content: "Ticket channel not found.", ephemeral: true });
+    return;
+  }
+  const textChannel = channel as TextChannel;
+
+  const closer =
+    interaction.member instanceof GuildMember
+      ? interaction.member
+      : await interaction.guild.members.fetch(interaction.user.id);
+
+  const ticket = getTicketByChannel(interaction.guild.id, channelId);
+  if (!ticket) {
+    await interaction.reply({ content: "This ticket is already closed or is not a ticket channel.", ephemeral: true });
+    return;
+  }
+
+  const isCreator = closer.id === ticket.userId;
+  const isMod = closer.permissions.has(PermissionFlagsBits.ManageChannels);
+  if (!isCreator && !isMod) {
+    await interaction.reply({ content: "You don't have permission to close this ticket.", ephemeral: true });
+    return;
+  }
+
+  const resolutionRaw = interaction.fields.getTextInputValue("ticket_resolution_message");
+  const resolutionMessage = resolutionRaw.trim();
+  const staffClosingOther = isMod && closer.id !== ticket.userId;
+  if (staffClosingOther && !resolutionMessage) {
+    await interaction.reply({
+      content: "Staff must enter a resolution message so the ticket opener can be notified.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    const dmDelivered = await finalizeTicketClose(textChannel, closer, ticket, resolutionMessage);
+    let reply = "Ticket closed.";
+    if (staffClosingOther && resolutionMessage) {
+      reply += dmDelivered
+        ? " The opener was sent your resolution via DM."
+        : " The opener could not be DMed (they may have DMs disabled).";
+    }
+    await interaction.editReply({ content: reply });
+  } catch (err) {
+    console.error("Ticket close finalize error:", err);
+    await interaction.editReply({ content: "Something went wrong while closing the ticket. Check the logs." });
+  }
 }
 
 export async function closeTicket(
@@ -275,7 +448,6 @@ export async function closeTicket(
     return;
   }
 
-  // Permission check
   const isCreator = closer.id === ticket.userId;
   const isMod = closer.permissions.has(PermissionFlagsBits.ManageChannels);
   if (!isCreator && !isMod) {
@@ -289,10 +461,16 @@ export async function closeTicket(
     return;
   }
 
-  // Confirmation
+  // Slash command or Close Ticket button → resolution modal immediately
+  if (interaction) {
+    await interaction.showModal(buildTicketCloseModal(channel.id));
+    return;
+  }
+
+  // 🔒 reaction path — confirm in channel, then modal
   const confirmEmbed = new EmbedBuilder()
     .setTitle("Close Ticket?")
-    .setDescription("Are you sure you want to close this ticket? A transcript will be saved.")
+    .setDescription("Are you sure you want to close this ticket? A transcript will be saved. You will be asked for a resolution message next.")
     .setColor(0xed4245);
 
   const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -306,17 +484,7 @@ export async function closeTicket(
       .setStyle(ButtonStyle.Secondary),
   );
 
-  let confirmMsg: Message;
-  if (interaction) {
-    if (interaction.replied || interaction.deferred) {
-      confirmMsg = await interaction.followUp({ embeds: [confirmEmbed], components: [confirmRow] }) as Message;
-    } else {
-      await interaction.reply({ embeds: [confirmEmbed], components: [confirmRow] });
-      confirmMsg = await interaction.fetchReply() as Message;
-    }
-  } else {
-    confirmMsg = await channel.send({ embeds: [confirmEmbed], components: [confirmRow] });
-  }
+  const confirmMsg = await channel.send({ embeds: [confirmEmbed], components: [confirmRow] });
 
   const collector = confirmMsg.createMessageComponentCollector({
     componentType: ComponentType.Button,
@@ -335,50 +503,7 @@ export async function closeTicket(
       return;
     }
 
-    // ticket_close_confirm
-    const closingEmbed = new EmbedBuilder()
-      .setTitle("Close Ticket?")
-      .setDescription("Closing ticket...")
-      .setColor(0x95a5a6);
-    await btn.update({ embeds: [closingEmbed], components: [] });
-
-    const messages = await fetchAllMessages(channel, 500);
-    const transcript = buildTranscriptText(ticket, closer.id, messages);
-    const truncated = messages.length >= 500;
-
-    const config = CATEGORY_CONFIG[ticket.category];
-    const paddedNum = String(ticket.ticketNumber).padStart(4, "0");
-    const created = new Date(ticket.createdAt);
-    const duration = Math.floor((Date.now() - created.getTime()) / 60000);
-    const durationStr = duration < 60 ? `${duration}m` : `${Math.floor(duration / 60)}h ${duration % 60}m`;
-
-    const logEmbed = new EmbedBuilder()
-      .setTitle(`🎫 Ticket Closed — #${paddedNum}`)
-      .setColor(0x95a5a6)
-      .addFields(
-        { name: "Type", value: `${config.emoji} ${config.label}`, inline: true },
-        { name: "Opened by", value: `<@${ticket.userId}>`, inline: true },
-        { name: "Closed by", value: `<@${closer.id}>`, inline: true },
-        { name: "Duration", value: durationStr, inline: true },
-        { name: "Messages", value: String(messages.length), inline: true },
-      )
-      .setFooter({ text: truncated ? "Transcript truncated at 500 messages · ahousedividedgame.com" : "ahousedividedgame.com" })
-      .setTimestamp();
-
-    const logChannelId = process.env.TICKET_LOG_CHANNEL_ID ?? "1483974417628270593";
-    if (logChannelId) {
-      const logChannel = guild.channels.cache.get(logChannelId) as TextChannel | undefined;
-      if (logChannel) {
-        const buffer = Buffer.from(transcript, "utf-8");
-        await logChannel.send({
-          embeds: [logEmbed],
-          files: [{ attachment: buffer, name: `ticket-${paddedNum}.txt` }],
-        }).catch((err) => console.error("Failed to post transcript:", err));
-      }
-    }
-
-    removeTicket(guild.id, channel.id);
-    await channel.delete(`Ticket #${paddedNum} closed by ${closer.user.tag}`).catch(() => {});
+    await btn.showModal(buildTicketCloseModal(channel.id));
   });
 
   collector.on("end", (collected) => {
