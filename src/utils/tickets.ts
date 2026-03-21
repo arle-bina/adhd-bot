@@ -46,6 +46,40 @@ export const PANEL_EMOJI_MAP: Record<string, TicketCategory> = {
 // In-memory lock to prevent race conditions on double-click
 const creationLocks = new Set<string>();
 
+function devTeamRoleId(): string | undefined {
+  const raw = process.env.DEV_TEAM_ROLE_ID?.trim();
+  return raw && raw.length > 0 ? raw : undefined;
+}
+
+/**
+ * Who counts as staff for tickets: matches who can access ticket channels (dev role, Manage Channels
+ * on this channel or at guild level, Administrator). Guild-level `permissions` alone misses
+ * channel-only overwrites and the dev team role — those cases previously skipped the resolution DM.
+ */
+function memberCanActAsTicketStaff(member: GuildMember, channel: TextChannel): boolean {
+  if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
+  if (member.permissions.has(PermissionFlagsBits.ManageChannels)) return true;
+  const inChannel = channel.permissionsFor(member)?.has(PermissionFlagsBits.ManageChannels) ?? false;
+  if (inChannel) return true;
+  const devId = devTeamRoleId();
+  if (devId && member.roles.cache.has(devId)) return true;
+  return false;
+}
+
+function canCloseTicket(member: GuildMember, channel: TextChannel, ticketOpenerId: string): boolean {
+  if (member.id === ticketOpenerId) return true;
+  return memberCanActAsTicketStaff(member, channel);
+}
+
+/** Staff closing another member's ticket — resolution required and opener should be DMed. */
+function isStaffClosingSomeoneElsesTicket(
+  closer: GuildMember,
+  channel: TextChannel,
+  ticketOpenerId: string,
+): boolean {
+  return closer.id !== ticketOpenerId && memberCanActAsTicketStaff(closer, channel);
+}
+
 export const TICKET_CLOSE_MODAL_PREFIX = "ticket_close_modal_";
 
 function buildTicketCloseModal(channelId: string): ModalBuilder {
@@ -338,10 +372,8 @@ async function finalizeTicketClose(
     }
   }
 
-  const staffClosedForSomeoneElse =
-    closer.permissions.has(PermissionFlagsBits.ManageChannels) && closer.id !== ticket.userId;
   let resolutionDmDelivered = false;
-  if (staffClosedForSomeoneElse && resolutionMessage) {
+  if (closer.id !== ticket.userId && resolutionMessage) {
     try {
       const opener = await closer.client.users.fetch(ticket.userId);
       const header = `Your **${config.label}** ticket has been closed by ${closer.user.tag}.\n\n**Resolution**\n`;
@@ -354,8 +386,8 @@ async function finalizeTicketClose(
         .setTimestamp();
       await opener.send({ embeds: [dmEmbed] });
       resolutionDmDelivered = true;
-    } catch {
-      // DMs disabled — staff still closed the ticket
+    } catch (err) {
+      console.warn("Ticket resolution DM failed:", err);
     }
   }
 
@@ -394,16 +426,14 @@ export async function handleTicketCloseModalSubmit(interaction: ModalSubmitInter
     return;
   }
 
-  const isCreator = closer.id === ticket.userId;
-  const isMod = closer.permissions.has(PermissionFlagsBits.ManageChannels);
-  if (!isCreator && !isMod) {
+  if (!canCloseTicket(closer, textChannel, ticket.userId)) {
     await interaction.reply({ content: "You don't have permission to close this ticket.", ephemeral: true });
     return;
   }
 
   const resolutionRaw = interaction.fields.getTextInputValue("ticket_resolution_message");
   const resolutionMessage = resolutionRaw.trim();
-  const staffClosingOther = isMod && closer.id !== ticket.userId;
+  const staffClosingOther = isStaffClosingSomeoneElsesTicket(closer, textChannel, ticket.userId);
   if (staffClosingOther && !resolutionMessage) {
     await interaction.reply({
       content: "Staff must enter a resolution message so the ticket opener can be notified.",
@@ -448,9 +478,7 @@ export async function closeTicket(
     return;
   }
 
-  const isCreator = closer.id === ticket.userId;
-  const isMod = closer.permissions.has(PermissionFlagsBits.ManageChannels);
-  if (!isCreator && !isMod) {
+  if (!canCloseTicket(closer, channel, ticket.userId)) {
     const msg = "You don't have permission to close this ticket.";
     if (interaction) {
       if (interaction.replied || interaction.deferred) await interaction.followUp({ content: msg, ephemeral: true });
