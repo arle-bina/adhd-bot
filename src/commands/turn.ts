@@ -4,7 +4,7 @@ import { replyWithError } from "../utils/helpers.js";
 
 const TURNS_PER_YEAR = 48;
 
-export const cooldown = 10;
+export const cooldown = 5;
 
 export const data = new SlashCommandBuilder()
   .setName("turn")

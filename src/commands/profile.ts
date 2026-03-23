@@ -83,6 +83,18 @@ function buildProfileEmbed(char: CharacterResult): EmbedBuilder {
     embed.addFields({ name: "Created", value: `<t:${ts}:R>`, inline: true });
   }
 
+  if (char.isCeo && char.ceoOf) {
+    embed.addFields({ name: "CEO", value: char.ceoOf, inline: true });
+  }
+
+  if (char.isInvestor) {
+    const rank = char.investorRank ? ` (Rank #${char.investorRank})` : "";
+    const portfolio = char.portfolioValue != null
+      ? `$${Math.round(char.portfolioValue).toLocaleString()}${rank}`
+      : `Investor${rank}`;
+    embed.addFields({ name: "Portfolio", value: portfolio, inline: true });
+  }
+
   if (char.activeElection) {
     const electionType = char.activeElection.electionType.charAt(0).toUpperCase() + char.activeElection.electionType.slice(1);
     const electionState = char.activeElection.electionState;
