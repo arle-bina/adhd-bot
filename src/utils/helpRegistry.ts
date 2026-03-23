@@ -18,24 +18,40 @@ export const categories: Category[] = [
     label: "Players",
     emoji: "👤",
     color: 0x5865f2,
-    description: "Look up politicians and see how they rank.",
+    description: "Look up politicians, compare them, and see how they rank.",
     commands: [
       {
         name: "/profile",
         usage: "/profile [name] [user]",
         description:
-          "View a player's characters — position, party, state, and a direct link to their profile page.",
+          "View a player's character — position, party, state, stats, and corporate roles (CEO/investor). Links directly to their profile page.",
         examples: ["/profile name:John Smith", "/profile user:@RainFrog"],
       },
       {
         name: "/leaderboard",
         usage: "/leaderboard [metric] [country] [limit]",
         description:
-          "Top politicians ranked by political influence or favorability. Filter by US or UK, show up to 25 results.",
+          "Top politicians ranked by political influence, national influence, favorability, actions, or funds. Filter by US or UK, show up to 25 results.",
         examples: [
           "/leaderboard",
           "/leaderboard metric:Favorability country:US limit:5",
         ],
+      },
+      {
+        name: "/compare",
+        usage: "/compare politician1:<name> politician2:<name>",
+        description:
+          "Side-by-side comparison of two politicians — stats, policy positions, party, office, and corporate roles.",
+        examples: [
+          "/compare politician1:John Smith politician2:Jane Doe",
+        ],
+      },
+      {
+        name: "/investor",
+        usage: "/investor [name] [user]",
+        description:
+          "Look up a politician's corporate positions — CEO role, investor rank, and portfolio value. Omit all options to look up yourself.",
+        examples: ["/investor name:John Smith", "/investor user:@RainFrog", "/investor"],
       },
     ],
   },
@@ -56,12 +72,19 @@ export const categories: Category[] = [
         name: "/election",
         usage: "/election country:<US|UK> [state] [race]",
         description:
-          "Drill into a specific race — shows phase (upcoming/primary/general/ended), candidate standings, vote shares, and a link to the election page. Omit state and race to browse all elections for a country.",
+          "Drill into a specific race — shows phase (upcoming/primary/general/ended), candidate standings, vote shares, electoral votes, and a link to the election page. Omit state and race to browse all elections for a country.",
         examples: [
           "/election country:US state:CA race:Senate",
           "/election country:UK state:UK_SCO race:Commons",
           "/election country:US",
         ],
+      },
+      {
+        name: "/calendar",
+        usage: "/calendar [country]",
+        description:
+          "Election calendar — shows all active and upcoming elections grouped by status, alongside the current game turn and clock so you know when races will resolve.",
+        examples: ["/calendar", "/calendar country:US"],
       },
       {
         name: "/predict",
@@ -72,10 +95,20 @@ export const categories: Category[] = [
       },
       {
         name: "/party",
-        usage: "/party id:<slug>",
+        usage: "/party id:<slug> country:<US|UK>",
         description:
-          "Look up a political party — ideology, membership count, treasury, and top politicians.",
-        examples: ["/party id:labour", "/party id:republican"],
+          "Look up a political party — ideology, membership count, treasury, chair, and top politicians.",
+        examples: ["/party id:labour country:UK", "/party id:republican country:US"],
+      },
+      {
+        name: "/party-compare",
+        usage: "/party-compare party1:<slug> country1:<US|UK> party2:<slug> country2:<US|UK>",
+        description:
+          "Side-by-side comparison of two parties — ideology positions (with visual bars), membership, treasury, chair, and top members.",
+        examples: [
+          "/party-compare party1:republican country1:US party2:democrat country2:US",
+          "/party-compare party1:labour country1:UK party2:conservative country2:UK",
+        ],
       },
       {
         name: "/state",
@@ -130,10 +163,10 @@ export const categories: Category[] = [
     commands: [
       {
         name: "/news",
-        usage: "/news [category] [limit]",
+        usage: "/news [category]",
         description:
-          "Latest in-game news posts with reactions and timestamps. Filter by Elections, Legislation, Executive, or General.",
-        examples: ["/news", "/news category:Elections limit:10"],
+          "Latest in-game news posts with reactions and timestamps. Filter by Elections, Legislation, Executive, or General. Up to 10 posts shown with Prev/Next pagination.",
+        examples: ["/news", "/news category:Elections"],
       },
       {
         name: "/turn",
@@ -141,6 +174,13 @@ export const categories: Category[] = [
         description:
           "Current game turn, year, and clock. Shows when the last turn processed and when the next one is due.",
         examples: ["/turn"],
+      },
+      {
+        name: "/calendar",
+        usage: "/calendar [country]",
+        description:
+          "Election calendar — all active and upcoming elections with the game clock for context.",
+        examples: ["/calendar", "/calendar country:UK"],
       },
     ],
   },
@@ -211,7 +251,7 @@ export const categories: Category[] = [
         name: "/sync-roles",
         usage: "/sync-roles",
         description:
-          "Backfill party and country roles for all linked members. Requires Manage Roles permission.",
+          "Backfill party, office, and country roles for all linked members. Requires Manage Roles permission. This processes all members in batches and may take a moment.",
         examples: ["/sync-roles"],
       },
       {

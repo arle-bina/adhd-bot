@@ -5,29 +5,32 @@ import {
 } from "discord.js";
 import { getSyncRoles } from "../utils/api.js";
 import { syncMemberRoles } from "../utils/roles.js";
+import { replyWithError } from "../utils/helpers.js";
 
 export const data = new SlashCommandBuilder()
   .setName("accept")
   .setDescription("Accept the server rules and gain access");
 
 export async function execute(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ ephemeral: true });
+
   const member = interaction.guild?.members.cache.get(interaction.user.id)
     ?? await interaction.guild?.members.fetch(interaction.user.id);
 
   if (!member) {
-    await interaction.reply({ content: "Could not find your server profile. Try again.", ephemeral: true });
+    await interaction.editReply({ content: "Could not find your server profile. Try again." });
     return;
   }
 
   if (member.roles.cache.has(process.env.MEMBER_ROLE_ID!)) {
-    await interaction.reply({ content: "You already have access.", ephemeral: true });
+    await interaction.editReply({ content: "You already have access." });
     return;
   }
 
   try {
     await member.roles.add(process.env.MEMBER_ROLE_ID!);
     await member.roles.add(process.env.ALPHA_TESTER_ROLE_ID!);
-    await interaction.reply({ content: "✅ Welcome! You now have access to the server.", ephemeral: true });
+    await interaction.editReply({ content: "✅ Welcome! You now have access to the server." });
 
     // Best-effort: sync game roles if account is linked
     getSyncRoles(interaction.user.id).then(async (result) => {
@@ -36,7 +39,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       }
     }).catch(() => {});
   } catch (error) {
-    console.error("Accept role error:", error);
-    await interaction.reply({ content: "Could not assign your role. Please contact an admin.", ephemeral: true });
+    await replyWithError(interaction, "accept", error);
   }
 }

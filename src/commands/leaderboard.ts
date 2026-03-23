@@ -84,7 +84,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       return `${char.rank}. **${char.name}** — ${char.position} · ${char.party} · 📊 ${value}`;
     });
 
-    const footerParts = ["ahousedivided.com"];
+    const footerParts = ["ahousedividedgame.com"];
     if (country) footerParts.push(`Country: ${country}`);
 
     const embed = new EmbedBuilder()
