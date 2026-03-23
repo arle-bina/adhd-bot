@@ -11,9 +11,6 @@ export const cooldown = 5;
 
 const TURNS_PER_YEAR = 48;
 
-// How many turns from now counts as "soon"
-const SOON_TURNS = 4;
-
 const RACE_EMOJI: Record<string, string> = {
   senate: "🏛️",
   house: "🏠",
