@@ -22,6 +22,7 @@ import { errorMessage, replyWithError } from "./utils/helpers.js";
 import { recordMessage, recordMemberCount } from "./utils/statsStore.js";
 import { handleStarboardReaction } from "./utils/starboard.js";
 import { handleLockReaction, TICKET_CLOSE_MODAL_PREFIX, handleTicketCloseModalSubmit } from "./utils/tickets.js";
+import { checkMessage } from "./utils/filter.js";
 
 validateEnv();
 
@@ -44,6 +45,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.GuildModeration,
   ],
   partials: [Partials.Message, Partials.Reaction],
 });
@@ -85,10 +87,47 @@ client.once("ready", () => {
   setInterval(snapshotMembers, 60 * 60 * 1000);
 });
 
-// Track messages for server stats
-client.on("messageCreate", (message) => {
+// Track messages for server stats + content filter
+client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
   recordMessage(message.guild.id);
+
+  // Content filter check
+  const matchedTerm = checkMessage(message.content);
+  if (matchedTerm) {
+    try {
+      // Delete the message
+      await message.delete();
+
+      // Notify the user via DM (ephemeral-like)
+      await message.author.send({
+        content: `Your message in **${message.guild.name}** was removed because it contained a disallowed term. Please review the server rules.`,
+      }).catch(() => {
+        // If DMs are disabled, silently fail
+      });
+
+      // Log to moderation channel
+      const logChannelId = process.env.FILTER_LOG_CHANNEL_ID;
+      if (logChannelId) {
+        const logChannel = message.guild.channels.cache.get(logChannelId) as TextChannel | undefined;
+        if (logChannel?.isTextBased()) {
+          const embed = new EmbedBuilder()
+            .setTitle("Content Filter Triggered")
+            .setColor(0xff6b6b)
+            .addFields(
+              { name: "User", value: `${message.author} (${message.author.tag})`, inline: true },
+              { name: "Channel", value: `<#${message.channel.id}>`, inline: true },
+              { name: "Matched Term", value: `\`${matchedTerm}\``, inline: true },
+              { name: "Message Content", value: message.content.slice(0, 1000) || "(empty)" }
+            )
+            .setTimestamp();
+          await logChannel.send({ embeds: [embed] });
+        }
+      }
+    } catch (error) {
+      console.error("Content filter error:", error);
+    }
+  }
 });
 
 // Reaction handlers (tickets + starboard)
@@ -143,6 +182,104 @@ client.on("guildMemberAdd", async (member) => {
     await channel.send({ embeds: [embed] });
   } catch (error) {
     console.error("guildMemberAdd error:", error);
+  }
+});
+
+// Moderation logging: member leave/kick
+client.on("guildMemberRemove", async (member) => {
+  try {
+    const logChannel = member.guild.channels.cache.get(process.env.FILTER_LOG_CHANNEL_ID!) as TextChannel | undefined;
+    if (!logChannel?.isTextBased()) return;
+
+    // Check audit log for kick
+    const auditLogs = await member.guild.fetchAuditLogs({ type: 20, limit: 1 }); // 20 = MemberKick
+    const kickLog = auditLogs.entries.first();
+    const wasKicked = kickLog && kickLog.target?.id === member.id && Date.now() - kickLog.createdTimestamp < 5000;
+
+    if (wasKicked) {
+      const embed = new EmbedBuilder()
+        .setTitle("Member Kicked")
+        .setColor(0xffa500)
+        .addFields(
+          { name: "User", value: `${member.user.tag} (${member.id})`, inline: true },
+          { name: "Kicked By", value: `${kickLog.executor?.tag ?? "Unknown"}`, inline: true },
+          { name: "Reason", value: kickLog.reason || "No reason provided" }
+        )
+        .setThumbnail(member.user.displayAvatarURL())
+        .setTimestamp();
+      await logChannel.send({ embeds: [embed] });
+    } else {
+      const embed = new EmbedBuilder()
+        .setTitle("Member Left")
+        .setColor(0x808080)
+        .addFields(
+          { name: "User", value: `${member.user.tag} (${member.id})`, inline: true },
+          { name: "Joined", value: member.joinedAt ? `<t:${Math.floor(member.joinedAt.getTime() / 1000)}:R>` : "Unknown", inline: true }
+        )
+        .setThumbnail(member.user.displayAvatarURL())
+        .setTimestamp();
+      await logChannel.send({ embeds: [embed] });
+    }
+  } catch (error) {
+    console.error("guildMemberRemove error:", error);
+  }
+});
+
+// Moderation logging: ban
+client.on("guildBanAdd", async (ban) => {
+  try {
+    const logChannel = ban.guild.channels.cache.get(process.env.FILTER_LOG_CHANNEL_ID!) as TextChannel | undefined;
+    if (!logChannel?.isTextBased()) return;
+
+    // Check audit log for ban details
+    const auditLogs = await ban.guild.fetchAuditLogs({ type: 22, limit: 1 }); // 22 = MemberBanAdd
+    const banLog = auditLogs.entries.first();
+    const executor = banLog?.target?.id === ban.user.id ? banLog.executor : null;
+
+    const embed = new EmbedBuilder()
+      .setTitle("Member Banned")
+      .setColor(0xff0000)
+      .addFields(
+        { name: "User", value: `${ban.user.tag} (${ban.user.id})`, inline: true },
+        { name: "Banned By", value: executor?.tag ?? "Unknown", inline: true },
+        { name: "Reason", value: ban.reason || banLog?.reason || "No reason provided" }
+      )
+      .setThumbnail(ban.user.displayAvatarURL())
+      .setTimestamp();
+    await logChannel.send({ embeds: [embed] });
+  } catch (error) {
+    console.error("guildBanAdd error:", error);
+  }
+});
+
+// Moderation logging: timeout
+client.on("guildMemberUpdate", async (oldMember, newMember) => {
+  try {
+    const wasTimedOut = !oldMember.communicationDisabledUntil && newMember.communicationDisabledUntil;
+    if (!wasTimedOut) return;
+
+    const logChannel = newMember.guild.channels.cache.get(process.env.FILTER_LOG_CHANNEL_ID!) as TextChannel | undefined;
+    if (!logChannel?.isTextBased()) return;
+
+    // Check audit log for timeout details
+    const auditLogs = await newMember.guild.fetchAuditLogs({ type: 24, limit: 1 }); // 24 = MemberUpdate
+    const timeoutLog = auditLogs.entries.first();
+    const executor = timeoutLog?.target?.id === newMember.id ? timeoutLog.executor : null;
+
+    const embed = new EmbedBuilder()
+      .setTitle("Member Timed Out")
+      .setColor(0xffcc00)
+      .addFields(
+        { name: "User", value: `${newMember.user.tag} (${newMember.id})`, inline: true },
+        { name: "Timed Out By", value: executor?.tag ?? "Unknown", inline: true },
+        { name: "Until", value: `<t:${Math.floor(newMember.communicationDisabledUntil.getTime() / 1000)}:R>`, inline: true },
+        { name: "Reason", value: timeoutLog?.reason || "No reason provided" }
+      )
+      .setThumbnail(newMember.user.displayAvatarURL())
+      .setTimestamp();
+    await logChannel.send({ embeds: [embed] });
+  } catch (error) {
+    console.error("guildMemberUpdate timeout error:", error);
   }
 });
 
