@@ -19,6 +19,13 @@ const COUNTRY_NAMES: Record<string, string> = {
   DE: "Germany",
 };
 
+// Distinct palette for companies without a brand color
+const SLICE_PALETTE = [
+  "#e6194b", "#3cb44b", "#4363d8", "#f58231", "#911eb4",
+  "#42d4f4", "#f032e6", "#bfef45", "#fabed4", "#469990",
+  "#dcbeff", "#9A6324", "#fffac8", "#800000", "#aaffc3",
+];
+
 export const data = new SlashCommandBuilder()
   .setName("marketshare")
   .setDescription("View market share by sector")
@@ -77,7 +84,63 @@ function buildScopeLabel(result: MarketShareResponse): string {
   return "Global";
 }
 
-function buildEmbed(result: MarketShareResponse): EmbedBuilder {
+function buildChartUrl(result: MarketShareResponse, showUnowned: boolean): string {
+  const labels: string[] = [];
+  const values: number[] = [];
+  const colors: string[] = [];
+
+  for (let i = 0; i < result.companies.length; i++) {
+    const c = result.companies[i];
+    labels.push(c.corporationName);
+    values.push(c.marketSharePercent);
+    colors.push(c.brandColor ?? SLICE_PALETTE[i % SLICE_PALETTE.length]);
+  }
+
+  // "Others" slice: owned revenue not on this page
+  const pageOwnedPct = result.companies.reduce((s, c) => s + c.marketSharePercent, 0);
+  const totalOwnedPct = result.totalMarket > 0
+    ? (result.totalOwnedRevenue / result.totalMarket) * 100
+    : 0;
+  const othersPct = Math.max(0, totalOwnedPct - pageOwnedPct);
+  if (othersPct > 0.01) {
+    labels.push("Others");
+    values.push(Math.round(othersPct * 100) / 100);
+    colors.push("#555555");
+  }
+
+  if (showUnowned && result.unownedPercent > 0.01) {
+    labels.push("Unowned");
+    values.push(result.unownedPercent);
+    colors.push("#808080");
+  }
+
+  const config = {
+    type: "doughnut",
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: colors,
+        borderWidth: 0,
+      }],
+    },
+    options: {
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          color: "#fff",
+          font: { size: 11, weight: "bold" },
+          formatter: (v: number) => v >= 3 ? `${v.toFixed(1)}%` : "",
+        },
+      },
+    },
+  };
+
+  const encoded = encodeURIComponent(JSON.stringify(config));
+  return `https://quickchart.io/chart?c=${encoded}&w=400&h=400&bkg=%23232428`;
+}
+
+function buildEmbed(result: MarketShareResponse, showUnowned: boolean): EmbedBuilder {
   const scopeLabel = buildScopeLabel(result);
   const title = `${result.sectorLabel} — ${scopeLabel}`;
 
@@ -99,6 +162,7 @@ function buildEmbed(result: MarketShareResponse): EmbedBuilder {
       return `${rank}. **${c.corporationName}** — ${c.marketSharePercent.toFixed(2)}% · $${c.revenue.toLocaleString()}${tag}`;
     });
     embed.setDescription(lines.join("\n").slice(0, 4096));
+    embed.setImage(buildChartUrl(result, showUnowned));
   }
 
   const footerParts: string[] = [];
@@ -115,19 +179,32 @@ function buildEmbed(result: MarketShareResponse): EmbedBuilder {
   return embed;
 }
 
-function buildNavRow(page: number, totalPages: number): ActionRowBuilder<ButtonBuilder> {
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+function buildNavRow(page: number, totalPages: number, showUnowned: boolean): ActionRowBuilder<ButtonBuilder> {
+  const buttons: ButtonBuilder[] = [];
+
+  if (totalPages > 1) {
+    buttons.push(
+      new ButtonBuilder()
+        .setCustomId("marketshare_prev")
+        .setLabel("◀ Prev")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page <= 1),
+      new ButtonBuilder()
+        .setCustomId("marketshare_next")
+        .setLabel("Next ▶")
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page >= totalPages),
+    );
+  }
+
+  buttons.push(
     new ButtonBuilder()
-      .setCustomId("marketshare_prev")
-      .setLabel("◀ Prev")
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page <= 1),
-    new ButtonBuilder()
-      .setCustomId("marketshare_next")
-      .setLabel("Next ▶")
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page >= totalPages),
+      .setCustomId("marketshare_unowned")
+      .setLabel(showUnowned ? "Hide Unowned" : "Show Unowned")
+      .setStyle(showUnowned ? ButtonStyle.Primary : ButtonStyle.Secondary),
   );
+
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(buttons);
 }
 
 export async function execute(interaction: ChatInputCommandInteraction) {
@@ -135,6 +212,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const country = interaction.options.getString("country") ?? undefined;
   const state = interaction.options.getString("state") ?? undefined;
   let page = interaction.options.getInteger("page") ?? 1;
+  let showUnowned = false;
 
   await interaction.deferReply();
 
@@ -146,16 +224,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       return;
     }
 
-    const totalPages = result.totalPages;
-
-    if (totalPages <= 1) {
-      await interaction.editReply({ embeds: [buildEmbed(result)] });
+    if (result.companies.length === 0 && result.totalPages <= 1) {
+      await interaction.editReply({ embeds: [buildEmbed(result, showUnowned)] });
       return;
     }
 
+    const totalPages = result.totalPages;
+
     const message = await interaction.editReply({
-      embeds: [buildEmbed(result)],
-      components: [buildNavRow(page, totalPages)],
+      embeds: [buildEmbed(result, showUnowned)],
+      components: [buildNavRow(page, totalPages, showUnowned)],
     });
 
     const collector = message.createMessageComponentCollector({
@@ -171,14 +249,25 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
       await btn.deferUpdate();
 
-      if (btn.customId === "marketshare_prev") page = Math.max(1, page - 1);
-      if (btn.customId === "marketshare_next") page = Math.min(totalPages, page + 1);
+      let needsFetch = false;
+
+      if (btn.customId === "marketshare_prev") {
+        page = Math.max(1, page - 1);
+        needsFetch = true;
+      } else if (btn.customId === "marketshare_next") {
+        page = Math.min(totalPages, page + 1);
+        needsFetch = true;
+      } else if (btn.customId === "marketshare_unowned") {
+        showUnowned = !showUnowned;
+      }
 
       try {
-        result = await getMarketShare({ type, country, state, page });
+        if (needsFetch) {
+          result = await getMarketShare({ type, country, state, page });
+        }
         await btn.editReply({
-          embeds: [buildEmbed(result)],
-          components: [buildNavRow(page, totalPages)],
+          embeds: [buildEmbed(result, showUnowned)],
+          components: [buildNavRow(page, totalPages, showUnowned)],
         });
       } catch (error) {
         await replyWithError(interaction, "marketshare", error);
