@@ -126,6 +126,9 @@ client.on("messageReactionRemove", async (reaction, user) => {
 
 client.on("guildMemberAdd", async (member) => {
   try {
+    // Assign unverified role
+    await member.roles.add(process.env.UNVERIFIED_ROLE_ID!);
+
     const channel = member.guild.channels.cache.get(process.env.WELCOME_CHANNEL_ID!);
     if (!channel?.isTextBased()) return;
 

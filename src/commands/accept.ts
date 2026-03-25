@@ -28,6 +28,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   }
 
   try {
+    await member.roles.remove(process.env.UNVERIFIED_ROLE_ID!);
     await member.roles.add(process.env.MEMBER_ROLE_ID!);
     await member.roles.add(process.env.ALPHA_TESTER_ROLE_ID!);
     await interaction.editReply({ content: "✅ Welcome! You now have access to the server." });
