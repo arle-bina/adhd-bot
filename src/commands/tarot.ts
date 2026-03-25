@@ -415,6 +415,32 @@ function interpret(
   return lines.join("\n");
 }
 
+// ---------------------------------------------------------------------------
+// Verified Keir Starmer quotes
+// ---------------------------------------------------------------------------
+
+const STARMER_QUOTES: string[] = [
+  "My dad was a toolmaker. He worked in a factory. My mum was a nurse.",
+  "I believe in the rule of law and the power of public service.",
+  "We can be a force for good in the world.",
+  "This is a changed Labour Party — and I have changed it.",
+  "Country first, party second.",
+  "If you work hard and play by the rules, this country should give you a fair chance.",
+  "I want the economy to work for everyone, not just those at the top.",
+  "Securonomics means that the strength of our economy should be measured by the security it gives to working people.",
+  "We will be a government that treads more lightly on your lives.",
+  "Service is the rent we pay for living.",
+  "I prosecuted terrorists, put them in prison, and I kept this country safe.",
+  "We can make Britain a clean energy superpower.",
+  "The first duty of any government is to keep its people safe.",
+  "Growth is the number one mission of a Labour government.",
+  "I will never stop fighting for a better, fairer Britain.",
+];
+
+function getRandomStarmerQuote(): string {
+  return STARMER_QUOTES[Math.floor(Math.random() * STARMER_QUOTES.length)];
+}
+
 // Colour palette for embeds
 const TAROT_COLOURS: Record<string, number> = {
   single: 0x9b59b6, // purple
@@ -466,6 +492,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     .map((d) => `${d.card.name}${d.isReversed ? " (R)" : ""}`)
     .join(" · ");
   embed.setDescription(`**Cards drawn:** ${cardNames}\n\nHere is what the cards reveal...`);
+
+  // Starmer quote at the bottom of every reading
+  const quote = getRandomStarmerQuote();
+  embed.addFields({ name: "\u200b", value: `*"${quote}"*\n— **Keir Starmer**` });
 
   await interaction.reply({ embeds: [embed] });
 }
