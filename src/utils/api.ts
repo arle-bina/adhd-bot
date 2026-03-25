@@ -840,7 +840,9 @@ export type SectorType =
   | "real_estate"
   | "defense"
   | "telecommunications"
-  | "entertainment";
+  | "entertainment"
+  | "logistics"
+  | "extraction";
 
 export interface OwnedSector {
   corporationName: string;
@@ -937,6 +939,59 @@ export interface StockListing {
 
 interface StockExchangeResponse {
   listings: StockListing[];
+}
+
+// --- Market Share ---
+
+export interface MarketShareCompany {
+  corporationId: string;
+  corporationName: string;
+  corporationSequentialId: number | null;
+  brandColor: string | null;
+  revenue: number;
+  marketSharePercent: number;
+  isNatcorp: boolean;
+}
+
+export interface MarketShareResponse {
+  found: boolean;
+  sectorType: string;
+  sectorLabel: string;
+  scope: {
+    country: "US" | "UK" | "CA" | "DE" | null;
+    stateId: string | null;
+    stateName: string | null;
+  };
+  totalMarket: number;
+  totalOwnedRevenue: number;
+  unownedRevenue: number;
+  unownedPercent: number;
+  page: number;
+  totalPages: number;
+  totalItems: number;
+  pageSize: 15;
+  companies: MarketShareCompany[];
+}
+
+export async function getMarketShare(params: {
+  type: SectorType;
+  country?: string;
+  state?: string;
+  page?: number;
+}): Promise<MarketShareResponse> {
+  const url = new URL("/api/discord-bot/marketshare", process.env.GAME_API_URL);
+  url.searchParams.set("type", params.type);
+  if (params.country) url.searchParams.set("country", params.country);
+  if (params.state) url.searchParams.set("state", params.state);
+  if (params.page != null) url.searchParams.set("page", String(params.page));
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
 }
 
 export async function getStockExchange(exchange = "global"): Promise<StockExchangeResponse> {
