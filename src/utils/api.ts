@@ -921,3 +921,32 @@ export async function getSectors(params: {
   if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
 }
+
+// --- Stock Exchange (public, no auth) ---
+
+export interface StockListing {
+  _id: string;
+  name: string;
+  sharePrice: number;
+  priceChange24h: number;
+  income: number;
+  marketCap: number;
+  totalRevenue: number;
+  exchange: string;
+}
+
+interface StockExchangeResponse {
+  listings: StockListing[];
+}
+
+export async function getStockExchange(exchange = "global"): Promise<StockExchangeResponse> {
+  const url = new URL("/api/stock-exchange", process.env.GAME_API_URL);
+  url.searchParams.set("exchange", exchange);
+
+  const response = await fetch(url.toString(), {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
+}
