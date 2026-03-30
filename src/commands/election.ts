@@ -13,7 +13,7 @@ import {
   type RaceDetailResponse,
 } from "../utils/api.js";
 import { formatElectionType } from "./elections.js";
-import { replyWithError } from "../utils/helpers.js";
+import { replyWithError, positionBar } from "../utils/helpers.js";
 
 export const cooldown = 5;
 
@@ -193,8 +193,9 @@ function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
         const npp = c.isNPP ? " 🤖" : "";
         const name = c.profileUrl ? `[${c.characterName}](${c.profileUrl})${npp}` : `${c.characterName}${npp}`;
         const share = unopposed ? "Unopposed" : `Share: ${(c.sharePct ?? 0).toFixed(1)}%`;
+        const endorseStr = c.endorsementCount > 0 ? ` · ${c.endorsementCount} end.` : "";
         lines.push(
-          `${name} — Score: **${Math.round(c.primaryScore ?? 0)}** · ${share} · Fav: ${Math.round(c.favorability ?? 0)}% · Funds: $${(c.campaignFunds ?? 0).toLocaleString()}`
+          `${name} -- Score: **${Math.round(c.primaryScore ?? 0)}** · ${share} · Fav: ${Math.round(c.favorability ?? 0)}% · Funds: $${(c.campaignFunds ?? 0).toLocaleString()}${endorseStr}`
         );
       }
       lines.push("");
@@ -226,7 +227,18 @@ function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
 
       const stats = `PI: ${Math.round(c.politicalInfluence ?? 0)} · Fav: ${Math.round(c.favorability ?? 0)}% · Funds: $${(c.campaignFunds ?? 0).toLocaleString()}${evLine}`;
 
-      const block = [header, voteLine, stats, c.runningMateName ? `Running mate: ${c.runningMateName}` : ""]
+      const ideology = `Econ: \`${positionBar(c.economicPosition ?? 0, 8)}\` · Social: \`${positionBar(c.socialPosition ?? 0, 8)}\``;
+
+      let endorseLine = "";
+      if (c.endorsements && c.endorsements.length > 0) {
+        const shown = c.endorsements.slice(0, 3).map((e) => e.name);
+        const extra = c.endorsements.length > 3 ? ` (+${c.endorsements.length - 3} more)` : "";
+        endorseLine = `Endorsed by: ${shown.join(", ")}${extra}`;
+      } else if (c.endorsementCount > 0) {
+        endorseLine = `${c.endorsementCount} endorsement(s)`;
+      }
+
+      const block = [header, voteLine, stats, ideology, endorseLine, c.runningMateName ? `Running mate: ${c.runningMateName}` : ""]
         .filter(Boolean)
         .join("\n");
 

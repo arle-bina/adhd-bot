@@ -101,6 +101,7 @@ function buildCompareEmbed(a: CharacterResult, b: CharacterResult): EmbedBuilder
     statRow("Infamy", String(Math.round(a.infamy ?? 0)), String(Math.round(b.infamy ?? 0))),
     statRow("Funds", `$${Math.round(a.funds ?? 0).toLocaleString()}`, `$${Math.round(b.funds ?? 0).toLocaleString()}`),
     statRow("Actions", String(Math.round(a.actions ?? 0)), String(Math.round(b.actions ?? 0))),
+    statRow("Donor Base", String(Math.round(a.donorBaseLevel ?? 0)), String(Math.round(b.donorBaseLevel ?? 0))),
   ];
 
   embed.addFields({
@@ -138,6 +139,23 @@ function buildCompareEmbed(a: CharacterResult, b: CharacterResult): EmbedBuilder
     embed.addFields({
       name: "Corporate Roles",
       value: corpLines.join("\n").slice(0, 1024),
+      inline: false,
+    });
+  }
+
+  const electionLines: string[] = [];
+  if (a.activeElection) {
+    const type = a.activeElection.electionType.charAt(0).toUpperCase() + a.activeElection.electionType.slice(1);
+    electionLines.push(`**${a.name}** -- Running in ${type} (${a.activeElection.electionState})`);
+  }
+  if (b.activeElection) {
+    const type = b.activeElection.electionType.charAt(0).toUpperCase() + b.activeElection.electionType.slice(1);
+    electionLines.push(`**${b.name}** -- Running in ${type} (${b.activeElection.electionState})`);
+  }
+  if (electionLines.length > 0) {
+    embed.addFields({
+      name: "Active Elections",
+      value: electionLines.join("\n").slice(0, 1024),
       inline: false,
     });
   }

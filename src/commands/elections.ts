@@ -2,9 +2,13 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ComponentType,
 } from "discord.js";
-import { getElections } from "../utils/api.js";
-import { replyWithError } from "../utils/helpers.js";
+import { getElections, type Election } from "../utils/api.js";
+import { replyWithError, standardFooter } from "../utils/helpers.js";
 
 export function formatElectionType(type: string): string {
   const map: Record<string, string> = {
@@ -18,6 +22,8 @@ export function formatElectionType(type: string): string {
   };
   return map[type] ?? type;
 }
+
+const PAGE_SIZE = 5;
 
 export const cooldown = 5;
 
@@ -41,6 +47,51 @@ export const data = new SlashCommandBuilder()
       .setRequired(false)
   );
 
+function buildElectionsEmbed(
+  elections: Election[],
+  page: number,
+  totalPages: number,
+): EmbedBuilder {
+  const start = page * PAGE_SIZE;
+  const shown = elections.slice(start, start + PAGE_SIZE);
+
+  const lines = shown.map((e) => {
+    const typeLabel = formatElectionType(e.electionType);
+    const candidateList =
+      e.candidates.map((c) => `${c.characterName} (${c.party})`).join(", ") ||
+      "No candidates yet";
+    const timeStr = e.endTime
+      ? `<t:${Math.floor(new Date(e.endTime).getTime() / 1000)}:R>`
+      : "TBD";
+    return `**[${typeLabel}] -- ${e.state}** (${e.status})\nCandidates: ${candidateList}\nEnds: ${timeStr}`;
+  });
+
+  const description = lines.join("\n\n") + "\n\n-# Use `/election` to drill into a specific race";
+
+  const pageInfo = totalPages > 1 ? `Page ${page + 1} of ${totalPages}` : undefined;
+
+  return new EmbedBuilder()
+    .setTitle("Active & Upcoming Elections")
+    .setColor(0x5865f2)
+    .setDescription(description.slice(0, 4096))
+    .setFooter(standardFooter(pageInfo));
+}
+
+function buildNavRow(page: number, totalPages: number): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId("elections_prev")
+      .setLabel("Prev")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page <= 0),
+    new ButtonBuilder()
+      .setCustomId("elections_next")
+      .setLabel("Next")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page >= totalPages - 1),
+  );
+}
+
 export async function execute(interaction: ChatInputCommandInteraction) {
   const country = interaction.options.getString("country") ?? undefined;
   const state = interaction.options.getString("state") ?? undefined;
@@ -55,30 +106,42 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       return;
     }
 
-    const total = result.elections.length;
-    const shown = result.elections.slice(0, 5);
+    const elections = result.elections;
+    const totalPages = Math.ceil(elections.length / PAGE_SIZE);
+    let page = 0;
 
-    const lines = shown.map((e) => {
-      const typeLabel = formatElectionType(e.electionType);
-      const candidateList =
-        e.candidates.map((c) => `${c.characterName} (${c.party})`).join(", ") ||
-        "No candidates yet";
-      const timeStr = e.endTime
-        ? `<t:${Math.floor(new Date(e.endTime).getTime() / 1000)}:R>`
-        : "TBD";
-      return `**[${typeLabel}] — ${e.state}** (${e.status})\nCandidates: ${candidateList}\nEnds: ${timeStr}`;
-    });
-
-    const embed = new EmbedBuilder()
-      .setTitle("🗳️ Active & Upcoming Elections")
-      .setColor(0x5865f2)
-      .setDescription(lines.join("\n\n"));
-
-    if (total > 5) {
-      embed.setFooter({ text: `Showing 5 of ${total} elections` });
+    if (totalPages <= 1) {
+      await interaction.editReply({ embeds: [buildElectionsEmbed(elections, 0, 1)] });
+      return;
     }
 
-    await interaction.editReply({ embeds: [embed] });
+    const message = await interaction.editReply({
+      embeds: [buildElectionsEmbed(elections, page, totalPages)],
+      components: [buildNavRow(page, totalPages)],
+    });
+
+    const collector = message.createMessageComponentCollector({
+      componentType: ComponentType.Button,
+      time: 120_000,
+    });
+
+    collector.on("collect", async (btn) => {
+      if (btn.user.id !== interaction.user.id) {
+        await btn.reply({ content: "Use `/elections` yourself to browse.", ephemeral: true });
+        return;
+      }
+      await btn.deferUpdate();
+      if (btn.customId === "elections_prev") page = Math.max(0, page - 1);
+      if (btn.customId === "elections_next") page = Math.min(totalPages - 1, page + 1);
+      await btn.editReply({
+        embeds: [buildElectionsEmbed(elections, page, totalPages)],
+        components: [buildNavRow(page, totalPages)],
+      });
+    });
+
+    collector.on("end", () => {
+      interaction.editReply({ components: [] }).catch(() => {});
+    });
   } catch (error) {
     await replyWithError(interaction, "elections", error);
   }

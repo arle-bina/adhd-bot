@@ -4,7 +4,7 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { getState } from "../utils/api.js";
-import { replyWithError } from "../utils/helpers.js";
+import { replyWithError, standardFooter } from "../utils/helpers.js";
 
 export function formatOfficeType(type: string): string {
   const map: Record<string, string> = {
@@ -71,7 +71,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           inline: true,
         },
         { name: "Officials", value: officialsValue.slice(0, 1024) }
-      );
+      )
+      .setFooter(standardFooter("Try /elections state:<code> for this state's races"));
 
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {

@@ -44,9 +44,17 @@ type NewsPost = {
   authorName: string;
   isSystem: boolean;
   category: string | null;
+  stateId: string | null;
   reactions: { agree: number; disagree: number };
   createdAt: string;
   postUrl: string;
+};
+
+const categoryLabels: Record<string, string> = {
+  election: "[Election]",
+  legislation: "[Legislation]",
+  executive: "[Executive]",
+  general: "[General]",
 };
 
 function buildNewsEmbed(
@@ -63,8 +71,10 @@ function buildNewsEmbed(
   const slice = posts.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   for (const post of slice) {
+    const catTag = post.category ? (categoryLabels[post.category] ?? "") + " " : "";
+    const stateTag = post.stateId ? ` -- ${post.stateId}` : "";
     const fieldName = (
-      (post.title ?? post.authorName) + (post.isSystem ? " [SYSTEM]" : "")
+      catTag + (post.title ?? post.authorName) + stateTag + (post.isSystem ? " [SYSTEM]" : "")
     ).slice(0, 256);
     const ts = Math.floor(new Date(post.createdAt).getTime() / 1000);
     const footer = `\n👍 ${post.reactions.agree}  👎 ${post.reactions.disagree}  · <t:${ts}:R>  · [Read more](${post.postUrl})`;
