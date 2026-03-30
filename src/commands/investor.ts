@@ -5,6 +5,9 @@ import {
 } from "discord.js";
 import { lookupByName, lookupByDiscordId } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { handleCharacterAutocomplete } from "../utils/characterAutocomplete.js";
+
+export { handleCharacterAutocomplete as autocomplete };
 
 export const cooldown = 5;
 
@@ -12,7 +15,7 @@ export const data = new SlashCommandBuilder()
   .setName("investor")
   .setDescription("Look up a politician's corporate positions — CEO roles, investor rank, and portfolio")
   .addStringOption((o) =>
-    o.setName("name").setDescription("Character name to search for").setRequired(false)
+    o.setName("name").setDescription("Character name to search for").setRequired(false).setAutocomplete(true)
   )
   .addUserOption((o) =>
     o.setName("user").setDescription("Discord user to look up").setRequired(false)

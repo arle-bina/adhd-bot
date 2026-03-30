@@ -994,6 +994,67 @@ export async function getMarketShare(params: {
   return response.json();
 }
 
+// --- Government (national officials) ---
+
+export interface GovernmentOfficial {
+  role: string;
+  section: "executive" | "leadership" | "cabinet";
+  characterId: string | null;
+  characterName: string | null;
+  party: string | null;
+  partyColor: string;
+  profileUrl: string | null;
+  isNPP: boolean;
+}
+
+export interface GovernmentResponse {
+  found: boolean;
+  country: string;
+  countryName: string;
+  officials: GovernmentOfficial[];
+}
+
+export async function getGovernment(country: string): Promise<GovernmentResponse> {
+  const url = new URL("/api/discord-bot/government", process.env.GAME_API_URL);
+  url.searchParams.set("country", country);
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
+}
+
+// --- Autocomplete (lightweight name search) ---
+
+export interface AutocompleteResult {
+  id: string;
+  name: string;
+}
+
+interface AutocompleteResponse {
+  results: AutocompleteResult[];
+}
+
+export async function autocompleteCharacters(query: string, limit = 10): Promise<AutocompleteResult[]> {
+  if (!query) return [];
+  const url = new URL("/api/discord-bot/autocomplete", process.env.GAME_API_URL);
+  url.searchParams.set("type", "characters");
+  url.searchParams.set("q", query);
+  url.searchParams.set("limit", String(limit));
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) return [];
+  const data: AutocompleteResponse = await response.json();
+  return data.results;
+}
+
 export async function getStockExchange(exchange = "global"): Promise<StockExchangeResponse> {
   const url = new URL("/api/stock-exchange", process.env.GAME_API_URL);
   url.searchParams.set("exchange", exchange);
