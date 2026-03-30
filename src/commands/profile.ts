@@ -19,6 +19,9 @@ import {
 } from "../utils/api.js";
 import { syncMemberRoles } from "../utils/roles.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { handleCharacterAutocomplete } from "../utils/characterAutocomplete.js";
+
+export { handleCharacterAutocomplete as autocomplete };
 
 export const cooldown = 5;
 
@@ -26,7 +29,7 @@ export const data = new SlashCommandBuilder()
   .setName("profile")
   .setDescription("View a player profile")
   .addStringOption((option) =>
-    option.setName("name").setDescription("Character name to search for").setRequired(false)
+    option.setName("name").setDescription("Character name to search for").setRequired(false).setAutocomplete(true)
   )
   .addUserOption((option) =>
     option.setName("user").setDescription("Discord user to look up").setRequired(false)

@@ -117,6 +117,13 @@ export const categories: Category[] = [
           "State or region overview — population, voting system (RCV or FPTP), and all current office holders.",
         examples: ["/state id:CA", "/state id:TX", "/state id:UK_ENG"],
       },
+      {
+        name: "/country",
+        usage: "/country [country]",
+        description:
+          "View a country's government — head of state, congressional leadership, and cabinet members. Defaults to the US.",
+        examples: ["/country", "/country country:UK", "/country country:US"],
+      },
     ],
   },
   {
@@ -151,6 +158,17 @@ export const categories: Category[] = [
           "/sectors type:Technology",
           "/sectors type:Energy unowned:true",
           "/sectors type:Media page:2",
+        ],
+      },
+      {
+        name: "/watchlist",
+        usage: "/watchlist <view|add|remove> [corp]",
+        description:
+          "Track your favourite corporations. Add up to 10, then view live share prices, market caps, dividend rates, and industry types in one snapshot.",
+        examples: [
+          "/watchlist view",
+          "/watchlist add corp:Apex Media",
+          "/watchlist remove corp:National Rail",
         ],
       },
     ],

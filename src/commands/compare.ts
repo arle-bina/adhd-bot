@@ -5,6 +5,9 @@ import {
 } from "discord.js";
 import { lookupByName, type CharacterResult } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { handleCharacterAutocomplete } from "../utils/characterAutocomplete.js";
+
+export { handleCharacterAutocomplete as autocomplete };
 
 export const cooldown = 5;
 
@@ -12,10 +15,10 @@ export const data = new SlashCommandBuilder()
   .setName("compare")
   .setDescription("Compare two politicians side by side")
   .addStringOption((o) =>
-    o.setName("politician1").setDescription("First character name").setRequired(true)
+    o.setName("politician1").setDescription("First character name").setRequired(true).setAutocomplete(true)
   )
   .addStringOption((o) =>
-    o.setName("politician2").setDescription("Second character name").setRequired(true)
+    o.setName("politician2").setDescription("Second character name").setRequired(true).setAutocomplete(true)
   );
 
 function policyLabel(val: number): string {
