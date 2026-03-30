@@ -59,14 +59,17 @@ function buildProfileEmbed(char: CharacterResult): EmbedBuilder {
     .setURL(char.profileUrl)
     .setFooter({ text: "ahousedividedgame.com" });
 
+  const hint = "\n-# Try `/compare` for side-by-side or `/investor` for portfolio details";
   if (char.bio) {
-    embed.setDescription(char.bio.slice(0, 300) + (char.bio.length > 300 ? "…" : ""));
+    embed.setDescription(char.bio.slice(0, 300) + (char.bio.length > 300 ? "..." : "") + hint);
+  } else {
+    embed.setDescription(hint.trimStart());
   }
 
   embed.addFields(
     { name: "Position", value: char.position || "None", inline: true },
     { name: "Party", value: char.partyUrl ? `[${char.party}](${char.partyUrl})` : (char.party || "Unknown"), inline: true },
-    { name: "State", value: char.stateUrl ? `[${char.state}](${char.stateUrl})` : (char.state || "Unknown"), inline: true },
+    { name: "State", value: (char.stateUrl ? `[${char.state}](${char.stateUrl})` : (char.state || "Unknown")) + (char.countryUrl ? ` · [Country](${char.countryUrl})` : ""), inline: true },
     { name: "PI", value: String(Math.round(char.politicalInfluence ?? 0)), inline: true },
     { name: "NPI", value: String(Math.round(char.nationalInfluence ?? 0)), inline: true },
     { name: "Approval", value: `${Math.round(char.favorability ?? 0)}%`, inline: true },
@@ -101,7 +104,8 @@ function buildProfileEmbed(char: CharacterResult): EmbedBuilder {
     embed.addFields({ name: "Active Election", value: `${electionType} (${electionState})`, inline: false });
   }
 
-  if (char.avatarUrl) embed.setThumbnail(char.avatarUrl);
+  const thumbnail = char.avatarUrl ?? char.discordAvatarUrl;
+  if (thumbnail) embed.setThumbnail(thumbnail);
 
   return embed;
 }

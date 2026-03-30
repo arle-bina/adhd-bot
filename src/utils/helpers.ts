@@ -11,6 +11,18 @@ const DEFAULT_EMBED_COLOR = 0x5865f2; // Discord blurple
 const ERROR_COLOR = 0xed4245; // Discord red
 const ERRORS_PER_PAGE = 3;
 
+export const SITE_FOOTER = "ahousedividedgame.com";
+
+export function standardFooter(extra?: string): { text: string } {
+  return { text: extra ? `${extra} · ${SITE_FOOTER}` : SITE_FOOTER };
+}
+
+export function positionBar(val: number, width = 10): string {
+  const normalised = (val + 100) / 200; // 0..1
+  const filled = Math.round(normalised * width);
+  return "\u25C0" + "\u2500".repeat(Math.max(0, filled - 1)) + "\u25CF" + "\u2500".repeat(Math.max(0, width - filled)) + "\u25B6";
+}
+
 export function hexToInt(hex: string | null | undefined): number {
   if (!hex) return DEFAULT_EMBED_COLOR;
   const parsed = parseInt(hex.replace("#", ""), 16);

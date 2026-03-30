@@ -4,7 +4,7 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { getParty } from "../utils/api.js";
-import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { hexToInt, replyWithError, positionBar } from "../utils/helpers.js";
 
 export const cooldown = 5;
 
@@ -39,12 +39,6 @@ function ideologyLabel(economic: number, social: number): string {
   return `${econ}-${soc}`;
 }
 
-function positionBar(val: number, width = 10): string {
-  // val in [-100, 100], centre = 0. Map to bar.
-  const normalised = (val + 100) / 200; // 0..1
-  const filled = Math.round(normalised * width);
-  return "◀" + "─".repeat(Math.max(0, filled - 1)) + "●" + "─".repeat(Math.max(0, width - filled)) + "▶";
-}
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
   const slug1 = interaction.options.getString("party1", true);

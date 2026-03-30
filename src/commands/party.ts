@@ -4,7 +4,7 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { getParty } from "../utils/api.js";
-import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { hexToInt, replyWithError, standardFooter } from "../utils/helpers.js";
 
 export function ideologyLabel(economic: number, social: number): string {
   const econ = economic < -20 ? "Left" : economic > 20 ? "Right" : "Center";
@@ -75,7 +75,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           inline: true,
         },
         { name: "Top Members", value: topMembersValue }
-      );
+      )
+      .setFooter(standardFooter("Try /party-compare for side-by-side"));
 
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
