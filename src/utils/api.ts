@@ -994,6 +994,36 @@ export async function getMarketShare(params: {
   return response.json();
 }
 
+// --- Autocomplete ---
+
+export interface AutocompleteResult {
+  id: string;
+  name: string;
+}
+
+interface AutocompleteResponse {
+  results: AutocompleteResult[];
+}
+
+export async function getAutocomplete(params: {
+  type: string;
+  q: string;
+  limit?: number;
+}): Promise<AutocompleteResponse> {
+  const url = new URL("/api/discord-bot/autocomplete", process.env.GAME_API_URL);
+  url.searchParams.set("type", params.type);
+  url.searchParams.set("q", params.q);
+  if (params.limit != null) url.searchParams.set("limit", String(params.limit));
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
+}
+
 export async function getStockExchange(exchange = "global"): Promise<StockExchangeResponse> {
   const url = new URL("/api/stock-exchange", process.env.GAME_API_URL);
   url.searchParams.set("exchange", exchange);

@@ -1,6 +1,7 @@
 import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
+  AutocompleteInteraction,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
@@ -13,6 +14,7 @@ import {
   getCareer,
   getAchievements,
   getSyncRoles,
+  getAutocomplete,
   type CharacterResult,
   type CareerEvent,
   type Achievement,
@@ -26,11 +28,23 @@ export const data = new SlashCommandBuilder()
   .setName("profile")
   .setDescription("View a player profile")
   .addStringOption((option) =>
-    option.setName("name").setDescription("Character name to search for").setRequired(false)
+    option.setName("name").setDescription("Character name to search for").setRequired(false).setAutocomplete(true)
   )
   .addUserOption((option) =>
     option.setName("user").setDescription("Discord user to look up").setRequired(false)
   );
+
+export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  const focused = interaction.options.getFocused();
+  try {
+    const res = await getAutocomplete({ type: "characters", q: focused, limit: 25 });
+    await interaction.respond(
+      res.results.map((r) => ({ name: r.name, value: r.name }))
+    );
+  } catch {
+    await interaction.respond([]);
+  }
+}
 
 type Tab = "profile" | "career" | "achievements";
 
