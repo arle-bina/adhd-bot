@@ -12,9 +12,9 @@ export async function generateLineChart(
   options: { exchange: string; days: number }
 ): Promise<Buffer> {
   const history = data.history || [];
-  
+
   const configuration = {
-    type: 'line',
+    type: 'line' as const,
     data: {
       labels: history.map(point => new Date(point.date).toLocaleDateString()),
       datasets: [{
@@ -44,7 +44,7 @@ export async function generateLineChart(
           display: true,
           text: `${options.exchange} - Last ${options.days} Days`,
           color: '#ffffff',
-          font: { size: 16, weight: 'bold' }
+          font: { size: 16, weight: 'bold' as const }
         },
         legend: {
           labels: { color: '#ffffff' }
@@ -56,9 +56,9 @@ export async function generateLineChart(
           ticks: { color: '#ffffff' }
         },
         y: {
-          type: 'linear',
+          type: 'linear' as const,
           display: true,
-          position: 'left',
+          position: 'left' as const,
           grid: { color: 'rgba(255, 255, 255, 0.1)' },
           ticks: { color: '#ffffff' },
           title: {
@@ -68,9 +68,9 @@ export async function generateLineChart(
           }
         },
         y1: {
-          type: 'linear',
+          type: 'linear' as const,
           display: true,
-          position: 'right',
+          position: 'right' as const,
           grid: { drawOnChartArea: false },
           ticks: { color: '#ffffff' },
           title: {
@@ -91,32 +91,54 @@ export async function generateCandleChart(
   options: { exchange: string; days: number }
 ): Promise<Buffer> {
   const history = data.history || [];
-  
-  // Chart.js doesn't have native candlestick, so we'll simulate with bar + line
+
+  const labels = history.map(point => new Date(point.date).toLocaleDateString());
+
+  // Wick dataset: thin floating bars from low to high
+  const wickData = history.map(point => [point.low, point.high] as [number, number]);
+  const wickColors = history.map(point =>
+    point.close >= point.open ? '#2ecc71' : '#e74c3c'
+  );
+
+  // Body dataset: floating bars from min(open, close) to max(open, close)
+  const bodyData = history.map(point =>
+    [Math.min(point.open, point.close), Math.max(point.open, point.close)] as [number, number]
+  );
+  const bodyBackgrounds = history.map(point =>
+    point.close >= point.open
+      ? 'rgba(46, 204, 113, 0.8)'
+      : 'rgba(231, 76, 60, 0.8)'
+  );
+  const bodyBorders = history.map(point =>
+    point.close >= point.open ? '#2ecc71' : '#e74c3c'
+  );
+
   const configuration = {
-    type: 'bar',
+    type: 'bar' as const,
     data: {
-      labels: history.map(point => new Date(point.date).toLocaleDateString()),
-      datasets: [{
-        label: 'Price Range',
-        data: history.map(point => ({
-          o: point.open,
-          h: point.high,
-          l: point.low,
-          c: point.close
-        })),
-        backgroundColor: history.map(point => 
-          point.close >= point.open 
-            ? 'rgba(46, 204, 113, 0.8)' 
-            : 'rgba(231, 76, 60, 0.8)'
-        ),
-        borderColor: history.map(point => 
-          point.close >= point.open 
-            ? '#2ecc71' 
-            : '#e74c3c'
-        ),
-        borderWidth: 1
-      }]
+      labels,
+      datasets: [
+        {
+          label: 'Wick',
+          data: wickData,
+          backgroundColor: wickColors,
+          borderColor: wickColors,
+          borderWidth: 1,
+          barPercentage: 0.1,
+          categoryPercentage: 1.0,
+          order: 2
+        },
+        {
+          label: 'Body',
+          data: bodyData,
+          backgroundColor: bodyBackgrounds,
+          borderColor: bodyBorders,
+          borderWidth: 1,
+          barPercentage: 0.6,
+          categoryPercentage: 0.8,
+          order: 1
+        }
+      ]
     },
     options: {
       responsive: true,
@@ -125,7 +147,7 @@ export async function generateCandleChart(
           display: true,
           text: `${options.exchange} Candlestick - Last ${options.days} Days`,
           color: '#ffffff',
-          font: { size: 16, weight: 'bold' }
+          font: { size: 16, weight: 'bold' as const }
         },
         legend: {
           display: false
@@ -133,10 +155,12 @@ export async function generateCandleChart(
       },
       scales: {
         x: {
+          stacked: true,
           grid: { color: 'rgba(255, 255, 255, 0.1)' },
           ticks: { color: '#ffffff' }
         },
         y: {
+          stacked: false,
           grid: { color: 'rgba(255, 255, 255, 0.1)' },
           ticks: { color: '#ffffff' },
           title: {
