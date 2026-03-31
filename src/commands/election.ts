@@ -1,6 +1,7 @@
 import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
+  AutocompleteInteraction,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
@@ -10,6 +11,7 @@ import {
 } from "discord.js";
 import {
   getRace,
+  getAutocomplete,
   type RaceDetailResponse,
 } from "../utils/api.js";
 import { formatElectionType } from "./elections.js";
@@ -38,7 +40,7 @@ export const data = new SlashCommandBuilder()
       .addChoices({ name: "United States", value: "US" }, { name: "United Kingdom", value: "UK" })
   )
   .addStringOption((o) =>
-    o.setName("state").setDescription("State or constituency code (e.g. CA, SCO)").setRequired(false)
+    o.setName("state").setDescription("State or constituency code (e.g. CA, SCO)").setRequired(false).setAutocomplete(true)
   )
   .addStringOption((o) =>
     o
@@ -55,6 +57,18 @@ export const data = new SlashCommandBuilder()
         { name: "Prime Minister", value: "primeMinister" }
       )
   );
+
+export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  const focused = interaction.options.getFocused();
+  try {
+    const res = await getAutocomplete({ type: "states", q: focused, limit: 25 });
+    await interaction.respond(
+      res.results.map((r) => ({ name: r.name, value: r.id }))
+    );
+  } catch {
+    await interaction.respond([]);
+  }
+}
 
 function voteBar(pct: number, width = 12): string {
   const filled = Math.max(0, Math.min(width, Math.round((pct / 100) * width)));
