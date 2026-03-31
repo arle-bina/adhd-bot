@@ -941,6 +941,46 @@ interface StockExchangeResponse {
   listings: StockListing[];
 }
 
+export interface MarketHistoryPoint {
+  turn: number;
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface MarketDataResponse {
+  found: boolean;
+  exchange: string;
+  exchangeName: string;
+  currentTurn: number;
+  currentPrice: number;
+  priceChange24h: number;
+  priceChangePct: number;
+  history: MarketHistoryPoint[];
+}
+
+export async function getMarketData(params: {
+  exchange: string;
+  days?: number;
+  chartType?: string;
+}): Promise<MarketDataResponse> {
+  const url = new URL("/api/discord-bot/market", process.env.GAME_API_URL);
+  url.searchParams.set("exchange", params.exchange);
+  if (params.days) url.searchParams.set("days", String(params.days));
+  if (params.chartType) url.searchParams.set("chartType", params.chartType);
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
+}
+
 // --- Market Share ---
 
 export interface MarketShareCompany {
