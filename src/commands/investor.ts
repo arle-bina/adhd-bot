@@ -1,9 +1,10 @@
 import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
+  AutocompleteInteraction,
   EmbedBuilder,
 } from "discord.js";
-import { lookupByName, lookupByDiscordId } from "../utils/api.js";
+import { lookupByName, lookupByDiscordId, getAutocomplete } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
 
 export const cooldown = 5;
@@ -12,11 +13,23 @@ export const data = new SlashCommandBuilder()
   .setName("investor")
   .setDescription("Look up a politician's corporate positions — CEO roles, investor rank, and portfolio")
   .addStringOption((o) =>
-    o.setName("name").setDescription("Character name to search for").setRequired(false)
+    o.setName("name").setDescription("Character name to search for").setRequired(false).setAutocomplete(true)
   )
   .addUserOption((o) =>
     o.setName("user").setDescription("Discord user to look up").setRequired(false)
   );
+
+export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  const focused = interaction.options.getFocused();
+  try {
+    const res = await getAutocomplete({ type: "characters", q: focused, limit: 25 });
+    await interaction.respond(
+      res.results.map((r) => ({ name: r.name, value: r.name }))
+    );
+  } catch {
+    await interaction.respond([]);
+  }
+}
 
 const RANK_MEDAL: Record<number, string> = {
   1: "🥇",

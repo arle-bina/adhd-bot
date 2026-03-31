@@ -1,13 +1,14 @@
 import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
+  AutocompleteInteraction,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
   ComponentType,
 } from "discord.js";
-import { getElections, type Election } from "../utils/api.js";
+import { getElections, getAutocomplete, type Election } from "../utils/api.js";
 import { replyWithError, standardFooter } from "../utils/helpers.js";
 
 export function formatElectionType(type: string): string {
@@ -45,7 +46,20 @@ export const data = new SlashCommandBuilder()
       .setName("state")
       .setDescription("Filter by state/region code (e.g. CA, TX)")
       .setRequired(false)
+      .setAutocomplete(true)
   );
+
+export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  const focused = interaction.options.getFocused();
+  try {
+    const res = await getAutocomplete({ type: "states", q: focused, limit: 25 });
+    await interaction.respond(
+      res.results.map((r) => ({ name: r.name, value: r.id }))
+    );
+  } catch {
+    await interaction.respond([]);
+  }
+}
 
 function buildElectionsEmbed(
   elections: Election[],

@@ -117,6 +117,13 @@ export const categories: Category[] = [
           "State or region overview — population, voting system (RCV or FPTP), and all current office holders.",
         examples: ["/state id:CA", "/state id:TX", "/state id:UK_ENG"],
       },
+      {
+        name: "/government",
+        usage: "/government [country]",
+        description:
+          "View the current government of a country — executives, congressional leadership, and cabinet members. Defaults to US.",
+        examples: ["/government", "/government country:UK", "/government country:DE"],
+      },
     ],
   },
   {

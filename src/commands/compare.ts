@@ -1,9 +1,10 @@
 import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
+  AutocompleteInteraction,
   EmbedBuilder,
 } from "discord.js";
-import { lookupByName, type CharacterResult } from "../utils/api.js";
+import { lookupByName, getAutocomplete, type CharacterResult } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
 
 export const cooldown = 5;
@@ -12,11 +13,23 @@ export const data = new SlashCommandBuilder()
   .setName("compare")
   .setDescription("Compare two politicians side by side")
   .addStringOption((o) =>
-    o.setName("politician1").setDescription("First character name").setRequired(true)
+    o.setName("politician1").setDescription("First character name").setRequired(true).setAutocomplete(true)
   )
   .addStringOption((o) =>
-    o.setName("politician2").setDescription("Second character name").setRequired(true)
+    o.setName("politician2").setDescription("Second character name").setRequired(true).setAutocomplete(true)
   );
+
+export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  const focused = interaction.options.getFocused();
+  try {
+    const res = await getAutocomplete({ type: "characters", q: focused, limit: 25 });
+    await interaction.respond(
+      res.results.map((r) => ({ name: r.name, value: r.name }))
+    );
+  } catch {
+    await interaction.respond([]);
+  }
+}
 
 function policyLabel(val: number): string {
   const clamped = Math.round(Math.max(-100, Math.min(100, val)));

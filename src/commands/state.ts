@@ -1,9 +1,10 @@
 import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
+  AutocompleteInteraction,
   EmbedBuilder,
 } from "discord.js";
-import { getState } from "../utils/api.js";
+import { getState, getAutocomplete } from "../utils/api.js";
 import { replyWithError, standardFooter } from "../utils/helpers.js";
 
 export function formatOfficeType(type: string): string {
@@ -26,9 +27,22 @@ export const data = new SlashCommandBuilder()
   .addStringOption((option) =>
     option
       .setName("id")
-      .setDescription("State/region code (e.g. CA, TX, NY, UK_ENG)")
+      .setDescription("State or region")
       .setRequired(true)
+      .setAutocomplete(true)
   );
+
+export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  const focused = interaction.options.getFocused();
+  try {
+    const res = await getAutocomplete({ type: "states", q: focused, limit: 25 });
+    await interaction.respond(
+      res.results.map((r) => ({ name: r.name, value: r.id }))
+    );
+  } catch {
+    await interaction.respond([]);
+  }
+}
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   const id = interaction.options.getString("id", true);
