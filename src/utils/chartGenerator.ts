@@ -1,5 +1,5 @@
 import { ChartJSNodeCanvas } from 'chartjs-node-canvas';
-import type { MarketDataResponse } from './api.js';
+import type { MarketDataResponse, StockChartMarketResponse, StockChartCorpResponse } from './api.js';
 
 const canvasRenderService = new ChartJSNodeCanvas({
   width: 800,
@@ -81,6 +81,133 @@ export async function generateLineChart(
         }
       }
     }
+  };
+
+  return canvasRenderService.renderToBuffer(configuration);
+}
+
+// ---------------------------------------------------------------------------
+// Stock Chart generators (market-wide & per-corporation)
+// ---------------------------------------------------------------------------
+
+function formatCurrency(value: number): string {
+  if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`;
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
+  return `$${value.toFixed(2)}`;
+}
+
+export type StockChartMetric = "marketCap" | "sharePrice" | "revenue" | "income";
+
+export async function generateStockChartMarket(
+  data: StockChartMarketResponse,
+  options: { title: string; metric: StockChartMetric }
+): Promise<Buffer> {
+  const points = data.points;
+  const values = points.map((p) => p.marketCap);
+
+  const configuration = {
+    type: 'line' as const,
+    data: {
+      labels: points.map((p) => `T${p.turn}`),
+      datasets: [{
+        label: 'Market Cap',
+        data: values,
+        borderColor: '#5865F2',
+        backgroundColor: 'rgba(88, 101, 242, 0.1)',
+        borderWidth: 2,
+        pointRadius: points.length > 50 ? 0 : 2,
+        tension: 0.2,
+        fill: true,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: {
+          display: true,
+          text: options.title,
+          color: '#ffffff',
+          font: { size: 16, weight: 'bold' as const },
+        },
+        legend: { labels: { color: '#ffffff' } },
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255, 255, 255, 0.1)' },
+          ticks: { color: '#ffffff', maxTicksLimit: 15 },
+        },
+        y: {
+          grid: { color: 'rgba(255, 255, 255, 0.1)' },
+          ticks: {
+            color: '#ffffff',
+            callback: (v: number | string) => formatCurrency(Number(v)),
+          },
+          title: { display: true, text: 'Market Cap', color: '#ffffff' },
+        },
+      },
+    },
+  };
+
+  return canvasRenderService.renderToBuffer(configuration);
+}
+
+export async function generateStockChartCorp(
+  data: StockChartCorpResponse,
+  options: { title: string; metric: StockChartMetric }
+): Promise<Buffer> {
+  const points = data.points;
+  const metric = options.metric;
+
+  const values = points.map((p) => p[metric]);
+  const metricLabels: Record<StockChartMetric, string> = {
+    sharePrice: 'Share Price',
+    marketCap: 'Market Cap',
+    revenue: 'Revenue',
+    income: 'Income',
+  };
+
+  const configuration = {
+    type: 'line' as const,
+    data: {
+      labels: points.map((p) => `T${p.turn}`),
+      datasets: [{
+        label: metricLabels[metric],
+        data: values,
+        borderColor: '#57F287',
+        backgroundColor: 'rgba(87, 242, 135, 0.1)',
+        borderWidth: 2,
+        pointRadius: points.length > 50 ? 0 : 2,
+        tension: 0.2,
+        fill: true,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: {
+          display: true,
+          text: options.title,
+          color: '#ffffff',
+          font: { size: 16, weight: 'bold' as const },
+        },
+        legend: { labels: { color: '#ffffff' } },
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255, 255, 255, 0.1)' },
+          ticks: { color: '#ffffff', maxTicksLimit: 15 },
+        },
+        y: {
+          grid: { color: 'rgba(255, 255, 255, 0.1)' },
+          ticks: {
+            color: '#ffffff',
+            callback: (v: number | string) => formatCurrency(Number(v)),
+          },
+          title: { display: true, text: metricLabels[metric], color: '#ffffff' },
+        },
+      },
+    },
   };
 
   return canvasRenderService.renderToBuffer(configuration);
