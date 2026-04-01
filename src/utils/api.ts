@@ -1097,6 +1097,82 @@ export async function getGovernment(country?: string): Promise<GovernmentRespons
   return response.json();
 }
 
+// --- Stock Chart ---
+
+export interface StockChartMarketPoint {
+  turn: number;
+  marketCap: number;
+  bySector: Record<string, number>;
+  timestamp: string;
+}
+
+export interface StockChartCorpPoint {
+  turn: number;
+  sharePrice: number;
+  marketCap: number;
+  revenue: number;
+  income: number;
+  timestamp: string;
+}
+
+export interface StockChartMarketResponse {
+  found: true;
+  mode: "market";
+  exchange: string;
+  points: StockChartMarketPoint[];
+}
+
+export interface StockChartCorpResponse {
+  found: true;
+  mode: "corporation";
+  corporation: { name: string; sequentialId: number; type: string };
+  points: StockChartCorpPoint[];
+}
+
+export interface StockChartNotFoundResponse {
+  found: false;
+}
+
+export type StockChartResponse =
+  | StockChartMarketResponse
+  | StockChartCorpResponse
+  | StockChartNotFoundResponse;
+
+export async function getStockChart(params: {
+  corp?: string;
+  country?: string;
+  limit?: number;
+}): Promise<StockChartResponse> {
+  const url = new URL("/api/discord-bot/stock-chart", process.env.GAME_API_URL);
+  if (params.corp) url.searchParams.set("corp", params.corp);
+  if (params.country) url.searchParams.set("country", params.country);
+  if (params.limit != null) url.searchParams.set("limit", String(params.limit));
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
+}
+
+// --- Stock Chart Corporation Autocomplete ---
+
+export async function getStockChartCorpList(): Promise<CorporationListItem[]> {
+  const url = new URL("/api/discord-bot/corporation", process.env.GAME_API_URL);
+  url.searchParams.set("list", "true");
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  const data: { corporations: CorporationListItem[] } = await response.json();
+  return data.corporations;
+}
+
 export async function getStockExchange(exchange = "global"): Promise<StockExchangeResponse> {
   const url = new URL("/api/stock-exchange", process.env.GAME_API_URL);
   url.searchParams.set("exchange", exchange);
