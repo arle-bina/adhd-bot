@@ -53,7 +53,7 @@ export const data = new SlashCommandBuilder()
 function buildOwnedEmbed(result: OwnedSectorsResponse): EmbedBuilder {
   const lines = result.sectors.map((sector, index) => {
     const rank = (result.page - 1) * 10 + index + 1;
-    return `${rank}. **${sector.corporationName}** — ${sector.stateName} · $${sector.revenue.toLocaleString()} rev · ${sector.growthRate.toFixed(1)}% growth · ${sector.workers.toLocaleString()} workers`;
+    return `${rank}. [**${sector.corporationName}** — ${sector.stateName}](${sector.sectorUrl}) · $${sector.revenue.toLocaleString()} rev · ${sector.growthRate.toFixed(1)}% growth · ${sector.workers.toLocaleString()} workers`;
   });
 
   return new EmbedBuilder()
