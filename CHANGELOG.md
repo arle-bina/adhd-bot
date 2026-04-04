@@ -4,6 +4,24 @@ All notable changes to the AHD Discord Bot are documented here.
 
 ---
 
+## [1.5.0] — 2026-04-04
+
+### Added
+
+- `/blackjack` — `pool` subcommand shows the shared prize pool balance and stats from `GET /api/discord-bot/blackjack/fund`. `play` subcommand runs a full hand with Hit / Stand buttons; outcomes settle via `POST /api/discord-bot/blackjack/wager` (natural blackjack uses `payoutMultiplier: 1.5`; pushes do not call the API). API helpers in `api.ts`: `getBlackjackFund()`, `postBlackjackWager()`, related types.
+- `src/utils/blackjackGame.ts` — shoe creation, hand totals, dealer-stands-on-all-17s rule, shared by the command.
+- Vitest coverage for `blackjackGame` (`tests/utils/blackjackGame.test.ts`) — hand totals, blackjack detection, dealer hit/stand, shoe size, empty-shoe guard.
+
+### Changed
+
+- `/sectors` — sector links for owned rows use `GAME_API_URL` origin so embed links match the configured game site when the API returns a mismatched base URL. Unowned rows link state names to `/state/{id}` on the same origin.
+
+### Fixed
+
+- `chartGenerator.ts` — Chart.js v4 typings satisfied (`type` literals, title font weight, `ChartConfiguration` assertions; candlestick config uses a safe double cast where the dataset shape is non-standard).
+
+---
+
 ## [1.4.0] — 2026-03-19
 
 ### Added

@@ -53,6 +53,13 @@ export const categories: Category[] = [
           "Look up a politician's corporate positions — CEO role, investor rank, and portfolio value. Omit all options to look up yourself.",
         examples: ["/investor name:John Smith", "/investor user:@RainFrog", "/investor"],
       },
+      {
+        name: "/blackjack",
+        usage: "/blackjack pool  ·  /blackjack play wager:<amount>",
+        description:
+          "View the shared blackjack prize pool, or play a hand using your linked character's liquid capital (LC). Wins and losses settle through the game API; natural blackjack pays 3:2.",
+        examples: ["/blackjack pool", "/blackjack play wager:1000"],
+      },
     ],
   },
   {

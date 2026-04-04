@@ -203,27 +203,9 @@ const MAJOR_ARCANA: TarotCard[] = [
 // Minor Arcana suits
 type Suit = "Wands" | "Cups" | "Swords" | "Pentacles";
 
-interface SuitInfo {
-  element: string;
-  theme: string;
-  imagePrefix: string;
-}
-
-const SUIT_INFO: Record<Suit, SuitInfo> = {
-  Wands: { element: "Fire", theme: "passion, ambition, and creativity", imagePrefix: "Wands" },
-  Cups: { element: "Water", theme: "emotions, relationships, and intuition", imagePrefix: "Cups" },
-  Swords: { element: "Air", theme: "intellect, conflict, and truth", imagePrefix: "Swords" },
-  Pentacles: { element: "Earth", theme: "material wealth, work, and health", imagePrefix: "Pents" },
-};
-
 const RANK_NAMES = [
   "Ace", "Two", "Three", "Four", "Five", "Six", "Seven",
   "Eight", "Nine", "Ten", "Page", "Knight", "Queen", "King",
-];
-
-const RANK_NUMBERS = [
-  "01", "02", "03", "04", "05", "06", "07",
-  "08", "09", "10", "11", "12", "13", "14",
 ];
 
 // Upright / reversed keywords for each rank (suit-independent archetypes)
@@ -334,10 +316,8 @@ function buildMinorArcana(): TarotCard[] {
   const suits: Suit[] = ["Wands", "Cups", "Swords", "Pentacles"];
 
   for (const suit of suits) {
-    const info = SUIT_INFO[suit];
     for (let i = 0; i < 14; i++) {
       const rank = RANK_NAMES[i];
-      const num = RANK_NUMBERS[i];
       cards.push({
         name: `${rank} of ${suit}`,
         arcana: "Minor",

@@ -12,6 +12,24 @@ import { replyWithError } from "../utils/helpers.js";
 
 export const cooldown = 10;
 
+function gameSiteOrigin(): string {
+  try {
+    return new URL(process.env.GAME_API_URL!).origin;
+  } catch {
+    return "https://www.ahousedividedgame.com";
+  }
+}
+
+/** Keep path/query from API URLs but use the configured game origin (API may use a stale NEXT_PUBLIC_BASE_URL). */
+function normalizeGamePageUrl(href: string): string {
+  try {
+    const u = new URL(href);
+    return new URL(u.pathname + u.search + u.hash, gameSiteOrigin()).href;
+  } catch {
+    return href;
+  }
+}
+
 export const data = new SlashCommandBuilder()
   .setName("sectors")
   .setDescription("View sector data by industry type")
@@ -53,7 +71,8 @@ export const data = new SlashCommandBuilder()
 function buildOwnedEmbed(result: OwnedSectorsResponse): EmbedBuilder {
   const lines = result.sectors.map((sector, index) => {
     const rank = (result.page - 1) * 10 + index + 1;
-    return `${rank}. [**${sector.corporationName}** — ${sector.stateName}](${sector.sectorUrl}) · $${sector.revenue.toLocaleString()} rev · ${sector.growthRate.toFixed(1)}% growth · ${sector.workers.toLocaleString()} workers`;
+    const sectorHref = normalizeGamePageUrl(sector.sectorUrl);
+    return `${rank}. [**${sector.corporationName}** — ${sector.stateName}](${sectorHref}) · $${sector.revenue.toLocaleString()} rev · ${sector.growthRate.toFixed(1)}% growth · ${sector.workers.toLocaleString()} workers`;
   });
 
   return new EmbedBuilder()
@@ -68,7 +87,8 @@ function buildOwnedEmbed(result: OwnedSectorsResponse): EmbedBuilder {
 function buildUnownedEmbed(result: UnownedSectorsResponse): EmbedBuilder {
   const lines = result.sectors.map((sector, index) => {
     const rank = (result.page - 1) * 10 + index + 1;
-    return `${rank}. **${sector.stateName}** — $${sector.unownedRevenue.toLocaleString()} unowned (of $${sector.totalMarket.toLocaleString()} total)`;
+    const stateHref = new URL(`/state/${encodeURIComponent(sector.stateId)}`, gameSiteOrigin()).href;
+    return `${rank}. [**${sector.stateName}**](${stateHref}) — $${sector.unownedRevenue.toLocaleString()} unowned (of $${sector.totalMarket.toLocaleString()} total)`;
   });
 
   return new EmbedBuilder()

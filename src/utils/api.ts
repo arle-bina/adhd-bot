@@ -850,9 +850,12 @@ export interface OwnedSector {
   revenue: number;
   growthRate: number;
   workers: number;
+  /** Game URL for this corporate sector (`/corporation/{id}/sector/{sectorId}`). */
+  sectorUrl: string;
 }
 
 export interface UnownedSector {
+  stateId: string;
   stateName: string;
   unownedRevenue: number;
   totalMarket: number;
@@ -1183,4 +1186,56 @@ export async function getStockExchange(exchange = "global"): Promise<StockExchan
 
   if (!response.ok) await throwApiError(response, url.pathname);
   return response.json();
+}
+
+// --- Blackjack (prize pool + wagers against linked character LC) ---
+
+export interface BlackjackFundResponse {
+  found: boolean;
+  balance: number;
+  totalWagered?: number;
+  totalPaidOut?: number;
+  collected?: number;
+  gamesPlayed?: number;
+}
+
+export async function getBlackjackFund(): Promise<BlackjackFundResponse> {
+  const url = new URL("/api/discord-bot/blackjack/fund", process.env.GAME_API_URL);
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
+}
+
+export interface BlackjackWagerRequest {
+  discordId: string;
+  wagerAmount: number;
+  result: "win" | "loss";
+  /** Defaults to 1 on the server; use 1.5 for natural blackjack (3:2). */
+  payoutMultiplier?: number;
+}
+
+export interface BlackjackWagerResponse {
+  success?: boolean;
+}
+
+export async function postBlackjackWager(body: BlackjackWagerRequest): Promise<BlackjackWagerResponse> {
+  const url = new URL("/api/discord-bot/blackjack/wager", process.env.GAME_API_URL);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Bot-Token": process.env.GAME_API_KEY!,
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json() as Promise<BlackjackWagerResponse>;
 }

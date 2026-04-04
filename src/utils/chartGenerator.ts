@@ -1,4 +1,5 @@
 import { ChartJSNodeCanvas } from 'chartjs-node-canvas';
+import type { ChartConfiguration } from 'chart.js';
 import type { MarketDataResponse, StockChartMarketResponse, StockChartCorpResponse } from './api.js';
 
 const canvasRenderService = new ChartJSNodeCanvas({
@@ -14,7 +15,7 @@ export async function generateLineChart(
   const history = data.history || [];
   
   const configuration = {
-    type: 'line',
+    type: 'line' as const,
     data: {
       labels: history.map(point => new Date(point.date).toLocaleDateString()),
       datasets: [{
@@ -44,7 +45,7 @@ export async function generateLineChart(
           display: true,
           text: `${options.exchange} - Last ${options.days} Days`,
           color: '#ffffff',
-          font: { size: 16, weight: 'bold' }
+          font: { size: 16, weight: 'bold' as const }
         },
         legend: {
           labels: { color: '#ffffff' }
@@ -83,7 +84,7 @@ export async function generateLineChart(
     }
   };
 
-  return canvasRenderService.renderToBuffer(configuration);
+  return canvasRenderService.renderToBuffer(configuration as ChartConfiguration);
 }
 
 // ---------------------------------------------------------------------------
@@ -149,7 +150,7 @@ export async function generateStockChartMarket(
     },
   };
 
-  return canvasRenderService.renderToBuffer(configuration);
+  return canvasRenderService.renderToBuffer(configuration as ChartConfiguration);
 }
 
 export async function generateStockChartCorp(
@@ -210,7 +211,7 @@ export async function generateStockChartCorp(
     },
   };
 
-  return canvasRenderService.renderToBuffer(configuration);
+  return canvasRenderService.renderToBuffer(configuration as ChartConfiguration);
 }
 
 export async function generateCandleChart(
@@ -221,7 +222,7 @@ export async function generateCandleChart(
   
   // Chart.js doesn't have native candlestick, so we'll simulate with bar + line
   const configuration = {
-    type: 'bar',
+    type: 'bar' as const,
     data: {
       labels: history.map(point => new Date(point.date).toLocaleDateString()),
       datasets: [{
@@ -252,7 +253,7 @@ export async function generateCandleChart(
           display: true,
           text: `${options.exchange} Candlestick - Last ${options.days} Days`,
           color: '#ffffff',
-          font: { size: 16, weight: 'bold' }
+          font: { size: 16, weight: 'bold' as const },
         },
         legend: {
           display: false
@@ -276,5 +277,5 @@ export async function generateCandleChart(
     }
   };
 
-  return canvasRenderService.renderToBuffer(configuration);
+  return canvasRenderService.renderToBuffer(configuration as unknown as ChartConfiguration);
 }
