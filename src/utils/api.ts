@@ -1211,20 +1211,39 @@ export async function getBlackjackFund(): Promise<BlackjackFundResponse> {
   return response.json();
 }
 
-export interface BlackjackWagerRequest {
+export interface BlackjackBalanceResponse {
+  cashOnHand: number;
+  characterName: string;
+}
+
+export async function getBlackjackBalance(discordId: string): Promise<BlackjackBalanceResponse> {
+  const url = new URL("/api/discord-bot/blackjack/balance", process.env.GAME_API_URL);
+  url.searchParams.set("discordId", discordId);
+
+  const response = await fetch(url.toString(), {
+    headers: { "X-Bot-Token": process.env.GAME_API_KEY! },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json();
+}
+
+export interface BlackjackPlaceWagerRequest {
   discordId: string;
   wagerAmount: number;
-  result: "win" | "loss";
-  /** Defaults to 1 on the server; use 1.5 for natural blackjack (3:2). */
-  payoutMultiplier?: number;
+  gameId: string;
 }
 
-export interface BlackjackWagerResponse {
-  success?: boolean;
+export interface BlackjackPlaceWagerResponse {
+  previousCash: number;
+  newCash: number;
 }
 
-export async function postBlackjackWager(body: BlackjackWagerRequest): Promise<BlackjackWagerResponse> {
-  const url = new URL("/api/discord-bot/blackjack/wager", process.env.GAME_API_URL);
+export async function postBlackjackPlaceWager(
+  body: BlackjackPlaceWagerRequest
+): Promise<BlackjackPlaceWagerResponse> {
+  const url = new URL("/api/discord-bot/blackjack/place-wager", process.env.GAME_API_URL);
 
   const response = await fetch(url.toString(), {
     method: "POST",
@@ -1237,5 +1256,36 @@ export async function postBlackjackWager(body: BlackjackWagerRequest): Promise<B
   });
 
   if (!response.ok) await throwApiError(response, url.pathname);
-  return response.json() as Promise<BlackjackWagerResponse>;
+  return response.json() as Promise<BlackjackPlaceWagerResponse>;
+}
+
+export interface BlackjackResolveRequest {
+  discordId: string;
+  gameId: string;
+  result: "win" | "loss" | "push";
+  /** Even money = 1.0; natural blackjack (3:2) = 1.5. Omitted for loss/push if the server ignores it. */
+  payoutMultiplier?: number;
+}
+
+export interface BlackjackResolveResponse {
+  previousCash: number;
+  newCash: number;
+  payout?: number;
+}
+
+export async function postBlackjackResolve(body: BlackjackResolveRequest): Promise<BlackjackResolveResponse> {
+  const url = new URL("/api/discord-bot/blackjack/resolve", process.env.GAME_API_URL);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Bot-Token": process.env.GAME_API_KEY!,
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) await throwApiError(response, url.pathname);
+  return response.json() as Promise<BlackjackResolveResponse>;
 }

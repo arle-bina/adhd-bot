@@ -8,7 +8,13 @@ import {
   ComponentType,
   type Message,
 } from "discord.js";
-import { getBlackjackFund, postBlackjackWager } from "../utils/api.js";
+import {
+  getBlackjackFund,
+  getBlackjackBalance,
+  postBlackjackPlaceWager,
+  postBlackjackResolve,
+  type BlackjackResolveResponse,
+} from "../utils/api.js";
 import {
   createShoe,
   draw,
@@ -53,6 +59,10 @@ function formatHand(cards: Card[], hideSecond: boolean): string {
   return cards.map(cardLabel).join(" · ");
 }
 
+function formatHandSpaced(cards: Card[]): string {
+  return cards.map(cardLabel).join(" ");
+}
+
 function outcomeTitle(
   kind: "win" | "loss" | "push",
   natural: boolean
@@ -60,6 +70,12 @@ function outcomeTitle(
   if (kind === "push") return "Push";
   if (kind === "win") return natural ? "Blackjack!" : "You win";
   return "House wins";
+}
+
+function outcomeEmoji(kind: "win" | "loss" | "push"): string {
+  if (kind === "push") return "🔁";
+  if (kind === "win") return "✅";
+  return "❌";
 }
 
 function buildTableEmbed(params: {
@@ -95,34 +111,81 @@ function buildTableEmbed(params: {
     .setFooter(standardFooter(params.footerNote));
 }
 
-async function settleAndDescribe(
+function buildResultEmbed(params: {
+  characterName: string;
+  wager: number;
+  playerCards: Card[];
+  dealerCards: Card[];
+  kind: "win" | "loss" | "push";
+  naturalWin: boolean;
+  detailLine?: string;
+  resolve: BlackjackResolveResponse;
+}): EmbedBuilder {
+  const pTotal = handTotal(params.playerCards);
+  const dTotal = handTotal(params.dealerCards);
+  const title = outcomeTitle(params.kind, params.naturalWin);
+  const emoji = outcomeEmoji(params.kind);
+  const headline = params.detailLine
+    ? `${emoji} **${title}** — ${params.detailLine}`
+    : `${emoji} **${title}**`;
+
+  const { previousCash, newCash, payout } = params.resolve;
+  const net = newCash - previousCash;
+  const netLabel =
+    net === 0
+      ? "$0"
+      : net > 0
+        ? `+$${net.toLocaleString()}`
+        : `-$${Math.abs(net).toLocaleString()}`;
+
+  let payoutLine: string;
+  if (params.kind === "win") {
+    const amount =
+      payout != null
+        ? payout
+        : Math.round(params.wager * (params.naturalWin ? 1.5 : 1));
+    payoutLine = `💰 **Payout:** $${amount.toLocaleString()}`;
+  } else if (params.kind === "push") {
+    payoutLine = "💰 **Payout:** Stake returned (push)";
+  } else {
+    payoutLine = "💰 **Payout:** $0";
+  }
+
+  const body =
+    `**Player:** ${params.characterName}\n` +
+    `**Wager:** $${params.wager.toLocaleString()}\n\n` +
+    `🃏 **Your hand:** ${formatHandSpaced(params.playerCards)} (${pTotal})\n` +
+    `🎴 **Dealer:** ${formatHandSpaced(params.dealerCards)} (${dTotal})\n\n` +
+    `${headline}\n\n` +
+    `${payoutLine}\n` +
+    `💵 **LC before:** $${previousCash.toLocaleString()}\n` +
+    `💵 **LC after:** $${newCash.toLocaleString()} (${netLabel} net)`;
+
+  return new EmbedBuilder()
+    .setTitle("🎰 Blackjack result")
+    .setColor(FELT_GREEN)
+    .setDescription(body)
+    .setFooter(standardFooter());
+}
+
+async function resolveHand(
   discordId: string,
-  wager: number,
+  gameId: string,
   kind: "win" | "loss" | "push",
   naturalWin: boolean
-): Promise<string> {
+): Promise<BlackjackResolveResponse> {
   if (kind === "push") {
-    return "Push — no LC changes.";
+    return postBlackjackResolve({ discordId, gameId, result: "push" });
   }
   if (kind === "loss") {
-    await postBlackjackWager({
-      discordId,
-      wagerAmount: wager,
-      result: "loss",
-    });
-    return `You lost **$${wager.toLocaleString()} LC** (added to the prize pool).`;
+    return postBlackjackResolve({ discordId, gameId, result: "loss" });
   }
-  const multiplier = naturalWin ? 1.5 : 1;
-  await postBlackjackWager({
+  return postBlackjackResolve({
     discordId,
-    wagerAmount: wager,
+    gameId,
     result: "win",
-    payoutMultiplier: multiplier,
+    payoutMultiplier: naturalWin ? 1.5 : 1,
   });
-  const payout = Math.round(wager * multiplier);
-  return naturalWin
-    ? `Blackjack pays **3:2** — you gained **$${payout.toLocaleString()} LC** from the pool.`
-    : `You gained **$${payout.toLocaleString()} LC** from the pool.`;
 }
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -158,12 +221,34 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   const wager = interaction.options.getInteger("wager", true);
   await interaction.deferReply();
 
+  const gameId = `bj_${interaction.id}`;
+  const discordId = interaction.user.id;
+
+  let characterName: string;
+  try {
+    const bal = await getBlackjackBalance(discordId);
+    characterName = bal.characterName;
+    if (bal.cashOnHand < wager) {
+      await interaction.editReply({
+        content: `You only have **$${bal.cashOnHand.toLocaleString()} LC** on hand; you cannot wager **$${wager.toLocaleString()}**.`,
+      });
+      return;
+    }
+  } catch (err) {
+    await replyWithError(interaction, "blackjack", err);
+    return;
+  }
+
+  try {
+    await postBlackjackPlaceWager({ discordId, wagerAmount: wager, gameId });
+  } catch (err) {
+    await replyWithError(interaction, "blackjack", err);
+    return;
+  }
+
   const prefix = `bj_${interaction.id}`;
   const idHit = `${prefix}_hit`;
   const idStand = `${prefix}_stand`;
-
-  const discordId = interaction.user.id;
-  const displayName = interaction.user.displayName ?? interaction.user.username;
 
   const shoe = createShoe();
   const player: Card[] = [draw(shoe), draw(shoe)];
@@ -175,27 +260,33 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     }
   };
 
+  let finalized = false;
+
   const finalize = async (
     kind: "win" | "loss" | "push",
     naturalWin: boolean,
-    preMessage?: string,
+    detailLine?: string,
     targetMessage?: Message
   ): Promise<void> => {
-    const title = outcomeTitle(kind, naturalWin);
-    let settlement: string;
+    if (finalized) return;
+    finalized = true;
+    let resolve: BlackjackResolveResponse;
     try {
-      settlement = await settleAndDescribe(discordId, wager, kind, naturalWin);
+      resolve = await resolveHand(discordId, gameId, kind, naturalWin);
     } catch (err) {
+      finalized = false;
       await replyWithError(interaction, "blackjack", err);
       return;
     }
-    const embed = buildTableEmbed({
-      playerName: displayName,
+    const embed = buildResultEmbed({
+      characterName,
       wager,
       playerCards: player,
       dealerCards: dealer,
-      hideHole: false,
-      statusLine: `**${title}**\n${preMessage ? `${preMessage}\n` : ""}${settlement}`,
+      kind,
+      naturalWin,
+      detailLine,
+      resolve,
     });
     const payload = { embeds: [embed], components: [] as [] };
     if (targetMessage) {
@@ -211,19 +302,19 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
   if (pBj || dBj) {
     if (pBj && dBj) {
-      await finalize("push", false, "Both you and the dealer have blackjack.");
+      await finalize("push", false, "both you and the dealer have blackjack");
       return;
     }
     if (pBj) {
-      await finalize("win", true, "You have blackjack.");
+      await finalize("win", true, "natural blackjack");
       return;
     }
-    await finalize("loss", false, "Dealer has blackjack.");
+    await finalize("loss", false, "dealer has blackjack");
     return;
   }
 
   const initialEmbed = buildTableEmbed({
-    playerName: displayName,
+    playerName: characterName,
     wager,
     playerCards: player,
     dealerCards: dealer,
@@ -257,14 +348,14 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         await finalize(
           "loss",
           false,
-          `You drew ${cardLabel(player[player.length - 1])} and busted (**${total}**).`,
+          `you drew ${cardLabel(player[player.length - 1])} and busted (${total})`,
           message
         );
         return;
       }
 
       const embed = buildTableEmbed({
-        playerName: displayName,
+        playerName: characterName,
         wager,
         playerCards: player,
         dealerCards: dealer,
@@ -283,13 +374,13 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       const dScore = handTotal(dealer);
 
       if (dScore > 21) {
-        await finalize("win", false, `Dealer busts (**${dScore}**). Your **${pScore}** wins.`, message);
+        await finalize("win", false, `dealer busts (${dScore}); your ${pScore} wins`, message);
       } else if (pScore > dScore) {
-        await finalize("win", false, `**${pScore}** beats **${dScore}**.`, message);
+        await finalize("win", false, `${pScore} beats ${dScore}`, message);
       } else if (pScore < dScore) {
-        await finalize("loss", false, `**${dScore}** beats **${pScore}**.`, message);
+        await finalize("loss", false, `${dScore} beats ${pScore}`, message);
       } else {
-        await finalize("push", false, `Both score **${pScore}**.`, message);
+        await finalize("push", false, `both score ${pScore}`, message);
       }
     }
   });
@@ -300,6 +391,9 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       await message.edit({ components: [] });
     } catch {
       /* message may be gone */
+    }
+    if (!finalized) {
+      await finalize("loss", false, "time ran out — hand forfeited", message);
     }
   });
 }

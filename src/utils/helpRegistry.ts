@@ -57,7 +57,7 @@ export const categories: Category[] = [
         name: "/blackjack",
         usage: "/blackjack pool  ·  /blackjack play wager:<amount>",
         description:
-          "View the shared blackjack prize pool, or play a hand using your linked character's liquid capital (LC). Wins and losses settle through the game API; natural blackjack pays 3:2.",
+          "View the shared blackjack prize pool, or play a hand using your linked character's liquid capital (LC). The wager is deducted when the hand starts and resolved when it ends; natural blackjack pays 3:2.",
         examples: ["/blackjack pool", "/blackjack play wager:1000"],
       },
     ],
