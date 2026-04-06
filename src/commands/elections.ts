@@ -72,8 +72,12 @@ function buildElectionsEmbed(
   const lines = shown.map((e) => {
     const typeLabel = formatElectionType(e.electionType);
     const candidateList =
-      e.candidates.map((c) => `${c.characterName} (${c.party})`).join(", ") ||
-      "No candidates yet";
+      e.candidates
+        .map((c) => {
+          const name = c.profileUrl ? `[${c.characterName}](${c.profileUrl})` : c.characterName;
+          return `${name} (${c.party})`;
+        })
+        .join(", ") || "No candidates yet";
     const timeStr = e.endTime
       ? `<t:${Math.floor(new Date(e.endTime).getTime() / 1000)}:R>`
       : "TBD";

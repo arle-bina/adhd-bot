@@ -65,9 +65,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       s.officials
         .map((o) => {
           const officeLabel = formatOfficeType(o.officeType);
-          const nameStr = o.characterName
-            ? `${o.characterName}${o.isNPP ? " [NPC]" : ""} (${o.party ?? "Independent"})`
-            : "Vacant";
+          if (!o.characterName) return `**${officeLabel}:** Vacant`;
+          const npcSuffix = o.isNPP ? " [NPC]" : "";
+          const display = `${o.characterName}${npcSuffix} (${o.party ?? "Independent"})`;
+          const nameStr = o.profileUrl ? `[${display}](${o.profileUrl})` : display;
           return `**${officeLabel}:** ${nameStr}`;
         })
         .join("\n") || "None";

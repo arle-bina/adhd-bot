@@ -140,6 +140,14 @@ function buildChartUrl(result: MarketShareResponse, showUnowned: boolean): strin
   return `https://quickchart.io/chart?c=${encoded}&w=400&h=400&bkg=%23232428`;
 }
 
+function gameSiteOrigin(): string {
+  try {
+    return new URL(process.env.GAME_API_URL!).origin;
+  } catch {
+    return "https://www.ahousedividedgame.com";
+  }
+}
+
 function buildEmbed(result: MarketShareResponse, showUnowned: boolean): EmbedBuilder {
   const scopeLabel = buildScopeLabel(result);
   const title = `${result.sectorLabel} — ${scopeLabel}`;
@@ -159,7 +167,11 @@ function buildEmbed(result: MarketShareResponse, showUnowned: boolean): EmbedBui
     const lines = result.companies.map((c, i) => {
       const rank = (result.page - 1) * result.pageSize + i + 1;
       const tag = c.isNatcorp ? " · NatCorp" : "";
-      return `${rank}. **${c.corporationName}** — ${c.marketSharePercent.toFixed(2)}% · $${c.revenue.toLocaleString()}${tag}`;
+      const corpHref = c.corporationSequentialId != null
+        ? new URL(`/corporation/${c.corporationSequentialId}`, gameSiteOrigin()).href
+        : null;
+      const nameStr = corpHref ? `[${c.corporationName}](${corpHref})` : c.corporationName;
+      return `${rank}. **${nameStr}** — ${c.marketSharePercent.toFixed(2)}% · $${c.revenue.toLocaleString()}${tag}`;
     });
     embed.setDescription(lines.join("\n").slice(0, 4096));
     embed.setImage(buildChartUrl(result, showUnowned));

@@ -17,6 +17,7 @@ import { replyWithError } from "../utils/helpers.js";
 
 interface ScoredPick {
   name: string;
+  corpUrl: string | null;
   sharePrice: number;
   priceChange24h: number;
   income: number;
@@ -80,6 +81,7 @@ function scorePick(
 
   return {
     name: listing.name,
+    corpUrl: corp.corporation?.corpUrl ?? null,
     sharePrice: listing.sharePrice,
     priceChange24h: listing.priceChange24h,
     income,
@@ -125,7 +127,8 @@ function buildPicksEmbed(picks: ScoredPick[], total: number): EmbedBuilder {
       `Score: ${p.score}/100`,
     ].join("\n");
 
-    embed.addFields({ name: p.name, value: value.slice(0, 1024) });
+    const fieldName = p.corpUrl ? `[${p.name}](${p.corpUrl})` : p.name;
+    embed.addFields({ name: fieldName, value: value.slice(0, 1024) });
   }
 
   if (picks.length === 0) {
