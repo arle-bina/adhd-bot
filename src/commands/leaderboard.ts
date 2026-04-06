@@ -8,7 +8,7 @@ import {
   ComponentType,
 } from "discord.js";
 import { getLeaderboard, LeaderboardCharacter, LeaderboardMetric } from "../utils/api.js";
-import { replyWithError, standardFooter } from "../utils/helpers.js";
+import { replyWithError, standardFooter, normalizeGameUrl } from "../utils/helpers.js";
 
 // Explicit conditional avoids TypeScript's TS7053 "any" error from dynamic key indexing (char[metric]).
 export function getMetricValue(
@@ -82,7 +82,7 @@ function buildLeaderboardEmbed(
 
   const lines = slice.map((char) => {
     const value = getMetricValue(char, metric).toLocaleString();
-    const nameStr = char.profileUrl ? `[${char.name}](${char.profileUrl})` : char.name;
+    const nameStr = char.profileUrl ? `[${char.name}](${normalizeGameUrl(char.profileUrl)})` : char.name;
     return `${char.rank}. **${nameStr}** -- ${char.position} · ${char.party} · ${value}`;
   });
 

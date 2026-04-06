@@ -9,7 +9,7 @@ import {
   type StockListing,
   type CorporationResponse,
 } from "../utils/api.js";
-import { replyWithError } from "../utils/helpers.js";
+import { replyWithError, normalizeGameUrl } from "../utils/helpers.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -81,7 +81,7 @@ function scorePick(
 
   return {
     name: listing.name,
-    corpUrl: corp.corporation?.corpUrl ?? null,
+    corpUrl: corp.corporation?.corpUrl ? normalizeGameUrl(corp.corporation.corpUrl) : null,
     sharePrice: listing.sharePrice,
     priceChange24h: listing.priceChange24h,
     income,
@@ -127,8 +127,8 @@ function buildPicksEmbed(picks: ScoredPick[], total: number): EmbedBuilder {
       `Score: ${p.score}/100`,
     ].join("\n");
 
-    const fieldName = p.corpUrl ? `[${p.name}](${p.corpUrl})` : p.name;
-    embed.addFields({ name: fieldName, value: value.slice(0, 1024) });
+    const linkSuffix = p.corpUrl ? ` · [View](${p.corpUrl})` : "";
+    embed.addFields({ name: p.name, value: (value + linkSuffix).slice(0, 1024) });
   }
 
   if (picks.length === 0) {
