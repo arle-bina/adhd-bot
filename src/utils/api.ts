@@ -213,6 +213,7 @@ export interface ElectionCandidate {
   characterName: string;
   party: string;
   partyColor: string;
+  profileUrl?: string | null;
 }
 
 export interface Election {
@@ -257,6 +258,7 @@ interface StateOfficial {
   party: string | null;
   partyColor: string;
   isNPP: boolean;
+  profileUrl?: string | null;
 }
 
 interface StateData {

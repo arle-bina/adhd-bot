@@ -82,7 +82,8 @@ function buildLeaderboardEmbed(
 
   const lines = slice.map((char) => {
     const value = getMetricValue(char, metric).toLocaleString();
-    return `${char.rank}. **${char.name}** -- ${char.position} · ${char.party} · ${value}`;
+    const nameStr = char.profileUrl ? `[${char.name}](${char.profileUrl})` : char.name;
+    return `${char.rank}. **${nameStr}** -- ${char.position} · ${char.party} · ${value}`;
   });
 
   const footerParts: string[] = [];
