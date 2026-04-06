@@ -8,7 +8,7 @@ import {
   ComponentType,
 } from "discord.js";
 import { getMarketShare, SectorType, MarketShareResponse } from "../utils/api.js";
-import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { hexToInt, replyWithError, normalizeGameUrl } from "../utils/helpers.js";
 
 export const cooldown = 10;
 
@@ -140,14 +140,6 @@ function buildChartUrl(result: MarketShareResponse, showUnowned: boolean): strin
   return `https://quickchart.io/chart?c=${encoded}&w=400&h=400&bkg=%23232428`;
 }
 
-function gameSiteOrigin(): string {
-  try {
-    return new URL(process.env.GAME_API_URL!).origin;
-  } catch {
-    return "https://www.ahousedividedgame.com";
-  }
-}
-
 function buildEmbed(result: MarketShareResponse, showUnowned: boolean): EmbedBuilder {
   const scopeLabel = buildScopeLabel(result);
   const title = `${result.sectorLabel} — ${scopeLabel}`;
@@ -168,7 +160,7 @@ function buildEmbed(result: MarketShareResponse, showUnowned: boolean): EmbedBui
       const rank = (result.page - 1) * result.pageSize + i + 1;
       const tag = c.isNatcorp ? " · NatCorp" : "";
       const corpHref = c.corporationSequentialId != null
-        ? new URL(`/corporation/${c.corporationSequentialId}`, gameSiteOrigin()).href
+        ? normalizeGameUrl(`/corporation/${c.corporationSequentialId}`)
         : null;
       const nameStr = corpHref ? `[${c.corporationName}](${corpHref})` : c.corporationName;
       return `${rank}. **${nameStr}** — ${c.marketSharePercent.toFixed(2)}% · $${c.revenue.toLocaleString()}${tag}`;

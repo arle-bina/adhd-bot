@@ -13,6 +13,27 @@ const ERRORS_PER_PAGE = 3;
 
 export const SITE_FOOTER = "ahousedividedgame.com";
 
+/**
+ * Normalise a URL returned by the game API so it always uses the configured
+ * GAME_API_URL origin. The API can return stale Next.js NEXT_PUBLIC_BASE_URL
+ * values (e.g. localhost:3000) — this replaces the origin while keeping the
+ * path, query, and hash intact.
+ */
+export function normalizeGameUrl(href: string): string {
+  let origin: string;
+  try {
+    origin = new URL(process.env.GAME_API_URL!).origin;
+  } catch {
+    origin = "https://www.ahousedividedgame.com";
+  }
+  try {
+    const u = new URL(href);
+    return new URL(u.pathname + u.search + u.hash, origin).href;
+  } catch {
+    return new URL(href, origin).href;
+  }
+}
+
 export function standardFooter(extra?: string): { text: string } {
   return { text: extra ? `${extra} · ${SITE_FOOTER}` : SITE_FOOTER };
 }
