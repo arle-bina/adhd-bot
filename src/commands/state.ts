@@ -5,7 +5,7 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { getState, getAutocomplete } from "../utils/api.js";
-import { replyWithError, standardFooter } from "../utils/helpers.js";
+import { replyWithError, standardFooter, normalizeGameUrl } from "../utils/helpers.js";
 
 export function formatOfficeType(type: string): string {
   const map: Record<string, string> = {
@@ -68,7 +68,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           if (!o.characterName) return `**${officeLabel}:** Vacant`;
           const npcSuffix = o.isNPP ? " [NPC]" : "";
           const display = `${o.characterName}${npcSuffix} (${o.party ?? "Independent"})`;
-          const nameStr = o.profileUrl ? `[${display}](${o.profileUrl})` : display;
+          const nameStr = o.profileUrl ? `[${display}](${normalizeGameUrl(o.profileUrl)})` : display;
           return `**${officeLabel}:** ${nameStr}`;
         })
         .join("\n") || "None";
