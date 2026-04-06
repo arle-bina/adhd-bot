@@ -10,7 +10,7 @@ import {
   ComponentType,
 } from "discord.js";
 import { getMarketShare, SectorType, MarketShareResponse } from "../utils/api.js";
-import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { hexToInt, replyWithError, normalizeGameUrl } from "../utils/helpers.js";
 import { renderBarChart, brandColor, OTHERS, UNOWNED, compactMoney, type BarRow } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
 import { linkList, subtext, meta } from "../utils/embeds.js";
@@ -24,6 +24,7 @@ import {
   symbolFor,
   CURRENCY_CHOICES,
 } from "../utils/currency.js";
+
 
 export const cooldown = 10;
 
@@ -155,14 +156,6 @@ function buildChart(
   });
 }
 
-function gameSiteOrigin(): string {
-  try {
-    return new URL(process.env.GAME_API_URL!).origin;
-  } catch {
-    return "https://www.ahousedividedgame.com";
-  }
-}
-
 interface MarketShareReply {
   embeds: EmbedBuilder[];
   files: AttachmentBuilder[];
@@ -196,7 +189,7 @@ function buildReply(result: MarketShareResponse, showUnowned: boolean, targetCur
         label: c.corporationName,
         url:
           c.corporationSequentialId != null
-            ? new URL(`/corporation/${c.corporationSequentialId}`, gameSiteOrigin()).href
+            ? normalizeGameUrl(`/corporation/${c.corporationSequentialId}`)
             : null,
         note: c.isNatcorp ? "NatCorp" : undefined,
       })),

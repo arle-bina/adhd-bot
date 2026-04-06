@@ -9,7 +9,7 @@ import {
   ComponentType,
 } from "discord.js";
 import { getElections, getAutocomplete, type Election } from "../utils/api.js";
-import { replyWithError, standardFooter } from "../utils/helpers.js";
+import { replyWithError, standardFooter, normalizeGameUrl } from "../utils/helpers.js";
 import { formatElectionType } from "../utils/formatting.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 
@@ -69,7 +69,7 @@ function buildElectionsEmbed(
     const candidateList =
       e.candidates
         .map((c) => {
-          const name = c.profileUrl ? `[${c.characterName}](${c.profileUrl})` : c.characterName;
+          const name = c.profileUrl ? `[${c.characterName}](${normalizeGameUrl(c.profileUrl)})` : c.characterName;
           return `${name} (${c.party})`;
         })
         .join(", ") || "No candidates yet";

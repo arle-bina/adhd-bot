@@ -8,7 +8,7 @@ import {
   ComponentType,
 } from "discord.js";
 import { getSectors, SectorType, OwnedSectorsResponse, UnownedSectorsResponse } from "../utils/api.js";
-import { replyWithError } from "../utils/helpers.js";
+import { replyWithError, normalizeGameUrl } from "../utils/helpers.js";
 import {
   formatCurrency,
   fetchForexRates,
@@ -21,25 +21,8 @@ import { renderBarChart, seriesColor, signedPercent, compactMoney, STATUS, OTHER
 import { chartAttachment } from "../utils/viz/attach.js";
 import { linkList, subtext, meta } from "../utils/embeds.js";
 
+
 export const cooldown = 10;
-
-function gameSiteOrigin(): string {
-  try {
-    return new URL(process.env.GAME_API_URL!).origin;
-  } catch {
-    return "https://www.ahousedividedgame.com";
-  }
-}
-
-/** Keep path/query from API URLs but use the configured game origin (API may use a stale NEXT_PUBLIC_BASE_URL). */
-function normalizeGamePageUrl(href: string): string {
-  try {
-    const u = new URL(href);
-    return new URL(u.pathname + u.search + u.hash, gameSiteOrigin()).href;
-  } catch {
-    return href;
-  }
-}
 
 export const data = new SlashCommandBuilder()
   .setName("sectors")
@@ -99,7 +82,7 @@ function buildOwnedEmbed(result: OwnedSectorsResponse, targetCurrency: string): 
   const links = linkList(
     result.sectors.map((sector) => ({
       label: `${sector.corporationName} — ${sector.stateName}`,
-      url: normalizeGamePageUrl(sector.sectorUrl),
+      url: normalizeGameUrl(sector.sectorUrl),
     })),
   );
   const workers = result.sectors.reduce((sum, s) => sum + (s.workers ?? 0), 0);
@@ -119,7 +102,7 @@ function buildUnownedEmbed(result: UnownedSectorsResponse, targetCurrency: strin
   const links = linkList(
     result.sectors.map((sector) => ({
       label: sector.stateName,
-      url: new URL(`/state/${encodeURIComponent(sector.stateId)}`, gameSiteOrigin()).href,
+      url: normalizeGameUrl(`/state/${encodeURIComponent(sector.stateId)}`),
     })),
   );
   // Market amounts arrive in anchor currency (₳ = USD).
