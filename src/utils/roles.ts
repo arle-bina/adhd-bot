@@ -110,7 +110,7 @@ export async function syncMemberRoles(
     guild.roles.everyone.id,
     ...(process.env.MEMBER_ROLE_ID ? [process.env.MEMBER_ROLE_ID] : []),
     ...(process.env.ALPHA_TESTER_ROLE_ID ? [process.env.ALPHA_TESTER_ROLE_ID] : []),
-    ...(process.env.BETA_TESTER_ROLE_ID ? [process.env.BETA_TESTER_ROLE_ID] : []),
+    "1490410327387541687", // Beta Tester role
     ...additionalProtected,
   ]);
 

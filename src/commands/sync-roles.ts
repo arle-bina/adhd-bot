@@ -2,6 +2,8 @@ import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits }
 import { getSyncRoles } from "../utils/api.js";
 import { syncMemberRoles } from "../utils/roles.js";
 
+const BETA_TESTER_ROLE_ID = "1490410327387541687";
+
 export const cooldown = 30;
 
 export const data = new SlashCommandBuilder()
@@ -32,10 +34,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const humans = [...members.values()].filter((m) => !m.user.bot);
 
     if (betaUpdate) {
-      const betaRoleId = process.env.BETA_TESTER_ROLE_ID!;
+      const betaRoleId = BETA_TESTER_ROLE_ID;
       const betaRole = guild.roles.cache.get(betaRoleId);
       if (!betaRole) {
-        await interaction.editReply({ content: "Beta Tester role not found. Check `BETA_TESTER_ROLE_ID`." });
+        await interaction.editReply({ content: "Beta Tester role not found in this guild." });
         return;
       }
 

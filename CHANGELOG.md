@@ -8,12 +8,12 @@ All notable changes to the AHD Discord Bot are documented here.
 
 ### Added
 
-- `/accept` now also assigns the Beta Tester role (`BETA_TESTER_ROLE_ID`) alongside Member and Alpha Tester, so every newly verified member becomes a beta tester automatically.
+- `/accept` now also assigns the Beta Tester role (ID `1490410327387541687`) alongside Member and Alpha Tester, so every newly verified member becomes a beta tester automatically.
 - `/sync-roles beta-update:true` — one-off backfill that assigns the Beta Tester role to every non-bot member that doesn't already have it. Without the option, `/sync-roles` still runs the normal game-role sync.
 
 ### Changed
 
-- `BETA_TESTER_ROLE_ID` added to the protected role list in `utils/roles.ts` so the regular sync never strips it.
+- Beta Tester role ID added to the protected role list in `utils/roles.ts` so the regular sync never strips it.
 
 ---
 
