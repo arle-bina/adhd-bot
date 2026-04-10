@@ -187,6 +187,7 @@ cp .env.example .env
 | `WELCOME_CHANNEL_ID` | Channel ID where welcome messages are sent to new members |
 | `RULES_CHANNEL_ID` | Channel ID linked in the welcome message |
 | `MEMBER_ROLE_ID` | Role ID assigned by `/accept` |
+| `ALPHA_TESTER_ROLE_ID` | Role ID assigned by `/accept` |
 
 ### Development
 

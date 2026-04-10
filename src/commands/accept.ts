@@ -7,6 +7,8 @@ import { getSyncRoles } from "../utils/api.js";
 import { syncMemberRoles } from "../utils/roles.js";
 import { replyWithError } from "../utils/helpers.js";
 
+const BETA_TESTER_ROLE_ID = "1490410327387541687";
+
 export const data = new SlashCommandBuilder()
   .setName("accept")
   .setDescription("Accept the server rules and gain access");
@@ -31,6 +33,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await member.roles.remove(process.env.UNVERIFIED_ROLE_ID!);
     await member.roles.add(process.env.MEMBER_ROLE_ID!);
     await member.roles.add(process.env.ALPHA_TESTER_ROLE_ID!);
+    await member.roles.add(BETA_TESTER_ROLE_ID);
     await interaction.editReply({ content: "✅ Welcome! You now have access to the server." });
 
     // Best-effort: sync game roles if account is linked
