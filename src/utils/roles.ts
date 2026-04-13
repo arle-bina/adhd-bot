@@ -1,21 +1,6 @@
 import { GuildMember, Guild } from "discord.js";
 import type { SyncRolesDetails } from "./api.js";
-
-const COUNTRY_NAMES: Record<string, string> = {
-  US: "United States",
-  UK: "United Kingdom",
-  CA: "Canada",
-  DE: "Germany",
-  JP: "Japan",
-};
-
-const COUNTRY_COLORS: Record<string, number> = {
-  US: 0x3c5a9a,
-  UK: 0x9a3c3c,
-  CA: 0xd52b1e,
-  DE: 0xffcc00,
-  JP: 0xbc002d,
-};
+import { COUNTRY_NAMES, COUNTRY_COLORS } from "./formatting.js";
 
 const OFFICE_COLOR = 0xe67e22;
 const CEO_COLOR = 0xf1c40f;

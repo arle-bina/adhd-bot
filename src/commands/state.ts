@@ -6,21 +6,9 @@ import {
 } from "discord.js";
 import { getState, getAutocomplete } from "../utils/api.js";
 import { replyWithError, standardFooter } from "../utils/helpers.js";
+import { formatOfficeType } from "../utils/formatting.js";
 
-export function formatOfficeType(type: string): string {
-  const map: Record<string, string> = {
-    governor: "Governor",
-    senate: "Senator",
-    house: "Representative",
-    stateSenate: "State Senator",
-    commons: "MP",
-    primeMinister: "Prime Minister",
-    shugiin: "Representative",
-    sangiin: "Councillor",
-    bundestag: "MdB",
-  };
-  return map[type] ?? type;
-}
+export { formatOfficeType };
 
 export const cooldown = 5;
 

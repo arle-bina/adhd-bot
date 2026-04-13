@@ -4,25 +4,12 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { getElections, getTurnStatus } from "../utils/api.js";
-import { formatElectionType } from "./elections.js";
+import { formatElectionType, RACE_EMOJI } from "../utils/formatting.js";
 import { replyWithError } from "../utils/helpers.js";
 
 export const cooldown = 5;
 
 const TURNS_PER_YEAR = 48;
-
-const RACE_EMOJI: Record<string, string> = {
-  senate: "🏛️",
-  house: "🏠",
-  stateSenate: "🏢",
-  governor: "👔",
-  president: "🇺🇸",
-  commons: "🇬🇧",
-  primeMinister: "🇬🇧",
-  shugiin: "🇯🇵",
-  sangiin: "🇯🇵",
-  bundestag: "🇩🇪",
-};
 
 export const data = new SlashCommandBuilder()
   .setName("calendar")

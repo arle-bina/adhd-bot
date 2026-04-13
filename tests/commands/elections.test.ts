@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatElectionType } from "../../src/commands/elections.js";
+import { formatElectionType } from "../../src/utils/formatting.js";
 
 describe("formatElectionType", () => {
   it.each([
