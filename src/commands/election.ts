@@ -27,6 +27,9 @@ const RACE_EMOJI: Record<string, string> = {
   president: "🇺🇸",
   commons: "🇬🇧",
   primeMinister: "🇬🇧",
+  shugiin: "🇯🇵",
+  sangiin: "🇯🇵",
+  bundestag: "🇩🇪",
 };
 
 export const data = new SlashCommandBuilder()
@@ -37,7 +40,13 @@ export const data = new SlashCommandBuilder()
       .setName("country")
       .setDescription("Country")
       .setRequired(true)
-      .addChoices({ name: "United States", value: "US" }, { name: "United Kingdom", value: "UK" })
+      .addChoices(
+        { name: "United States", value: "US" },
+        { name: "United Kingdom", value: "UK" },
+        { name: "Japan", value: "JP" },
+        { name: "Canada", value: "CA" },
+        { name: "Germany", value: "DE" }
+      )
   )
   .addStringOption((o) =>
     o.setName("state").setDescription("State or constituency code (e.g. CA, SCO)").setRequired(false).setAutocomplete(true)
@@ -54,7 +63,9 @@ export const data = new SlashCommandBuilder()
         { name: "Governor", value: "governor" },
         { name: "President", value: "president" },
         { name: "Commons", value: "commons" },
-        { name: "Prime Minister", value: "primeMinister" }
+        { name: "Prime Minister", value: "primeMinister" },
+        { name: "Shūgiin (JP)", value: "shugiin" },
+        { name: "Sangiin (JP)", value: "sangiin" }
       )
   );
 

@@ -31,7 +31,7 @@ export const categories: Category[] = [
         name: "/leaderboard",
         usage: "/leaderboard [metric] [country] [limit]",
         description:
-          "Top politicians ranked by political influence, national influence, favorability, actions, or funds. Filter by US or UK, show up to 25 results.",
+          "Top politicians ranked by political influence, national influence, favorability, actions, or funds. Filter by country, show up to 25 results.",
         examples: [
           "/leaderboard",
           "/leaderboard metric:Favorability country:US limit:5",
@@ -77,7 +77,7 @@ export const categories: Category[] = [
       },
       {
         name: "/election",
-        usage: "/election country:<US|UK> [state] [race]",
+        usage: "/election country:<US|UK|JP|CA|DE> [state] [race]",
         description:
           "Drill into a specific race — shows phase (upcoming/primary/general/ended), candidate standings, vote shares, electoral votes, and a link to the election page. Omit state and race to browse all elections for a country.",
         examples: [
@@ -102,14 +102,14 @@ export const categories: Category[] = [
       },
       {
         name: "/party",
-        usage: "/party id:<slug> country:<US|UK>",
+        usage: "/party id:<slug> country:<US|UK|JP|CA|DE>",
         description:
           "Look up a political party — ideology, membership count, treasury, chair, and top politicians.",
         examples: ["/party id:labour country:UK", "/party id:republican country:US"],
       },
       {
         name: "/party-compare",
-        usage: "/party-compare party1:<slug> country1:<US|UK> party2:<slug> country2:<US|UK>",
+        usage: "/party-compare party1:<slug> country1:<US|UK|JP|CA|DE> party2:<slug> country2:<US|UK|JP|CA|DE>",
         description:
           "Side-by-side comparison of two parties — ideology positions (with visual bars), membership, treasury, chair, and top members.",
         examples: [

@@ -29,11 +29,14 @@ export const data = new SlashCommandBuilder()
   .addStringOption((option) =>
     option
       .setName("country")
-      .setDescription("Country code (e.g. US, UK)")
+      .setDescription("Country code (e.g. US, UK, JP)")
       .setRequired(true)
       .addChoices(
         { name: "United States", value: "US" },
         { name: "United Kingdom", value: "UK" },
+        { name: "Japan", value: "JP" },
+        { name: "Canada", value: "CA" },
+        { name: "Germany", value: "DE" },
       )
   );
 

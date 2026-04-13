@@ -1003,7 +1003,7 @@ export interface MarketShareResponse {
   sectorType: string;
   sectorLabel: string;
   scope: {
-    country: "US" | "UK" | "CA" | "DE" | null;
+    country: "US" | "UK" | "CA" | "DE" | "JP" | null;
     stateId: string | null;
     stateName: string | null;
   };
