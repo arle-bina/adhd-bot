@@ -28,6 +28,7 @@ export interface CorporationFinancials {
   maintenanceCosts: number;
   growthCosts: number;
   marketingCosts: number;
+  logisticsCosts: number;
   ceoSalaryCost: number;
   totalCosts: number;
   income: number;
@@ -152,6 +153,7 @@ export interface FinancialsResponse {
       maintenance: number;
       growth: number;
       marketing: number;
+      logistics: number;
       ceoSalary: number;
       operatingTotal: number;
       bondInterest: number;
@@ -173,7 +175,6 @@ export interface FinancialsResponse {
     publicFloat: number;
     publicFloatPct: number;
     sharePrice: number;
-    lastTradePrice: number;
     marketCapitalization: number;
     shareholders: Array<{ name: string; shares: number; percentage: number; value: number }>;
   };
