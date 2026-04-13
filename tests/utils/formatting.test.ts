@@ -13,6 +13,7 @@ describe("formatElectionType", () => {
   it.each([
     ["senate", "Senate"],
     ["house", "House"],
+    ["stateSenate", "State Senate"],
     ["governor", "Governor"],
     ["president", "Presidential"],
     ["commons", "Commons"],
@@ -51,9 +52,10 @@ describe("formatOfficeType", () => {
 
 describe("constant maps", () => {
   it("RACE_EMOJI has entries for all election types", () => {
-    expect(Object.keys(RACE_EMOJI)).toEqual(
-      expect.arrayContaining(["senate", "house", "shugiin", "sangiin", "bundestag"])
-    );
+    expect(Object.keys(RACE_EMOJI).sort()).toEqual([
+      "bundestag", "commons", "governor", "house", "president",
+      "primeMinister", "sangiin", "senate", "shugiin", "stateSenate",
+    ]);
   });
 
   it("COUNTRY_NAMES covers all 5 countries", () => {
