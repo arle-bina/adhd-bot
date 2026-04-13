@@ -19,6 +19,7 @@ const COUNTRY_FLAG: Record<string, string> = {
   UK: "🇬🇧",
   CA: "🇨🇦",
   DE: "🇩🇪",
+  JP: "🇯🇵",
 };
 
 export const data = new SlashCommandBuilder()
@@ -32,6 +33,7 @@ export const data = new SlashCommandBuilder()
       .addChoices(
         { name: "United States", value: "US" },
         { name: "United Kingdom", value: "UK" },
+        { name: "Japan", value: "JP" },
         { name: "Canada", value: "CA" },
         { name: "Germany", value: "DE" },
       )

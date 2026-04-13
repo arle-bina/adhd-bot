@@ -15,6 +15,9 @@ export function formatOfficeType(type: string): string {
     stateSenate: "State Senator",
     commons: "MP",
     primeMinister: "Prime Minister",
+    shugiin: "Representative",
+    sangiin: "Councillor",
+    bundestag: "MdB",
   };
   return map[type] ?? type;
 }

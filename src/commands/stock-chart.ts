@@ -73,6 +73,9 @@ export const data = new SlashCommandBuilder()
       .addChoices(
         { name: "United States (NYSE)", value: "us" },
         { name: "United Kingdom (FTSE)", value: "uk" },
+        { name: "Japan (Nikkei)", value: "jp" },
+        { name: "Canada (TSX)", value: "ca" },
+        { name: "Germany (DAX)", value: "de" },
       ),
   )
   .addStringOption((o) =>
@@ -98,6 +101,9 @@ const exchangeLabels: Record<string, string> = {
   global: "Global Stock Market",
   nyse: "NYSE",
   ftse: "FTSE",
+  nikkei: "Nikkei",
+  tsx: "TSX",
+  dax: "DAX",
 };
 
 function buildTitle(mode: "market" | "corporation", exchange: string, corpName?: string, metric?: StockChartMetric): string {

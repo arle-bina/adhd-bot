@@ -15,6 +15,7 @@ export const cooldown = 10;
 const COUNTRY_NAMES: Record<string, string> = {
   US: "United States",
   UK: "United Kingdom",
+  JP: "Japan",
   CA: "Canada",
   DE: "Germany",
 };
@@ -60,6 +61,7 @@ export const data = new SlashCommandBuilder()
       .addChoices(
         { name: "United States", value: "US" },
         { name: "United Kingdom", value: "UK" },
+        { name: "Japan", value: "JP" },
         { name: "Canada", value: "CA" },
         { name: "Germany", value: "DE" },
       )

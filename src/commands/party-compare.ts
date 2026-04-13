@@ -18,7 +18,10 @@ export const data = new SlashCommandBuilder()
     o.setName("country1").setDescription("Country for the first party").setRequired(true)
       .addChoices(
         { name: "United States", value: "US" },
-        { name: "United Kingdom", value: "UK" }
+        { name: "United Kingdom", value: "UK" },
+        { name: "Japan", value: "JP" },
+        { name: "Canada", value: "CA" },
+        { name: "Germany", value: "DE" }
       )
   )
   .addStringOption((o) =>
@@ -28,7 +31,10 @@ export const data = new SlashCommandBuilder()
     o.setName("country2").setDescription("Country for the second party").setRequired(true)
       .addChoices(
         { name: "United States", value: "US" },
-        { name: "United Kingdom", value: "UK" }
+        { name: "United Kingdom", value: "UK" },
+        { name: "Japan", value: "JP" },
+        { name: "Canada", value: "CA" },
+        { name: "Germany", value: "DE" }
       )
   );
 

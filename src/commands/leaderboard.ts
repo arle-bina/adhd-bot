@@ -49,7 +49,10 @@ export const data = new SlashCommandBuilder()
       .setRequired(false)
       .addChoices(
         { name: "United States", value: "US" },
-        { name: "United Kingdom", value: "UK" }
+        { name: "United Kingdom", value: "UK" },
+        { name: "Japan", value: "JP" },
+        { name: "Canada", value: "CA" },
+        { name: "Germany", value: "DE" }
       )
   )
   .addIntegerOption((option) =>

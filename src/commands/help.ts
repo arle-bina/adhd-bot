@@ -17,7 +17,7 @@ export function buildOverviewEmbed(): EmbedBuilder {
     .setTitle("📖  A House Divided — Commands")
     .setColor(0x5865f2)
     .setDescription(
-      "Your companion for **A House Divided** — a political simulation spanning the US and UK.\n\nSelect a category below to explore commands in detail."
+      "Your companion for **A House Divided** — a political simulation spanning the US, UK, Japan, Canada, and Germany.\n\nSelect a category below to explore commands in detail."
     )
     .setFooter({ text: "ahousedividedgame.com" });
 

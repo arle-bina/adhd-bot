@@ -16,8 +16,9 @@ export default {
           { name: "Global", value: "global" },
           { name: "United States (NYSE)", value: "us" },
           { name: "United Kingdom (FTSE)", value: "uk" },
-          { name: "Canada", value: "ca" },
-          { name: "Germany", value: "de" }
+          { name: "Japan (Nikkei)", value: "jp" },
+          { name: "Canada (TSX)", value: "ca" },
+          { name: "Germany (DAX)", value: "de" }
         )
     )
     .addStringOption((option) =>
@@ -52,6 +53,7 @@ export default {
         global: "global",
         us: "nyse",
         uk: "ftse",
+        jp: "nikkei",
         ca: "tsx",
         de: "dax"
       };

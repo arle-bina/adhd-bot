@@ -19,6 +19,7 @@ export const data = new SlashCommandBuilder()
       .addChoices(
         { name: "United States", value: "US" },
         { name: "United Kingdom", value: "UK" },
+        { name: "Japan", value: "JP" },
         { name: "Canada", value: "CA" },
         { name: "Germany", value: "DE" },
       )
@@ -32,6 +33,8 @@ export const data = new SlashCommandBuilder()
         { name: "Senate (US)", value: "senate" },
         { name: "House (US)", value: "house" },
         { name: "Commons (UK/CA)", value: "commons" },
+        { name: "Shūgiin (JP)", value: "shugiin" },
+        { name: "Sangiin (JP)", value: "sangiin" },
         { name: "Bundestag (DE)", value: "bundestag" },
       )
   );
