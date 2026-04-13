@@ -12,13 +12,7 @@ import { hexToInt, replyWithError } from "../utils/helpers.js";
 
 export const cooldown = 10;
 
-const COUNTRY_NAMES: Record<string, string> = {
-  US: "United States",
-  UK: "United Kingdom",
-  JP: "Japan",
-  CA: "Canada",
-  DE: "Germany",
-};
+import { COUNTRY_NAMES } from "../utils/formatting.js";
 
 // Distinct palette for companies without a brand color
 const SLICE_PALETTE = [

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatOfficeType } from "../../src/commands/state.js";
+import { formatOfficeType } from "../../src/utils/formatting.js";
 
 describe("formatOfficeType", () => {
   it.each([

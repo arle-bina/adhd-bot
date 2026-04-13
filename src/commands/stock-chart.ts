@@ -97,14 +97,7 @@ export const cooldown = 5;
 // Helpers
 // ---------------------------------------------------------------------------
 
-const exchangeLabels: Record<string, string> = {
-  global: "Global Stock Market",
-  nyse: "NYSE",
-  ftse: "FTSE",
-  nikkei: "Nikkei",
-  tsx: "TSX",
-  dax: "DAX",
-};
+import { EXCHANGE_LABELS } from "../utils/formatting.js";
 
 function buildTitle(mode: "market" | "corporation", exchange: string, corpName?: string, metric?: StockChartMetric): string {
   if (mode === "corporation" && corpName) {
@@ -116,7 +109,7 @@ function buildTitle(mode: "market" | "corporation", exchange: string, corpName?:
     };
     return `${corpName} — ${metricLabels[metric ?? "sharePrice"]}`;
   }
-  const label = exchangeLabels[exchange] ?? "Stock Market";
+  const label = EXCHANGE_LABELS[exchange] ?? "Stock Market";
   return `${label} — Total Market Cap`;
 }
 

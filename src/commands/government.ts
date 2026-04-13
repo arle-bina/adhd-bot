@@ -5,6 +5,7 @@ import {
 } from "discord.js";
 import { getGovernment, type GovernmentOfficial } from "../utils/api.js";
 import { hexToInt, replyWithError, standardFooter } from "../utils/helpers.js";
+import { COUNTRY_FLAG } from "../utils/formatting.js";
 
 export const cooldown = 5;
 
@@ -12,14 +13,6 @@ const SECTION_TITLES: Record<string, string> = {
   executive: "Executive",
   leadership: "Congressional Leadership",
   cabinet: "Cabinet",
-};
-
-const COUNTRY_FLAG: Record<string, string> = {
-  US: "🇺🇸",
-  UK: "🇬🇧",
-  CA: "🇨🇦",
-  DE: "🇩🇪",
-  JP: "🇯🇵",
 };
 
 export const data = new SlashCommandBuilder()

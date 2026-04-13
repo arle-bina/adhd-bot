@@ -10,22 +10,9 @@ import {
 } from "discord.js";
 import { getElections, getAutocomplete, type Election } from "../utils/api.js";
 import { replyWithError, standardFooter } from "../utils/helpers.js";
+import { formatElectionType } from "../utils/formatting.js";
 
-export function formatElectionType(type: string): string {
-  const map: Record<string, string> = {
-    senate: "Senate",
-    house: "House",
-    stateSenate: "State Senate",
-    governor: "Governor",
-    president: "Presidential",
-    commons: "Commons",
-    primeMinister: "Prime Minister",
-    shugiin: "Shūgiin",
-    sangiin: "Sangiin",
-    bundestag: "Bundestag",
-  };
-  return map[type] ?? type;
-}
+export { formatElectionType };
 
 const PAGE_SIZE = 5;
 
