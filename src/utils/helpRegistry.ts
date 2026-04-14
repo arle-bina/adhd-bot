@@ -143,10 +143,20 @@ export const categories: Category[] = [
         name: "/corporation",
         usage: "/corporation name:<name>",
         description:
-          "Look up a corporation with tabbed views. Overview (default) shows type, HQ, CEO, capital, shares, revenue, costs, shareholders, and sectors. Use the Bonds and Financials buttons to switch tabs.",
+          "Look up a corporation with tabbed views. Overview (default) shows type, HQ, CEO, capital, extreme  shareholders, and sectors. Use the Bonds and Financials buttons to switch tabs.",
         examples: [
           "/corporation name:Apex Media",
           "/corporation name:National Rail",
+        ],
+      },
+      {
+        name: "/corpcompare",
+        usage: "/corpcompare corp1:<name> corp2:<name> [corp3] [corp4] [metric]",
+        description:
+          "Compare 2-4 corporations side-by-side across key metrics like market cap, revenue, income, profit margin, share price, and type. Visual indicators show which corporation leads each metric.",
+        examples: [
+          "/corpcompare corp1:Apex Media corp2:National Rail",
+          "/corpcompare corp1:Apex Media corp2:National Rail corp3:Lunar Energy metric:Market Cap",
         ],
       },
       {
