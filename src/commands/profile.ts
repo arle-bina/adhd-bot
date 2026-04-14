@@ -112,9 +112,9 @@ function buildProfileEmbed(char: CharacterResult): EmbedBuilder {
     embed.addFields({ name: "Portfolio", value: portfolio, inline: true });
   }
 
-  if (char.activeElection) {
+  if (char.activeElection?.electionType) {
     const electionType = char.activeElection.electionType.charAt(0).toUpperCase() + char.activeElection.electionType.slice(1);
-    const electionState = char.activeElection.electionState;
+    const electionState = char.activeElection.electionState ?? "Unknown";
     embed.addFields({ name: "Active Election", value: `${electionType} (${electionState})`, inline: false });
   }
 

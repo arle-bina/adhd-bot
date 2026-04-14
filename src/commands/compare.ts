@@ -157,13 +157,13 @@ function buildCompareEmbed(a: CharacterResult, b: CharacterResult): EmbedBuilder
   }
 
   const electionLines: string[] = [];
-  if (a.activeElection) {
+  if (a.activeElection?.electionType) {
     const type = a.activeElection.electionType.charAt(0).toUpperCase() + a.activeElection.electionType.slice(1);
-    electionLines.push(`**${a.name}** -- Running in ${type} (${a.activeElection.electionState})`);
+    electionLines.push(`**${a.name}** -- Running in ${type} (${a.activeElection.electionState ?? "Unknown"})`);
   }
-  if (b.activeElection) {
+  if (b.activeElection?.electionType) {
     const type = b.activeElection.electionType.charAt(0).toUpperCase() + b.activeElection.electionType.slice(1);
-    electionLines.push(`**${b.name}** -- Running in ${type} (${b.activeElection.electionState})`);
+    electionLines.push(`**${b.name}** -- Running in ${type} (${b.activeElection.electionState ?? "Unknown"})`);
   }
   if (electionLines.length > 0) {
     embed.addFields({
