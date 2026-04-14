@@ -177,7 +177,12 @@ function buildEmbed(result: MarketShareResponse, showUnowned: boolean): EmbedBui
   if (result.totalPages > 1) {
     footerParts.push(`Page ${result.page}/${result.totalPages}`);
   }
-  footerParts.push(`Unowned: ${result.unownedPercent.toFixed(2)}%`);
+  const unownedDollar = (result as { unownedRevenue?: number }).unownedRevenue;
+  if (unownedDollar != null && unownedDollar > 0) {
+    footerParts.push(`Unowned: $${unownedDollar.toLocaleString()} (${result.unownedPercent.toFixed(2)}%)`);
+  } else {
+    footerParts.push(`Unowned: ${result.unownedPercent.toFixed(2)}%`);
+  }
   if (result.totalMarket > 0) {
     footerParts.push(`TAM: $${result.totalMarket.toLocaleString()}`);
   }
