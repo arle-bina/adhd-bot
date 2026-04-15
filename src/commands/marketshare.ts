@@ -9,6 +9,13 @@ import {
 } from "discord.js";
 import { getMarketShare, SectorType, MarketShareResponse } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
+import {
+  currencyFor,
+  formatCurrency,
+  fetchForexRates,
+  convertCurrency,
+  CURRENCY_CHOICES,
+} from "../utils/currency.js";
 
 export const cooldown = 10;
 
@@ -72,6 +79,13 @@ export const data = new SlashCommandBuilder()
       .setDescription("Page number (default: 1)")
       .setRequired(false)
       .setMinValue(1)
+  )
+  .addStringOption((option) =>
+    option
+      .setName("currency")
+      .setDescription("Display currency (default: auto by country)")
+      .setRequired(false)
+      .addChoices(...CURRENCY_CHOICES)
   );
 
 function buildScopeLabel(result: MarketShareResponse): string {
@@ -144,7 +158,7 @@ function gameSiteOrigin(): string {
   }
 }
 
-function buildEmbed(result: MarketShareResponse, showUnowned: boolean): EmbedBuilder {
+function buildEmbed(result: MarketShareResponse, showUnowned: boolean, targetCurrency: string, rates: Record<string, number>): EmbedBuilder {
   const scopeLabel = buildScopeLabel(result);
   const title = `${result.sectorLabel} — ${scopeLabel}`;
 
@@ -167,7 +181,9 @@ function buildEmbed(result: MarketShareResponse, showUnowned: boolean): EmbedBui
         ? new URL(`/corporation/${c.corporationSequentialId}`, gameSiteOrigin()).href
         : null;
       const nameStr = corpHref ? `[${c.corporationName}](${corpHref})` : c.corporationName;
-      return `${rank}. **${nameStr}** — ${c.marketSharePercent.toFixed(2)}% · $${c.revenue.toLocaleString()}${tag}`;
+      const fromCc = currencyFor(c.countryId);
+      const rev = convertCurrency(c.revenue, fromCc, targetCurrency, rates);
+      return `${rank}. **${nameStr}** — ${c.marketSharePercent.toFixed(2)}% · ${formatCurrency(rev, targetCurrency)}${tag}`;
     });
     embed.setDescription(lines.join("\n").slice(0, 4096));
     embed.setImage(buildChartUrl(result, showUnowned));
@@ -177,15 +193,20 @@ function buildEmbed(result: MarketShareResponse, showUnowned: boolean): EmbedBui
   if (result.totalPages > 1) {
     footerParts.push(`Page ${result.page}/${result.totalPages}`);
   }
-  const unownedDollar = (result as { unownedRevenue?: number }).unownedRevenue;
+  const unownedDollar = result.unownedRevenue;
   if (unownedDollar != null && unownedDollar > 0) {
-    footerParts.push(`Unowned: $${unownedDollar.toLocaleString()} (${result.unownedPercent.toFixed(2)}%)`);
+    const fromCc = currencyFor(result.scope.country);
+    const converted = convertCurrency(unownedDollar, fromCc, targetCurrency, rates);
+    footerParts.push(`Unowned: ${formatCurrency(converted, targetCurrency)} (${result.unownedPercent.toFixed(2)}%)`);
   } else {
     footerParts.push(`Unowned: ${result.unownedPercent.toFixed(2)}%`);
   }
   if (result.totalMarket > 0) {
-    footerParts.push(`TAM: $${result.totalMarket.toLocaleString()}`);
+    const fromCc = currencyFor(result.scope.country);
+    const converted = convertCurrency(result.totalMarket, fromCc, targetCurrency, rates);
+    footerParts.push(`TAM: ${formatCurrency(converted, targetCurrency)}`);
   }
+  footerParts.push(`Values in ${targetCurrency}`);
   footerParts.push("ahousedividedgame.com");
   embed.setFooter({ text: footerParts.join(" · ") });
 
@@ -226,6 +247,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const state = interaction.options.getString("state") ?? undefined;
   let page = interaction.options.getInteger("page") ?? 1;
   let showUnowned = false;
+  const explicitCurrency = interaction.options.getString("currency");
+  const targetCurrency = explicitCurrency || (country ? currencyFor(country) : "USD");
 
   await interaction.deferReply();
 
@@ -237,15 +260,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       return;
     }
 
+    const rates = await fetchForexRates();
+
     if (result.companies.length === 0 && result.totalPages <= 1) {
-      await interaction.editReply({ embeds: [buildEmbed(result, showUnowned)] });
+      await interaction.editReply({ embeds: [buildEmbed(result, showUnowned, targetCurrency, rates)] });
       return;
     }
 
     const totalPages = result.totalPages;
 
     const message = await interaction.editReply({
-      embeds: [buildEmbed(result, showUnowned)],
+      embeds: [buildEmbed(result, showUnowned, targetCurrency, rates)],
       components: [buildNavRow(page, totalPages, showUnowned)],
     });
 
@@ -279,7 +304,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           result = await getMarketShare({ type, country, state, page });
         }
         await btn.editReply({
-          embeds: [buildEmbed(result, showUnowned)],
+          embeds: [buildEmbed(result, showUnowned, targetCurrency, rates)],
           components: [buildNavRow(page, totalPages, showUnowned)],
         });
       } catch (error) {

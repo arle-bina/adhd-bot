@@ -6,6 +6,7 @@ import {
 } from "discord.js";
 import { lookupByName, lookupByDiscordId, getAutocomplete } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { currencyFor, formatCurrency } from "../utils/currency.js";
 
 export const cooldown = 5;
 
@@ -61,6 +62,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
     const char = result.characters[0];
     const color = hexToInt(char.partyColor);
+    const cc = currencyFor(char.countryId);
 
     const hasCorpRole = char.isCeo || char.isInvestor;
 
@@ -96,7 +98,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       const medal = char.investorRank ? (RANK_MEDAL[char.investorRank] ?? "") : "";
       const rankStr = char.investorRank ? ` (Rank #${char.investorRank} ${medal})` : "";
       const portfolio = char.portfolioValue != null
-        ? `$${Math.round(char.portfolioValue).toLocaleString()}`
+        ? formatCurrency(Math.round(char.portfolioValue), cc)
         : "Value unknown";
       lines.push(`📈 **Investor**${rankStr} — Portfolio: ${portfolio}`);
     }

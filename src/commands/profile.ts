@@ -21,6 +21,7 @@ import {
 } from "../utils/api.js";
 import { syncMemberRoles } from "../utils/roles.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { currencyFor, formatCurrency } from "../utils/currency.js";
 
 export const cooldown = 5;
 
@@ -67,6 +68,7 @@ function policyLabel(val: number): string {
 }
 
 function buildProfileEmbed(char: CharacterResult): EmbedBuilder {
+  const cc = currencyFor(char.countryId);
   const embed = new EmbedBuilder()
     .setTitle(char.name)
     .setColor(partyColor(char))
@@ -92,7 +94,7 @@ function buildProfileEmbed(char: CharacterResult): EmbedBuilder {
     { name: "Donor Base", value: String(Math.round(char.donorBaseLevel ?? 0)), inline: true },
     { name: "Economic", value: policyLabel(char.policies?.economic ?? 0), inline: true },
     { name: "Social", value: policyLabel(char.policies?.social ?? 0), inline: true },
-    { name: "Funds", value: `$${Math.round(char.funds ?? 0).toLocaleString()}`, inline: true },
+    { name: "Funds", value: formatCurrency(Math.round(char.funds ?? 0), cc), inline: true },
   );
 
   if (char.createdAt) {
@@ -107,7 +109,7 @@ function buildProfileEmbed(char: CharacterResult): EmbedBuilder {
   if (char.isInvestor) {
     const rank = char.investorRank ? ` (Rank #${char.investorRank})` : "";
     const portfolio = char.portfolioValue != null
-      ? `$${Math.round(char.portfolioValue).toLocaleString()}${rank}`
+      ? `${formatCurrency(Math.round(char.portfolioValue), cc)}${rank}`
       : `Investor${rank}`;
     embed.addFields({ name: "Portfolio", value: portfolio, inline: true });
   }

@@ -9,6 +9,7 @@ import {
 } from "discord.js";
 import { getLeaderboard, LeaderboardCharacter, LeaderboardMetric } from "../utils/api.js";
 import { replyWithError, standardFooter } from "../utils/helpers.js";
+import { currencyFor, formatCurrency } from "../utils/currency.js";
 
 // Explicit conditional avoids TypeScript's TS7053 "any" error from dynamic key indexing (char[metric]).
 export function getMetricValue(
@@ -83,8 +84,10 @@ function buildLeaderboardEmbed(
   const slice = characters.slice(start, start + PAGE_SIZE);
   const metricLabel = metricLabels[metric];
 
+  const cc = currencyFor(country);
   const lines = slice.map((char) => {
-    const value = getMetricValue(char, metric).toLocaleString();
+    const raw = getMetricValue(char, metric);
+    const value = metric === "funds" ? formatCurrency(raw, cc) : raw.toLocaleString();
     const nameStr = char.profileUrl ? `[${char.name}](${char.profileUrl})` : char.name;
     return `${char.rank}. **${nameStr}** -- ${char.position} · ${char.party} · ${value}`;
   });

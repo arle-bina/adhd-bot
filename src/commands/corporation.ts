@@ -19,6 +19,7 @@ import {
   type FinancialsResponse,
 } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { currencyFor, formatCurrency, formatSharePrice, formatCurrencySigned, padCurrency } from "../utils/currency.js";
 
 // ---------------------------------------------------------------------------
 // Corporation list cache (5-minute TTL)
@@ -34,30 +35,6 @@ async function getList(): Promise<CorporationListItem[]> {
   cachedList = res.corporations;
   cacheExpiry = Date.now() + CACHE_TTL_MS;
   return cachedList;
-}
-
-// ---------------------------------------------------------------------------
-// Currency / number formatting helpers
-// ---------------------------------------------------------------------------
-
-function currency(n: number | undefined | null): string {
-  return "$" + (n ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
-}
-
-function price(n: number | undefined | null): string {
-  return "$" + (n ?? 0).toFixed(2);
-}
-
-function incomePrefix(n: number | undefined | null): string {
-  const v = n ?? 0;
-  const sign = v >= 0 ? "+" : "-";
-  return `${sign}${currency(Math.abs(v))}`;
-}
-
-/** Right-align a dollar amount string to a fixed width for code blocks. */
-function padDollar(label: string, n: number | undefined | null, width: number): string {
-  const val = currency(n);
-  return `${label}${val.padStart(width)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,6 +105,7 @@ function buildTabRow(active: Tab, disabled = false): ActionRowBuilder<ButtonBuil
 
 function buildOverviewEmbed(res: CorporationResponse): EmbedBuilder {
   const corp = res.corporation!;
+  const cc = currencyFor(corp.countryId);
   const ceo = res.ceo ?? null;
   const financials = res.financials!;
   const sectors = res.sectors ?? [];
@@ -152,18 +130,18 @@ function buildOverviewEmbed(res: CorporationResponse): EmbedBuilder {
     { name: "Type", value: corp.typeLabel, inline: true },
     { name: "HQ", value: corp.headquartersStateName, inline: true },
     { name: "CEO", value: ceoValue, inline: true },
-    { name: "Liquid Capital", value: currency(corp.liquidCapital), inline: true },
-    { name: "Share Price", value: price(corp.sharePrice), inline: true },
-    { name: "Market Cap", value: currency(corp.marketCapitalization), inline: true },
-    { name: "Daily Revenue", value: currency(financials.totalRevenue), inline: true },
-    { name: "Daily Costs", value: currency(financials.totalCosts), inline: true },
-    { name: "Daily Income", value: incomePrefix(financials.income), inline: true },
+    { name: "Liquid Capital", value: formatCurrency(corp.liquidCapital, cc), inline: true },
+    { name: "Share Price", value: formatSharePrice(corp.sharePrice, cc), inline: true },
+    { name: "Market Cap", value: formatCurrency(corp.marketCapitalization, cc), inline: true },
+    { name: "Daily Revenue", value: formatCurrency(financials.totalRevenue, cc), inline: true },
+    { name: "Daily Costs", value: formatCurrency(financials.totalCosts, cc), inline: true },
+    { name: "Daily Income", value: formatCurrencySigned(financials.income, cc), inline: true },
   );
 
   if ((corp.dividendRate ?? 0) !== 0) {
     embed.addFields({
       name: "Dividends",
-      value: `${corp.dividendRate}% \u00b7 ${currency(financials.dailyDividendPayout)}/day`,
+      value: `${corp.dividendRate}% \u00b7 ${formatCurrency(financials.dailyDividendPayout, cc)}/day`,
       inline: true,
     });
   }
@@ -180,7 +158,7 @@ function buildOverviewEmbed(res: CorporationResponse): EmbedBuilder {
     const totalDebt = bonds.reduce((sum, b) => sum + (b.totalIssued ?? 0), 0);
     embed.addFields({
       name: "Debt",
-      value: `${currency(totalDebt)} (${bonds.length} bond${bonds.length === 1 ? "" : "s"})`,
+      value: `${formatCurrency(totalDebt, cc)} (${bonds.length} bond${bonds.length === 1 ? "" : "s"})`,
       inline: true,
     });
   }
@@ -203,7 +181,7 @@ function buildOverviewEmbed(res: CorporationResponse): EmbedBuilder {
 
   embed.addFields({
     name: "Marketing",
-    value: `Budget: ${currency(corp.marketingBudget)} \u00b7 Strength: ${corp.marketingStrength ?? 0}`,
+    value: `Budget: ${formatCurrency(corp.marketingBudget, cc)} \u00b7 Strength: ${corp.marketingStrength ?? 0}`,
     inline: false,
   });
 
@@ -211,7 +189,7 @@ function buildOverviewEmbed(res: CorporationResponse): EmbedBuilder {
     const maxShow = 5;
     const lines = sectors.slice(0, maxShow).map(
       (s) =>
-        `${s.stateName ?? "Unknown"} \u2014 ${currency(s.revenue)} rev \u00b7 ${s.growthRate ?? 0}% growth \u00b7 ${s.workers ?? 0} workers`
+        `${s.stateName ?? "Unknown"} \u2014 ${formatCurrency(s.revenue, cc)} rev \u00b7 ${s.growthRate ?? 0}% growth \u00b7 ${s.workers ?? 0} workers`
     );
     if (sectors.length > maxShow) {
       lines.push(`\u2026and ${sectors.length - maxShow} more`);
@@ -226,7 +204,7 @@ function buildOverviewEmbed(res: CorporationResponse): EmbedBuilder {
   return embed;
 }
 
-function buildBondsEmbed(res: BondsResponse, name: string): EmbedBuilder {
+function buildBondsEmbed(res: BondsResponse, name: string, countryId?: string): EmbedBuilder {
   if (!res.bonds || res.bonds.length === 0) {
     return new EmbedBuilder()
       .setTitle(`${name} \u2014 Bonds`.slice(0, 256))
@@ -235,13 +213,14 @@ function buildBondsEmbed(res: BondsResponse, name: string): EmbedBuilder {
       .setFooter({ text: "ahousedividedgame.com" });
   }
 
+  const cc = currencyFor(countryId ?? res.bonds[0]?.countryId);
   const color = hexToInt(res.bonds[0].brandColor) || 0x3b82f6;
 
   const bondLines = res.bonds.map((b) => {
     const prefix = b.defaulted ? "\u26a0\ufe0f DEFAULTED \u2014 " : "";
     const label = `${b.maturityLabel} @ ${(b.couponRate ?? 0).toFixed(1)}%`;
     const url = b.bondUrl ? `[${label}](${b.bondUrl})` : label;
-    const details = `Price: ${price(b.marketPrice)} \u00b7 YTM: ${(b.yieldToMaturity ?? 0).toFixed(1)}% \u00b7 ${currency(b.totalIssued)} issued \u00b7 ${b.turnsRemaining ?? 0} turns left`;
+    const details = `Price: ${formatSharePrice(b.marketPrice, cc)} \u00b7 YTM: ${(b.yieldToMaturity ?? 0).toFixed(1)}% \u00b7 ${formatCurrency(b.totalIssued, cc)} issued \u00b7 ${b.turnsRemaining ?? 0} turns left`;
     return `${prefix}**${url}**\n${details}`;
   });
 
@@ -250,7 +229,7 @@ function buildBondsEmbed(res: BondsResponse, name: string): EmbedBuilder {
     .setColor(color)
     .setDescription(bondLines.join("\n\n").slice(0, 4096))
     .addFields(
-      { name: "Total Debt Outstanding", value: currency(res.totalOutstandingDebt), inline: true },
+      { name: "Total Debt Outstanding", value: formatCurrency(res.totalOutstandingDebt, cc), inline: true },
       { name: "Active Bonds", value: String(res.bonds.length), inline: true },
     )
     .setFooter({ text: "ahousedividedgame.com" });
@@ -258,6 +237,7 @@ function buildBondsEmbed(res: BondsResponse, name: string): EmbedBuilder {
 
 function buildFinancialsEmbed(res: FinancialsResponse): EmbedBuilder {
   const corp = res.corporation;
+  const cc = currencyFor(corp.countryId);
   const inc = res.incomeStatement;
   const bal = res.balanceSheet;
   const shares = res.shareStructure;
@@ -275,12 +255,12 @@ function buildFinancialsEmbed(res: FinancialsResponse): EmbedBuilder {
 
   const W = 14;
   const incomeBlock = [
-    padDollar("Revenue:       ", inc.totalRevenue, W),
-    padDollar("- Operating:   ", inc.costs.operatingTotal, W),
-    padDollar("- Interest:    ", inc.costs.bondInterest, W),
-    padDollar("= Net Income:  ", inc.netIncome, W),
-    padDollar("Dividends:     ", inc.dailyDividendPayout, W) + ` (${inc.dividendRate ?? 0}%)`,
-    padDollar("Retained:      ", inc.retainedEarnings, W),
+    padCurrency("Revenue:       ", inc.totalRevenue, W, cc),
+    padCurrency("- Operating:   ", inc.costs.operatingTotal, W, cc),
+    padCurrency("- Interest:    ", inc.costs.bondInterest, W, cc),
+    padCurrency("= Net Income:  ", inc.netIncome, W, cc),
+    padCurrency("Dividends:     ", inc.dailyDividendPayout, W, cc) + ` (${inc.dividendRate ?? 0}%)`,
+    padCurrency("Retained:      ", inc.retainedEarnings, W, cc),
   ].join("\n");
   embed.addFields({
     name: "Income Statement",
@@ -289,11 +269,11 @@ function buildFinancialsEmbed(res: FinancialsResponse): EmbedBuilder {
   });
 
   const balBlock = [
-    padDollar("Assets:   ", bal.assets.totalAssets, W),
-    padDollar("  Cash:   ", bal.assets.cashOnHand, W),
-    padDollar("  NPV:    ", bal.assets.sectorNPV, W),
-    padDollar("Debt:     ", bal.liabilities.outstandingDebt, W) + ` (${bal.liabilities.bondCount ?? 0} bond${(bal.liabilities.bondCount ?? 0) === 1 ? "" : "s"})`,
-    padDollar("Equity:   ", bal.equity.bookValue, W),
+    padCurrency("Assets:   ", bal.assets.totalAssets, W, cc),
+    padCurrency("  Cash:   ", bal.assets.cashOnHand, W, cc),
+    padCurrency("  NPV:    ", bal.assets.sectorNPV, W, cc),
+    padCurrency("Debt:     ", bal.liabilities.outstandingDebt, W, cc) + ` (${bal.liabilities.bondCount ?? 0} bond${(bal.liabilities.bondCount ?? 0) === 1 ? "" : "s"})`,
+    padCurrency("Equity:   ", bal.equity.bookValue, W, cc),
   ].join("\n");
   embed.addFields({
     name: "Balance Sheet",
@@ -302,12 +282,12 @@ function buildFinancialsEmbed(res: FinancialsResponse): EmbedBuilder {
   });
 
   const shareLines: string[] = [
-    `Price: ${price(shares.sharePrice)} \u00b7 Market Cap: ${currency(shares.marketCapitalization)}`,
+    `Price: ${formatSharePrice(shares.sharePrice, cc)} \u00b7 Market Cap: ${formatCurrency(shares.marketCapitalization, cc)}`,
     `Float: ${(shares.publicFloat ?? 0).toLocaleString("en-US")} (${(shares.publicFloatPct ?? 0).toFixed(1)}%)`,
     "",
   ];
   for (const sh of shares.shareholders ?? []) {
-    const valStr = currency(sh.value);
+    const valStr = formatCurrency(sh.value, cc);
     shareLines.push(`${sh.name}     ${(sh.shares ?? 0).toLocaleString("en-US")} (${(sh.percentage ?? 0).toFixed(1)}%)  ${valStr}`);
   }
   embed.addFields({
@@ -332,7 +312,7 @@ function buildFinancialsEmbed(res: FinancialsResponse): EmbedBuilder {
   if (bonds.length > 0) {
     const bondLines = bonds.map((b) => {
       const prefix = b.defaulted ? "\u26a0\ufe0f " : "";
-      return `${prefix}${b.maturityLabel} @ ${(b.couponRate ?? 0).toFixed(1)}% \u2014 ${currency(b.totalIssued)} \u00b7 Price: ${price(b.marketPrice)} \u00b7 YTM: ${(b.yieldToMaturity ?? 0).toFixed(1)}%`;
+      return `${prefix}${b.maturityLabel} @ ${(b.couponRate ?? 0).toFixed(1)}% \u2014 ${formatCurrency(b.totalIssued, cc)} \u00b7 Price: ${formatSharePrice(b.marketPrice, cc)} \u00b7 YTM: ${(b.yieldToMaturity ?? 0).toFixed(1)}%`;
     });
     embed.addFields({
       name: "Outstanding Bonds",
@@ -352,7 +332,7 @@ function buildFinancialsEmbed(res: FinancialsResponse): EmbedBuilder {
     const sorted = [...sectors].sort((a, b) => (b.revenue ?? 0) - (a.revenue ?? 0));
     const lines = sorted.slice(0, maxShow).map(
       (s) =>
-        `${s.stateName ?? "Unknown"} \u2014 ${currency(s.revenue)} rev \u00b7 ${(s.effectiveMargin ?? 0).toFixed(1)}% margin \u00b7 ${currency(s.profit)} profit`
+        `${s.stateName ?? "Unknown"} \u2014 ${formatCurrency(s.revenue, cc)} rev \u00b7 ${(s.effectiveMargin ?? 0).toFixed(1)}% margin \u00b7 ${formatCurrency(s.profit, cc)} profit`
     );
     if (sectors.length > maxShow) {
       lines.push(`\u2026and ${sectors.length - maxShow} more`);
@@ -422,7 +402,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
             break;
           case "bonds":
             if (!bondsRes) bondsRes = await getBonds({ corp: name });
-            embed = buildBondsEmbed(bondsRes, name);
+            embed = buildBondsEmbed(bondsRes, name, overviewRes.corporation?.countryId);
             break;
           case "financials":
             if (!financialsRes) {

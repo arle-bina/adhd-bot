@@ -12,6 +12,14 @@ import {
   type CorporationFinancials,
 } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
+import {
+  currencyFor,
+  formatCurrency,
+  formatSharePrice,
+  fetchForexRates,
+  convertCurrency,
+  CURRENCY_CHOICES,
+} from "../utils/currency.js";
 
 // ---------------------------------------------------------------------------
 // Corporation list cache
@@ -41,14 +49,6 @@ async function getList(): Promise<Array<{ name: string; value: string }>> {
 // Formatting helpers
 // ---------------------------------------------------------------------------
 
-function currency(n: number | undefined | null): string {
-  return "$" + (n ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
-}
-
-function price(n: number | undefined | null): string {
-  return "$" + (n ?? 0).toFixed(2);
-}
-
 function percent(n: number | undefined | null): string {
   return ((n ?? 0) * 100).toFixed(1) + "%";
 }
@@ -74,12 +74,12 @@ function getMetricValue(corp: CorporationData | undefined, financials: Corporati
 // ---------------------------------------------------------------------------
 
 const METRICS = [
-  { id: "marketCap", name: "Market Cap", formatter: currency },
-  { id: "revenue", name: "Daily Revenue", formatter: currency },
-  { id: "income", name: "Daily Income", formatter: currency },
-  { id: "profitMargin", name: "Profit Margin", formatter: percent },
-  { id: "sharePrice", name: "Share Price", formatter: price },
-  { id: "liquidCapital", name: "Liquid Capital", formatter: currency },
+  { id: "marketCap", name: "Market Cap", monetary: true, formatter: (n: number | undefined | null, cc: string) => formatCurrency(n, cc) },
+  { id: "revenue", name: "Daily Revenue", monetary: true, formatter: (n: number | undefined | null, cc: string) => formatCurrency(n, cc) },
+  { id: "income", name: "Daily Income", monetary: true, formatter: (n: number | undefined | null, cc: string) => formatCurrency(n, cc) },
+  { id: "profitMargin", name: "Profit Margin", monetary: false, formatter: (_n: number | undefined | null, _cc: string) => percent(_n) },
+  { id: "sharePrice", name: "Share Price", monetary: true, formatter: (n: number | undefined | null, cc: string) => formatSharePrice(n, cc) },
+  { id: "liquidCapital", name: "Liquid Capital", monetary: true, formatter: (n: number | undefined | null, cc: string) => formatCurrency(n, cc) },
 ];
 
 // ---------------------------------------------------------------------------
@@ -129,7 +129,12 @@ export const data = new SlashCommandBuilder()
   .addStringOption(o => o
     .setName("metric")
     .setDescription("Primary metric to compare")
-    .addChoices(...METRICS.map(m => ({ name: m.name, value: m.id }))));
+    .addChoices(...METRICS.map(m => ({ name: m.name, value: m.id }))))
+  .addStringOption(o => o
+    .setName("currency")
+    .setDescription("Display currency for comparison (default: USD)")
+    .setRequired(false)
+    .addChoices(...CURRENCY_CHOICES));
 
 export const cooldown = 5;
 
@@ -148,6 +153,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   ].filter(Boolean) as string[];
 
   const primaryMetric = interaction.options.getString("metric") || "marketCap";
+  const targetCurrency = interaction.options.getString("currency") || "USD";
 
   try {
     // Fetch all corporations in parallel
@@ -166,6 +172,12 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       }
     });
 
+    const rates = await fetchForexRates();
+    const convert = (amount: number, corpCountryId: string | undefined) => {
+      const fromCc = currencyFor(corpCountryId);
+      return convertCurrency(amount, fromCc, targetCurrency, rates);
+    };
+
     if (validCorps.length < 2) {
       const errorMsg = failedCorps.length > 0 
         ? `Failed to load: ${failedCorps.join(", ")}. Need at least 2 valid corporations.`
@@ -178,21 +190,22 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     const embed = new EmbedBuilder()
       .setTitle("Corporation Comparison")
       .setColor(0x3b82f6)
-      .setFooter({ text: "ahousedividedgame.com" });
+      .setFooter({ text: `Values in ${targetCurrency} · ahousedividedgame.com` });
 
     // Add primary metric comparison
     const primaryMetricData = METRICS.find(m => m.id === primaryMetric);
     if (primaryMetricData) {
-      const values = validCorps.map(corp => 
-        getMetricValue(corp.corporation, corp.financials, primaryMetric)
-      );
+      const values = validCorps.map(corp => {
+        const raw = getMetricValue(corp.corporation, corp.financials, primaryMetric);
+        return primaryMetricData.monetary ? convert(raw, corp.corporation?.countryId) : raw;
+      });
       const maxValue = Math.max(...values);
-      
+
       const metricLines = validCorps.map((corp, index) => {
         const value = values[index];
         const isMax = value === maxValue && maxValue > 0;
         const prefix = isMax ? "🏆 " : "";
-        return `${prefix}**${corp.corporation!.name}**: ${primaryMetricData.formatter(value)}`;
+        return `${prefix}**${corp.corporation!.name}**: ${primaryMetricData.formatter(value, targetCurrency)}`;
       });
 
       embed.addFields({
@@ -219,15 +232,14 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     
     METRICS.forEach(metric => {
       if (metric.id !== primaryMetric) {
-        const values = validCorps.map(corp => 
-          getMetricValue(corp.corporation, corp.financials, metric.id)
-        );
-        
-        const lineParts = validCorps.map((corp, index) => {
-          const value = values[index];
-          return `${corp.corporation!.name.slice(0, 10)}: ${metric.formatter(value)}`;
+        const values = validCorps.map(corp => {
+          const raw = getMetricValue(corp.corporation, corp.financials, metric.id);
+          return metric.monetary ? convert(raw, corp.corporation?.countryId) : raw;
         });
-        
+        const lineParts = validCorps.map((corp, index) => {
+          return `${corp.corporation!.name.slice(0, 10)}: ${metric.formatter(values[index], targetCurrency)}`;
+        });
+
         statLines.push(`**${metric.name}**: ${lineParts.join(" | ")}`);
       }
     });
@@ -243,10 +255,9 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     // Add corporation details
     const details = validCorps.map(corp => {
       const c = corp.corporation!;
-      const f = corp.financials;
       return `🏢 **${c.name}**\n` +
-             `📍 ${c.headquartersStateName} | 💰 ${currency(c.liquidCapital)}\n` +
-             `📈 ${price(c.sharePrice)} | 🏭 ${c.typeLabel || c.type}`;
+             `📍 ${c.headquartersStateName} | 💰 ${formatCurrency(convert(c.liquidCapital ?? 0, c.countryId), targetCurrency)}\n` +
+             `📈 ${formatSharePrice(convert(c.sharePrice ?? 0, c.countryId), targetCurrency)} | 🏭 ${c.typeLabel || c.type}`;
     });
 
     embed.addFields({

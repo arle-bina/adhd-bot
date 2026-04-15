@@ -1,6 +1,7 @@
 import { ChartJSNodeCanvas } from 'chartjs-node-canvas';
 import type { ChartConfiguration } from 'chart.js';
 import type { MarketDataResponse, StockChartMarketResponse, StockChartCorpResponse } from './api.js';
+import { symbolFor } from './currency.js';
 
 const canvasRenderService = new ChartJSNodeCanvas({
   width: 800,
@@ -278,4 +279,103 @@ export async function generateCandleChart(
   };
 
   return canvasRenderService.renderToBuffer(configuration as unknown as ChartConfiguration);
+}
+
+// ---------------------------------------------------------------------------
+// Forex rate chart — 48h performance, multi-line, colorblind-safe
+// ---------------------------------------------------------------------------
+
+export interface ForexRateData {
+  currencyCode: string;
+  rateHistory: Array<{ turn: number; rate: number }>;
+}
+
+const FOREX_COLORS: Record<string, string> = {
+  USD: "#4477AA",
+  GBP: "#EE6677",
+  JPY: "#228833",
+  CAD: "#CCBB44",
+  EUR: "#AA3377",
+};
+
+export async function generateForexChart(rates: ForexRateData[]): Promise<Buffer> {
+  // Find common turn range
+  const allTurns = new Set<number>();
+  for (const r of rates) {
+    for (const h of r.rateHistory) allTurns.add(h.turn);
+  }
+  const turns = [...allTurns].sort((a, b) => a - b);
+
+  const datasets = rates
+    .filter((r) => r.rateHistory.length > 1)
+    .map((r) => {
+      // Use actual first data point as baseline for % change
+      const firstReal = r.rateHistory[0].rate;
+      const rateMap = new Map(r.rateHistory.map((h) => [h.turn, h.rate]));
+      const rawValues = turns.map((t) => rateMap.get(t) ?? NaN);
+
+      // Fill NaN gaps with last known value
+      let last = rawValues.find((v) => !isNaN(v)) ?? 0;
+      const filled = rawValues.map((v) => {
+        if (!isNaN(v)) { last = v; return v; }
+        return last;
+      });
+
+      // Normalize to % change from actual first data point
+      const pctValues = (!firstReal || !isFinite(firstReal))
+        ? filled.map(() => 0)
+        : filled.map((v) => ((v - firstReal) / firstReal) * 100);
+
+      const sym = symbolFor(r.currencyCode);
+      return {
+        label: `${r.currencyCode} (${sym})`,
+        data: pctValues,
+        borderColor: FOREX_COLORS[r.currencyCode] ?? "#999999",
+        borderWidth: 2.5,
+        pointRadius: 0,
+        tension: 0.2,
+        fill: false,
+      };
+    });
+
+  const configuration = {
+    type: "line" as const,
+    data: {
+      labels: turns.map((t) => `T${t}`),
+      datasets,
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: {
+          display: true,
+          text: `Currency Performance \u2014 Last ${turns.length} Turns`,
+          color: "#ffffff",
+          font: { size: 16, weight: "bold" as const },
+        },
+        legend: {
+          labels: { color: "#ffffff", usePointStyle: true },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: "rgba(255, 255, 255, 0.1)" },
+          ticks: { color: "#ffffff", maxTicksLimit: 12 },
+        },
+        y: {
+          grid: { color: "rgba(255, 255, 255, 0.1)" },
+          ticks: {
+            color: "#ffffff",
+            callback: (v: number | string) => {
+              const n = Number(v);
+              return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
+            },
+          },
+          title: { display: true, text: "Change %", color: "#ffffff" },
+        },
+      },
+    },
+  };
+
+  return canvasRenderService.renderToBuffer(configuration as ChartConfiguration);
 }

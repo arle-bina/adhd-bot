@@ -6,6 +6,7 @@ import {
 } from "discord.js";
 import { lookupByName, getAutocomplete, type CharacterResult } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { currencyFor, formatCurrency } from "../utils/currency.js";
 
 export const cooldown = 5;
 
@@ -112,7 +113,7 @@ function buildCompareEmbed(a: CharacterResult, b: CharacterResult): EmbedBuilder
     statRow("National PI", Math.round(a.nationalInfluence ?? 0).toLocaleString(), Math.round(b.nationalInfluence ?? 0).toLocaleString()),
     statRow("Approval", `${Math.round(a.favorability ?? 0)}%`, `${Math.round(b.favorability ?? 0)}%`),
     statRow("Infamy", String(Math.round(a.infamy ?? 0)), String(Math.round(b.infamy ?? 0))),
-    statRow("Funds", `$${Math.round(a.funds ?? 0).toLocaleString()}`, `$${Math.round(b.funds ?? 0).toLocaleString()}`),
+    statRow("Funds", formatCurrency(Math.round(a.funds ?? 0), currencyFor(a.countryId)), formatCurrency(Math.round(b.funds ?? 0), currencyFor(b.countryId))),
     statRow("Actions", String(Math.round(a.actions ?? 0)), String(Math.round(b.actions ?? 0))),
     statRow("Donor Base", String(Math.round(a.donorBaseLevel ?? 0)), String(Math.round(b.donorBaseLevel ?? 0))),
   ];
@@ -140,12 +141,12 @@ function buildCompareEmbed(a: CharacterResult, b: CharacterResult): EmbedBuilder
   if (b.isCeo && b.ceoOf) corpLines.push(`**${b.name}** — CEO of ${b.ceoOf}`);
   if (a.isInvestor) {
     const rank = a.investorRank ? ` (Rank #${a.investorRank})` : "";
-    const val = a.portfolioValue != null ? ` · $${Math.round(a.portfolioValue).toLocaleString()}` : "";
+    const val = a.portfolioValue != null ? ` · ${formatCurrency(Math.round(a.portfolioValue), currencyFor(a.countryId))}` : "";
     corpLines.push(`**${a.name}** — Investor${rank}${val}`);
   }
   if (b.isInvestor) {
     const rank = b.investorRank ? ` (Rank #${b.investorRank})` : "";
-    const val = b.portfolioValue != null ? ` · $${Math.round(b.portfolioValue).toLocaleString()}` : "";
+    const val = b.portfolioValue != null ? ` · ${formatCurrency(Math.round(b.portfolioValue), currencyFor(b.countryId))}` : "";
     corpLines.push(`**${b.name}** — Investor${rank}${val}`);
   }
   if (corpLines.length > 0) {
