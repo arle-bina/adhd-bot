@@ -142,7 +142,8 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         return;
       }
 
-      const chartBuffer = await generateStockChartMarket(res, { title, metric });
+      const cc = EXCHANGE_CURRENCY[res.exchange] ?? "USD";
+      const chartBuffer = await generateStockChartMarket(res, { title, metric, currency: cc });
       const attachment = new AttachmentBuilder(chartBuffer, {
         name: `stock-chart-${res.exchange}-${Date.now()}.png`,
         description: title,
@@ -150,7 +151,6 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
       const latestPoint = res.points[res.points.length - 1];
       const firstPoint = res.points[0];
-      const cc = EXCHANGE_CURRENCY[res.exchange] ?? "USD";
 
       const embed = {
         color: 0x5865F2,
@@ -183,7 +183,8 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         return;
       }
 
-      const chartBuffer = await generateStockChartCorp(res, { title, metric });
+      const cc = currencyFor(res.corporation.countryId);
+      const chartBuffer = await generateStockChartCorp(res, { title, metric, currency: cc });
       const attachment = new AttachmentBuilder(chartBuffer, {
         name: `stock-chart-${res.corporation.name.replace(/\s+/g, "-").toLowerCase()}-${Date.now()}.png`,
         description: title,
@@ -191,7 +192,6 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
       const latestPoint = res.points[res.points.length - 1];
       const firstPoint = res.points[0];
-      const cc = currencyFor(res.corporation.countryId);
 
       const embed = {
         color: 0x57F287,
