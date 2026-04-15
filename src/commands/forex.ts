@@ -4,7 +4,7 @@ import {
   AttachmentBuilder,
   type ChatInputCommandInteraction,
 } from "discord.js";
-import { apiFetchPublic } from "../utils/api-base.js";
+import { apiFetchPublic, ApiError } from "../utils/api-base.js";
 import { symbolFor } from "../utils/currency.js";
 import { generateForexChart, type ForexRateData } from "../utils/chartGenerator.js";
 import { replyWithError, standardFooter } from "../utils/helpers.js";
@@ -40,7 +40,7 @@ function pctChange(history: Array<{ rate: number }>): string {
   if (history.length < 2) return "N/A";
   const first = history[0].rate;
   const last = history[history.length - 1].rate;
-  if (!first) return "N/A";
+  if (!first || !isFinite(first)) return "N/A";
   const pct = ((last - first) / first) * 100;
   const sign = pct >= 0 ? "+" : "";
   return `${sign}${pct.toFixed(2)}%`;
@@ -64,7 +64,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       const sym = symbolFor(r.currencyCode);
       const label = `${r.currencyCode} (${sym})`.padEnd(9);
       const rate = formatRate(r.rate).padStart(10);
-      const change = pctChange(r.rateHistory).padStart(8);
+      const change = pctChange(r.rateHistory).padStart(9);
       return `${label} \u2502 ${rate} \u2502 ${change}`;
     });
 
@@ -108,6 +108,10 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       await interaction.editReply({ embeds: [embed] });
     }
   } catch (error) {
+    if (error instanceof ApiError && error.status === 403) {
+      await interaction.editReply({ content: "Currency exchange is currently disabled in the game." });
+      return;
+    }
     await replyWithError(interaction, "forex", error);
   }
 }

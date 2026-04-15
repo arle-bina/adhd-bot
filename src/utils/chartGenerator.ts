@@ -1,6 +1,7 @@
 import { ChartJSNodeCanvas } from 'chartjs-node-canvas';
 import type { ChartConfiguration } from 'chart.js';
 import type { MarketDataResponse, StockChartMarketResponse, StockChartCorpResponse } from './api.js';
+import { symbolFor } from './currency.js';
 
 const canvasRenderService = new ChartJSNodeCanvas({
   width: 800,
@@ -297,20 +298,6 @@ const FOREX_COLORS: Record<string, string> = {
   EUR: "#AA3377",
 };
 
-const FOREX_SYMBOLS: Record<string, string> = {
-  USD: "$",
-  GBP: "\u00a3",
-  JPY: "\u00a5",
-  CAD: "C$",
-  EUR: "\u20ac",
-};
-
-function normalizeToPercent(values: number[]): number[] {
-  const base = values[0];
-  if (!base) return values.map(() => 0);
-  return values.map((v) => ((v - base) / base) * 100);
-}
-
 export async function generateForexChart(rates: ForexRateData[]): Promise<Buffer> {
   // Find common turn range
   const allTurns = new Set<number>();
@@ -322,6 +309,8 @@ export async function generateForexChart(rates: ForexRateData[]): Promise<Buffer
   const datasets = rates
     .filter((r) => r.rateHistory.length > 1)
     .map((r) => {
+      // Use actual first data point as baseline for % change
+      const firstReal = r.rateHistory[0].rate;
       const rateMap = new Map(r.rateHistory.map((h) => [h.turn, h.rate]));
       const rawValues = turns.map((t) => rateMap.get(t) ?? NaN);
 
@@ -332,9 +321,12 @@ export async function generateForexChart(rates: ForexRateData[]): Promise<Buffer
         return last;
       });
 
-      const pctValues = normalizeToPercent(filled);
+      // Normalize to % change from actual first data point
+      const pctValues = (!firstReal || !isFinite(firstReal))
+        ? filled.map(() => 0)
+        : filled.map((v) => ((v - firstReal) / firstReal) * 100);
 
-      const sym = FOREX_SYMBOLS[r.currencyCode] ?? r.currencyCode;
+      const sym = symbolFor(r.currencyCode);
       return {
         label: `${r.currencyCode} (${sym})`,
         data: pctValues,
@@ -357,7 +349,7 @@ export async function generateForexChart(rates: ForexRateData[]): Promise<Buffer
       plugins: {
         title: {
           display: true,
-          text: "Currency Performance \u2014 Last 48 Turns",
+          text: `Currency Performance \u2014 Last ${turns.length} Turns`,
           color: "#ffffff",
           font: { size: 16, weight: "bold" as const },
         },
