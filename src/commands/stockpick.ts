@@ -10,6 +10,14 @@ import {
   type CorporationResponse,
 } from "../utils/api.js";
 import { replyWithError } from "../utils/helpers.js";
+import {
+  currencyFor,
+  formatCurrency,
+  formatSharePrice,
+  fetchForexRates,
+  convertCurrency,
+  CURRENCY_CHOICES,
+} from "../utils/currency.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -18,6 +26,7 @@ import { replyWithError } from "../utils/helpers.js";
 interface ScoredPick {
   name: string;
   corpUrl: string | null;
+  countryId: string | undefined;
   sharePrice: number;
   priceChange24h: number;
   income: number;
@@ -82,6 +91,7 @@ function scorePick(
   return {
     name: listing.name,
     corpUrl: corp.corporation?.corpUrl ?? null,
+    countryId: corp.corporation?.countryId,
     sharePrice: listing.sharePrice,
     priceChange24h: listing.priceChange24h,
     income,
@@ -97,18 +107,14 @@ function scorePick(
 // Embed builder
 // ---------------------------------------------------------------------------
 
-function currency(n: number): string {
-  return "$" + n.toLocaleString("en-US", { maximumFractionDigits: 0 });
-}
-
-function buildPicksEmbed(picks: ScoredPick[], total: number): EmbedBuilder {
+function buildPicksEmbed(picks: ScoredPick[], total: number, targetCurrency: string, rates: Record<string, number>): EmbedBuilder {
   const embed = new EmbedBuilder()
     .setTitle("Stock Picks")
     .setDescription(
       `Top publicly traded stocks with available float, ranked by fundamentals.\nScanned **${total}** listings.`,
     )
     .setColor(0x22c55e)
-    .setFooter({ text: "ahousedividedgame.com" })
+    .setFooter({ text: `Values in ${targetCurrency} · ahousedividedgame.com` })
     .setTimestamp();
 
   for (const p of picks) {
@@ -120,10 +126,15 @@ function buildPicksEmbed(picks: ScoredPick[], total: number): EmbedBuilder {
           ? "No equity"
           : p.debtToEquity.toFixed(2);
 
+    const fromCc = currencyFor(p.countryId);
+    const spConverted = convertCurrency(p.sharePrice, fromCc, targetCurrency, rates);
+    const incConverted = convertCurrency(p.income, fromCc, targetCurrency, rates);
+    const mcConverted = convertCurrency(p.marketCap, fromCc, targetCurrency, rates);
+
     const value = [
-      `Price: **$${p.sharePrice.toFixed(2)}** (${changeSign}${p.priceChange24h.toFixed(1)}%)`,
-      `Income: ${currency(p.income)} \u00b7 Mkt Cap: ${currency(p.marketCap)}`,
-      `Float: ${p.publicFloat.toLocaleString("en-US")} (${p.publicFloatPct.toFixed(1)}%) \u00b7 D/E: ${deStr}`,
+      `Price: **${formatSharePrice(spConverted, targetCurrency)}** (${changeSign}${p.priceChange24h.toFixed(1)}%)`,
+      `Income: ${formatCurrency(incConverted, targetCurrency)} · Mkt Cap: ${formatCurrency(mcConverted, targetCurrency)}`,
+      `Float: ${p.publicFloat.toLocaleString("en-US")} (${p.publicFloatPct.toFixed(1)}%) · D/E: ${deStr}`,
       `Score: ${p.score}/100`,
     ].join("\n");
 
@@ -152,6 +163,13 @@ export const data = new SlashCommandBuilder()
       .setMinValue(1)
       .setMaxValue(10)
       .setRequired(false),
+  )
+  .addStringOption((o) =>
+    o
+      .setName("currency")
+      .setDescription("Display currency (default: USD)")
+      .setRequired(false)
+      .addChoices(...CURRENCY_CHOICES),
   );
 
 export const cooldown = 10;
@@ -189,6 +207,7 @@ export async function execute(
   await interaction.deferReply();
 
   const limit = Math.min(interaction.options.getInteger("limit") ?? 5, 10);
+  const targetCurrency = interaction.options.getString("currency") || "USD";
 
   try {
     const exchange = await getStockExchange("global");
@@ -220,7 +239,8 @@ export async function execute(
     picks.sort((a, b) => b.score - a.score || b.marketCap - a.marketCap);
 
     const topPicks = picks.slice(0, limit);
-    const embed = buildPicksEmbed(topPicks, listings.length);
+    const rates = await fetchForexRates();
+    const embed = buildPicksEmbed(topPicks, listings.length, targetCurrency, rates);
 
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {

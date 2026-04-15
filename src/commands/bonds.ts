@@ -6,6 +6,7 @@ import {
 } from "discord.js";
 import { getCorporationList, getBonds, ApiError, type CorporationListItem } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { currencyFor, formatCurrency, formatSharePrice } from "../utils/currency.js";
 
 // ---------------------------------------------------------------------------
 // Corporation list cache (5-minute TTL)
@@ -91,9 +92,10 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         const name = b.corporationName ?? "Unknown";
         const maturity = b.maturityLabel ?? "?";
         const coupon = (b.couponRate ?? 0).toFixed(1);
-        const price = `$${(b.marketPrice ?? 0).toFixed(2)}`;
+        const bondCc = currencyFor(b.countryId);
+        const price = formatSharePrice(b.marketPrice, bondCc);
         const ytm = `${(b.yieldToMaturity ?? 0).toFixed(1)}%`;
-        const issued = `$${(b.totalIssued ?? 0).toLocaleString("en-US")}`;
+        const issued = formatCurrency(b.totalIssued, bondCc);
         const turns = b.turnsRemaining ?? 0;
         const holders = b.holders ?? 0;
         const defaultPrefix = b.defaulted ? "\u26a0\ufe0f DEFAULTED \u2014 " : "";
@@ -120,7 +122,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       .setDescription(description)
       .addFields({
         name: "Total Outstanding",
-        value: `$${(totalOutstandingDebt ?? 0).toLocaleString("en-US")}`,
+        value: formatCurrency(totalOutstandingDebt, currencyFor(bonds[0]?.countryId)),
         inline: true,
       })
       .setFooter({
