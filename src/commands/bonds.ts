@@ -122,7 +122,10 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       .setDescription(description)
       .addFields({
         name: "Total Outstanding",
-        value: formatCurrency(totalOutstandingDebt, currencyFor(bonds[0]?.countryId)),
+        // When filtered to a single corp, all bonds share one currency; otherwise aggregate is cross-currency
+        value: filterCorp
+          ? formatCurrency(totalOutstandingDebt, currencyFor(bonds[0]?.countryId))
+          : `${totalOutstandingDebt.toLocaleString("en-US")} (mixed currencies)`,
         inline: true,
       })
       .setFooter({

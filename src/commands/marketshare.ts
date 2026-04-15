@@ -193,7 +193,7 @@ function buildEmbed(result: MarketShareResponse, showUnowned: boolean, targetCur
   if (result.totalPages > 1) {
     footerParts.push(`Page ${result.page}/${result.totalPages}`);
   }
-  const unownedDollar = (result as { unownedRevenue?: number }).unownedRevenue;
+  const unownedDollar = result.unownedRevenue;
   if (unownedDollar != null && unownedDollar > 0) {
     const fromCc = currencyFor(result.scope.country);
     const converted = convertCurrency(unownedDollar, fromCc, targetCurrency, rates);

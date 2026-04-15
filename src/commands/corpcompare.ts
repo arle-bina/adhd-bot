@@ -74,12 +74,12 @@ function getMetricValue(corp: CorporationData | undefined, financials: Corporati
 // ---------------------------------------------------------------------------
 
 const METRICS = [
-  { id: "marketCap", name: "Market Cap", formatter: (n: number | undefined | null, cc: string) => formatCurrency(n, cc) },
-  { id: "revenue", name: "Daily Revenue", formatter: (n: number | undefined | null, cc: string) => formatCurrency(n, cc) },
-  { id: "income", name: "Daily Income", formatter: (n: number | undefined | null, cc: string) => formatCurrency(n, cc) },
-  { id: "profitMargin", name: "Profit Margin", formatter: (_n: number | undefined | null, _cc: string) => percent(_n) },
-  { id: "sharePrice", name: "Share Price", formatter: (n: number | undefined | null, cc: string) => formatSharePrice(n, cc) },
-  { id: "liquidCapital", name: "Liquid Capital", formatter: (n: number | undefined | null, cc: string) => formatCurrency(n, cc) },
+  { id: "marketCap", name: "Market Cap", monetary: true, formatter: (n: number | undefined | null, cc: string) => formatCurrency(n, cc) },
+  { id: "revenue", name: "Daily Revenue", monetary: true, formatter: (n: number | undefined | null, cc: string) => formatCurrency(n, cc) },
+  { id: "income", name: "Daily Income", monetary: true, formatter: (n: number | undefined | null, cc: string) => formatCurrency(n, cc) },
+  { id: "profitMargin", name: "Profit Margin", monetary: false, formatter: (_n: number | undefined | null, _cc: string) => percent(_n) },
+  { id: "sharePrice", name: "Share Price", monetary: true, formatter: (n: number | undefined | null, cc: string) => formatSharePrice(n, cc) },
+  { id: "liquidCapital", name: "Liquid Capital", monetary: true, formatter: (n: number | undefined | null, cc: string) => formatCurrency(n, cc) },
 ];
 
 // ---------------------------------------------------------------------------
@@ -195,9 +195,10 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     // Add primary metric comparison
     const primaryMetricData = METRICS.find(m => m.id === primaryMetric);
     if (primaryMetricData) {
-      const values = validCorps.map(corp =>
-        convert(getMetricValue(corp.corporation, corp.financials, primaryMetric), corp.corporation?.countryId)
-      );
+      const values = validCorps.map(corp => {
+        const raw = getMetricValue(corp.corporation, corp.financials, primaryMetric);
+        return primaryMetricData.monetary ? convert(raw, corp.corporation?.countryId) : raw;
+      });
       const maxValue = Math.max(...values);
 
       const metricLines = validCorps.map((corp, index) => {
@@ -231,9 +232,10 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     
     METRICS.forEach(metric => {
       if (metric.id !== primaryMetric) {
-        const values = validCorps.map(corp =>
-          convert(getMetricValue(corp.corporation, corp.financials, metric.id), corp.corporation?.countryId)
-        );
+        const values = validCorps.map(corp => {
+          const raw = getMetricValue(corp.corporation, corp.financials, metric.id);
+          return metric.monetary ? convert(raw, corp.corporation?.countryId) : raw;
+        });
         const lineParts = validCorps.map((corp, index) => {
           return `${corp.corporation!.name.slice(0, 10)}: ${metric.formatter(values[index], targetCurrency)}`;
         });
