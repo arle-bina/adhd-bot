@@ -92,21 +92,22 @@ export async function generateLineChart(
 // Stock Chart generators (market-wide & per-corporation)
 // ---------------------------------------------------------------------------
 
-function formatCurrency(value: number): string {
-  if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`;
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-  return `$${value.toFixed(2)}`;
+function formatChartCurrency(value: number, sym: string = "$"): string {
+  if (value >= 1_000_000_000) return `${sym}${(value / 1_000_000_000).toFixed(1)}B`;
+  if (value >= 1_000_000) return `${sym}${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${sym}${(value / 1_000).toFixed(1)}K`;
+  return `${sym}${value.toFixed(2)}`;
 }
 
 export type StockChartMetric = "marketCap" | "sharePrice" | "revenue" | "income";
 
 export async function generateStockChartMarket(
   data: StockChartMarketResponse,
-  options: { title: string; metric: StockChartMetric }
+  options: { title: string; metric: StockChartMetric; currency?: string }
 ): Promise<Buffer> {
   const points = data.points;
   const values = points.map((p) => p.marketCap);
+  const sym = symbolFor(options.currency ?? "USD");
 
   const configuration = {
     type: 'line' as const,
@@ -143,7 +144,7 @@ export async function generateStockChartMarket(
           grid: { color: 'rgba(255, 255, 255, 0.1)' },
           ticks: {
             color: '#ffffff',
-            callback: (v: number | string) => formatCurrency(Number(v)),
+            callback: (v: number | string) => formatChartCurrency(Number(v), sym),
           },
           title: { display: true, text: 'Market Cap', color: '#ffffff' },
         },
@@ -156,10 +157,11 @@ export async function generateStockChartMarket(
 
 export async function generateStockChartCorp(
   data: StockChartCorpResponse,
-  options: { title: string; metric: StockChartMetric }
+  options: { title: string; metric: StockChartMetric; currency?: string }
 ): Promise<Buffer> {
   const points = data.points;
   const metric = options.metric;
+  const sym = symbolFor(options.currency ?? "USD");
 
   const values = points.map((p) => p[metric]);
   const metricLabels: Record<StockChartMetric, string> = {
@@ -204,7 +206,7 @@ export async function generateStockChartCorp(
           grid: { color: 'rgba(255, 255, 255, 0.1)' },
           ticks: {
             color: '#ffffff',
-            callback: (v: number | string) => formatCurrency(Number(v)),
+            callback: (v: number | string) => formatChartCurrency(Number(v), sym),
           },
           title: { display: true, text: metricLabels[metric], color: '#ffffff' },
         },
