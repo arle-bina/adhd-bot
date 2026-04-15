@@ -407,7 +407,7 @@ client.on("interactionCreate", async (interaction) => {
   if (!command) return;
 
   // Block non-admin users when bot is disabled
-  const ADMIN_ONLY_BYPASS = ["enable-bot", "disable-bot"];
+  const ADMIN_ONLY_BYPASS = ["enable-bot", "disable-bot", "accept"];
   if (!isBotEnabled() && !ADMIN_ONLY_BYPASS.includes(interaction.commandName)) {
     const member = interaction.guild?.members.cache.get(interaction.user.id)
       ?? await interaction.guild?.members.fetch(interaction.user.id);
