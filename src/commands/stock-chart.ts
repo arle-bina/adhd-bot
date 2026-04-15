@@ -10,6 +10,7 @@ import {
   type CorporationListItem,
 } from "../utils/api.js";
 import { replyWithError, standardFooter } from "../utils/helpers.js";
+import { currencyFor, formatCurrency, formatSharePrice, EXCHANGE_CURRENCY } from "../utils/currency.js";
 import {
   generateStockChartMarket,
   generateStockChartCorp,
@@ -149,6 +150,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
       const latestPoint = res.points[res.points.length - 1];
       const firstPoint = res.points[0];
+      const cc = EXCHANGE_CURRENCY[res.exchange] ?? "USD";
 
       const embed = {
         color: 0x5865F2,
@@ -157,7 +159,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         fields: [
           {
             name: "Current Market Cap",
-            value: `$${latestPoint.marketCap.toLocaleString("en-US")}`,
+            value: formatCurrency(latestPoint.marketCap, cc),
             inline: true,
           },
           {
@@ -189,6 +191,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
       const latestPoint = res.points[res.points.length - 1];
       const firstPoint = res.points[0];
+      const cc = currencyFor(res.corporation.countryId);
 
       const embed = {
         color: 0x57F287,
@@ -197,12 +200,12 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         fields: [
           {
             name: "Share Price",
-            value: `$${latestPoint.sharePrice.toFixed(2)}`,
+            value: formatSharePrice(latestPoint.sharePrice, cc),
             inline: true,
           },
           {
             name: "Market Cap",
-            value: `$${latestPoint.marketCap.toLocaleString("en-US")}`,
+            value: formatCurrency(latestPoint.marketCap, cc),
             inline: true,
           },
           {

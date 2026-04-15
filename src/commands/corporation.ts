@@ -204,7 +204,7 @@ function buildOverviewEmbed(res: CorporationResponse): EmbedBuilder {
   return embed;
 }
 
-function buildBondsEmbed(res: BondsResponse, name: string): EmbedBuilder {
+function buildBondsEmbed(res: BondsResponse, name: string, countryId?: string): EmbedBuilder {
   if (!res.bonds || res.bonds.length === 0) {
     return new EmbedBuilder()
       .setTitle(`${name} \u2014 Bonds`.slice(0, 256))
@@ -213,7 +213,7 @@ function buildBondsEmbed(res: BondsResponse, name: string): EmbedBuilder {
       .setFooter({ text: "ahousedividedgame.com" });
   }
 
-  const cc = res.bonds.length > 0 && res.bonds[0].countryId ? currencyFor(res.bonds[0].countryId) : "USD";
+  const cc = currencyFor(countryId ?? res.bonds[0]?.countryId);
   const color = hexToInt(res.bonds[0].brandColor) || 0x3b82f6;
 
   const bondLines = res.bonds.map((b) => {
@@ -402,7 +402,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
             break;
           case "bonds":
             if (!bondsRes) bondsRes = await getBonds({ corp: name });
-            embed = buildBondsEmbed(bondsRes, name);
+            embed = buildBondsEmbed(bondsRes, name, overviewRes.corporation?.countryId);
             break;
           case "financials":
             if (!financialsRes) {
