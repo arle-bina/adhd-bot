@@ -5,6 +5,7 @@ import {
 } from "discord.js";
 import { getParty } from "../utils/api.js";
 import { hexToInt, replyWithError, positionBar } from "../utils/helpers.js";
+import { currencyFor, formatCurrency } from "../utils/currency.js";
 
 export const cooldown = 5;
 
@@ -91,9 +92,9 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       { name: "Members", value: (p1.memberCount ?? 0).toLocaleString(), inline: true },
       { name: "\u200b", value: "\u200b", inline: true },
       { name: "\u200b", value: (p2.memberCount ?? 0).toLocaleString(), inline: true },
-      { name: "Treasury", value: `$${(p1.treasury ?? 0).toLocaleString()}`, inline: true },
+      { name: "Treasury", value: formatCurrency(p1.treasury ?? 0, currencyFor(country1)), inline: true },
       { name: "\u200b", value: "\u200b", inline: true },
-      { name: "\u200b", value: `$${(p2.treasury ?? 0).toLocaleString()}`, inline: true },
+      { name: "\u200b", value: formatCurrency(p2.treasury ?? 0, currencyFor(country2)), inline: true },
       { name: "Chair", value: p1.chairName ?? "Vacant", inline: true },
       { name: "\u200b", value: "\u200b", inline: true },
       { name: "\u200b", value: p2.chairName ?? "Vacant", inline: true },

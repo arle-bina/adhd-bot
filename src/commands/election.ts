@@ -16,6 +16,7 @@ import {
 } from "../utils/api.js";
 import { formatElectionType, RACE_EMOJI } from "../utils/formatting.js";
 import { replyWithError, positionBar } from "../utils/helpers.js";
+import { currencyFor, formatCurrency } from "../utils/currency.js";
 
 export const cooldown = 5;
 
@@ -207,7 +208,7 @@ function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
         const share = unopposed ? "Unopposed" : `Share: ${(c.sharePct ?? 0).toFixed(1)}%`;
         const endorseStr = c.endorsementCount > 0 ? ` · ${c.endorsementCount} end.` : "";
         lines.push(
-          `${name} -- Score: **${Math.round(c.primaryScore ?? 0)}** · ${share} · Fav: ${Math.round(c.favorability ?? 0)}% · Funds: $${(c.campaignFunds ?? 0).toLocaleString()}${endorseStr}`
+          `${name} -- Score: **${Math.round(c.primaryScore ?? 0)}** · ${share} · Fav: ${Math.round(c.favorability ?? 0)}% · Funds: ${formatCurrency(c.campaignFunds ?? 0, currencyFor(election.countryId))}${endorseStr}`
         );
       }
       lines.push("");
@@ -237,7 +238,7 @@ function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
           ? ` · EV: ${votes.electoralVotes[c.id]}`
           : "";
 
-      const stats = `PI: ${Math.round(c.politicalInfluence ?? 0)} · Fav: ${Math.round(c.favorability ?? 0)}% · Funds: $${(c.campaignFunds ?? 0).toLocaleString()}${evLine}`;
+      const stats = `PI: ${Math.round(c.politicalInfluence ?? 0)} · Fav: ${Math.round(c.favorability ?? 0)}% · Funds: ${formatCurrency(c.campaignFunds ?? 0, currencyFor(election.countryId))}${evLine}`;
 
       const ideology = `Econ: \`${positionBar(c.economicPosition ?? 0, 8)}\` · Social: \`${positionBar(c.socialPosition ?? 0, 8)}\``;
 

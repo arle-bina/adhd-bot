@@ -5,6 +5,7 @@ import {
 } from "discord.js";
 import { getParty } from "../utils/api.js";
 import { hexToInt, replyWithError, standardFooter } from "../utils/helpers.js";
+import { currencyFor, formatCurrency } from "../utils/currency.js";
 
 export function ideologyLabel(economic: number, social: number): string {
   const econ = economic < -20 ? "Left" : economic > 20 ? "Right" : "Center";
@@ -71,7 +72,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .addFields(
         { name: "Chair", value: party.chairName ?? "Vacant", inline: true },
         { name: "Members", value: party.memberCount.toLocaleString(), inline: true },
-        { name: "Treasury", value: `$${party.treasury.toLocaleString()}`, inline: true },
+        { name: "Treasury", value: formatCurrency(party.treasury, currencyFor(country)), inline: true },
         {
           name: "Ideology",
           value: ideologyLabel(party.economicPosition, party.socialPosition),
