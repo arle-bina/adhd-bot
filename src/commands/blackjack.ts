@@ -208,9 +208,9 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         .setTitle("Blackjack prize pool")
         .setColor(FELT_GREEN)
         .setDescription(
-          `**Balance:** $${fund.balance.toLocaleString()} LC\n` +
+          `**Balance:** ${formatCurrency(fund.balance, "USD")} LC\n` +
             (fund.gamesPlayed != null ? `**Hands recorded:** ${fund.gamesPlayed.toLocaleString()}\n` : "") +
-            (fund.totalWagered != null ? `**Total wagered (tracked):** $${fund.totalWagered.toLocaleString()} LC\n` : "")
+            (fund.totalWagered != null ? `**Total wagered (tracked):** ${formatCurrency(fund.totalWagered, "USD")} LC\n` : "")
         )
         .setFooter(standardFooter());
       await interaction.editReply({ embeds: [embed] });
