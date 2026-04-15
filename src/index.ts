@@ -23,6 +23,7 @@ import { recordMessage, recordMemberCount } from "./utils/statsStore.js";
 import { handleStarboardReaction } from "./utils/starboard.js";
 import { handleLockReaction, TICKET_CLOSE_MODAL_PREFIX, handleTicketCloseModalSubmit } from "./utils/tickets.js";
 import { checkMessage } from "./utils/filter.js";
+import { isBotEnabled } from "./utils/botState.js";
 
 validateEnv();
 
@@ -404,6 +405,20 @@ client.on("interactionCreate", async (interaction) => {
 
   const command = commands.get(interaction.commandName);
   if (!command) return;
+
+  // Block non-admin users when bot is disabled
+  const ADMIN_ONLY_BYPASS = ["enable-bot", "disable-bot"];
+  if (!isBotEnabled() && !ADMIN_ONLY_BYPASS.includes(interaction.commandName)) {
+    const member = interaction.guild?.members.cache.get(interaction.user.id)
+      ?? await interaction.guild?.members.fetch(interaction.user.id);
+    if (!member?.permissions.has("Administrator")) {
+      await interaction.reply({
+        content: "The bot is currently disabled. Please try again later.",
+        ephemeral: true,
+      });
+      return;
+    }
+  }
 
   const remaining = checkCooldown(
     interaction.user.id,
