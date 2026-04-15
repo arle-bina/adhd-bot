@@ -275,7 +275,7 @@ JPY (¥)   | 106.0000   |    +1.2%
 | `src/utils/currency.ts` | **NEW** — currency constants, formatting, rate fetching, conversion |
 | `src/utils/api-economy.ts` | Add `countryId` to interfaces |
 | `src/utils/api-game.ts` | Add `countryId` to `BlackjackBalanceResponse` |
-| `src/utils/formatting.ts` | Add `EXCHANGE_CURRENCY` map |
+| `src/utils/currency.ts` | Also contains `EXCHANGE_CURRENCY` map (alongside other currency constants) |
 | `src/utils/chartGenerator.ts` | Add `generateForexChart()` function |
 | `src/commands/corporation.ts` | Replace local formatters with `currency.ts` imports, use corp countryId |
 | `src/commands/corpcompare.ts` | Replace local formatters, add currency option + conversion |
