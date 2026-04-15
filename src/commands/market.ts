@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, AttachmentBuilder, ChatInputCommandInteraction } from "discord.js";
 import { getMarketData } from "../utils/api.js";
 import { errorMessage } from "../utils/helpers.js";
+import { EXCHANGE_CURRENCY } from "../utils/currency.js";
 import { generateLineChart, generateCandleChart } from "../utils/chartGenerator.js";
 
 export default {
@@ -107,7 +108,7 @@ export default {
         ],
         timestamp: new Date().toISOString(),
         footer: {
-          text: `Market Data • ${marketData.exchangeName}`
+          text: `Market Data • ${marketData.exchangeName} • ${EXCHANGE_CURRENCY[exchange] ?? "USD"}`
         }
       };
 

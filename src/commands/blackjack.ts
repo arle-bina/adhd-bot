@@ -25,6 +25,7 @@ import {
   type Card,
 } from "../utils/blackjackGame.js";
 import { replyWithError, standardFooter } from "../utils/helpers.js";
+import { currencyFor, formatCurrency, symbolFor } from "../utils/currency.js";
 
 export const cooldown = 10;
 
@@ -86,6 +87,7 @@ function buildTableEmbed(params: {
   hideHole: boolean;
   statusLine: string;
   footerNote?: string;
+  currencyCode: string;
 }): EmbedBuilder {
   const pTotal = handTotal(params.playerCards);
   const dLine = params.hideHole
@@ -103,7 +105,7 @@ function buildTableEmbed(params: {
     .setDescription(params.statusLine)
     .addFields(
       { name: "Player", value: params.playerName, inline: true },
-      { name: "Wager", value: `$${params.wager.toLocaleString()} LC`, inline: true },
+      { name: "Wager", value: `${formatCurrency(params.wager, params.currencyCode)} LC`, inline: true },
       { name: "\u200b", value: "\u200b", inline: true },
       { name: "Your hand", value: pLine, inline: false },
       { name: "Dealer", value: dLine, inline: false }
@@ -120,6 +122,7 @@ function buildResultEmbed(params: {
   naturalWin: boolean;
   detailLine?: string;
   resolve: BlackjackResolveResponse;
+  currencyCode: string;
 }): EmbedBuilder {
   const pTotal = handTotal(params.playerCards);
   const dTotal = handTotal(params.dealerCards);
@@ -133,10 +136,10 @@ function buildResultEmbed(params: {
   const net = newCash - previousCash;
   const netLabel =
     net === 0
-      ? "$0"
+      ? `${symbolFor(params.currencyCode)}0`
       : net > 0
-        ? `+$${net.toLocaleString()}`
-        : `-$${Math.abs(net).toLocaleString()}`;
+        ? `+${formatCurrency(net, params.currencyCode)}`
+        : `-${formatCurrency(Math.abs(net), params.currencyCode)}`;
 
   let payoutLine: string;
   if (params.kind === "win") {
@@ -144,22 +147,22 @@ function buildResultEmbed(params: {
       payout != null
         ? payout
         : Math.round(params.wager * (params.naturalWin ? 1.5 : 1));
-    payoutLine = `💰 **Payout:** $${amount.toLocaleString()}`;
+    payoutLine = `💰 **Payout:** ${formatCurrency(amount, params.currencyCode)}`;
   } else if (params.kind === "push") {
     payoutLine = "💰 **Payout:** Stake returned (push)";
   } else {
-    payoutLine = "💰 **Payout:** $0";
+    payoutLine = `💰 **Payout:** ${symbolFor(params.currencyCode)}0`;
   }
 
   const body =
     `**Player:** ${params.characterName}\n` +
-    `**Wager:** $${params.wager.toLocaleString()}\n\n` +
+    `**Wager:** ${formatCurrency(params.wager, params.currencyCode)}\n\n` +
     `🃏 **Your hand:** ${formatHandSpaced(params.playerCards)} (${pTotal})\n` +
     `🎴 **Dealer:** ${formatHandSpaced(params.dealerCards)} (${dTotal})\n\n` +
     `${headline}\n\n` +
     `${payoutLine}\n` +
-    `💵 **LC before:** $${previousCash.toLocaleString()}\n` +
-    `💵 **LC after:** $${newCash.toLocaleString()} (${netLabel} net)`;
+    `💵 **LC before:** ${formatCurrency(previousCash, params.currencyCode)}\n` +
+    `💵 **LC after:** ${formatCurrency(newCash, params.currencyCode)} (${netLabel} net)`;
 
   return new EmbedBuilder()
     .setTitle("🎰 Blackjack result")
@@ -225,12 +228,14 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   const discordId = interaction.user.id;
 
   let characterName: string;
+  let cc: string;
   try {
     const bal = await getBlackjackBalance(discordId);
     characterName = bal.characterName;
+    cc = currencyFor(bal.countryId);
     if (bal.cashOnHand < wager) {
       await interaction.editReply({
-        content: `You only have **$${bal.cashOnHand.toLocaleString()} LC** on hand; you cannot wager **$${wager.toLocaleString()}**.`,
+        content: `You only have **${formatCurrency(bal.cashOnHand, cc)} LC** on hand; you cannot wager **${formatCurrency(wager, cc)}**.`,
       });
       return;
     }
@@ -287,6 +292,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       naturalWin,
       detailLine,
       resolve,
+      currencyCode: cc,
     });
     const payload = { embeds: [embed], components: [] as [] };
     if (targetMessage) {
@@ -320,6 +326,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     dealerCards: dealer,
     hideHole: true,
     statusLine: "Hit or stand — dealer stands on all 17s.",
+    currencyCode: cc,
   });
 
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -361,6 +368,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         dealerCards: dealer,
         hideHole: true,
         statusLine: `You drew — **${total}**. Hit or stand?`,
+        currencyCode: cc,
       });
       await btn.update({ embeds: [embed], components: [row] });
       return;
