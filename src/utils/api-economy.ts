@@ -67,6 +67,7 @@ export interface CorporationData {
   publicFloat: number;
   publicFloatPct: number;
   dividendRate: number;
+  countryId: string;
 }
 
 export interface CorporationResponse {
@@ -99,6 +100,7 @@ export interface BondEntry {
   corporationName: string;
   corporationId: number | string;
   brandColor: string | null;
+  countryId: string | null;
   couponRate: number;
   maturityLabel: string;
   totalIssued: number;
@@ -146,6 +148,7 @@ export interface FinancialsResponse {
     headquartersStateName: string;
     ceo: string;
     corpUrl: string;
+    countryId: string;
   };
   incomeStatement: {
     totalRevenue: number;
@@ -238,6 +241,7 @@ export type SectorType =
 export interface OwnedSector {
   corporationName: string;
   stateName: string;
+  countryId: string | null;
   revenue: number;
   growthRate: number;
   workers: number;
@@ -247,6 +251,7 @@ export interface OwnedSector {
 export interface UnownedSector {
   stateId: string;
   stateName: string;
+  countryId: string | null;
   unownedRevenue: number;
   totalMarket: number;
 }
@@ -350,6 +355,7 @@ export interface MarketShareCompany {
   corporationName: string;
   corporationSequentialId: number | null;
   brandColor: string | null;
+  countryId: string | null;
   revenue: number;
   marketSharePercent: number;
   isNatcorp: boolean;
@@ -418,7 +424,7 @@ export interface StockChartMarketResponse {
 export interface StockChartCorpResponse {
   found: true;
   mode: "corporation";
-  corporation: { name: string; sequentialId: number; type: string };
+  corporation: { name: string; sequentialId: number; type: string; countryId: string };
   points: StockChartCorpPoint[];
 }
 

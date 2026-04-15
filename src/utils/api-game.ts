@@ -60,6 +60,7 @@ export async function getBlackjackFund(): Promise<BlackjackFundResponse> {
 export interface BlackjackBalanceResponse {
   cashOnHand: number;
   characterName: string;
+  countryId: string;
 }
 
 export async function getBlackjackBalance(discordId: string): Promise<BlackjackBalanceResponse> {
