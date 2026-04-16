@@ -19,7 +19,7 @@ import {
   type FinancialsResponse,
 } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
-import { currencyFor, formatCurrency, formatSharePrice, formatCurrencySigned, padCurrency } from "../utils/currency.js";
+import { currencyFor, formatCurrency, formatSharePrice, formatCurrencySigned, padCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES } from "../utils/currency.js";
 
 // ---------------------------------------------------------------------------
 // Corporation list cache (5-minute TTL)
@@ -69,6 +69,13 @@ export const data = new SlashCommandBuilder()
       .setDescription("Corporation name")
       .setRequired(true)
       .setAutocomplete(true)
+  )
+  .addStringOption((o) =>
+    o
+      .setName("currency")
+      .setDescription("Display currency (default: corporation's home currency)")
+      .setRequired(false)
+      .addChoices(...CURRENCY_CHOICES)
   );
 
 export const cooldown = 5;
@@ -100,12 +107,31 @@ function buildTabRow(active: Tab, disabled = false): ActionRowBuilder<ButtonBuil
 }
 
 // ---------------------------------------------------------------------------
-// Embed builders (return EmbedBuilder, don't edit the reply)
+// Forex footer helper
 // ---------------------------------------------------------------------------
 
-function buildOverviewEmbed(res: CorporationResponse): EmbedBuilder {
+function forexFooter(displayCurrency: string, nativeCc: string, rates: Record<string, number>, extra?: string): string {
+  const parts: string[] = [];
+  if (extra) parts.push(extra);
+  if (displayCurrency !== nativeCc) {
+    const sym = { USD: "$", GBP: "£", JPY: "¥", CAD: "C$", EUR: "€" }[displayCurrency] ?? displayCurrency;
+    const rateVal = displayCurrency === "JPY" ? (rates[displayCurrency] ?? 1).toFixed(2) : (rates[displayCurrency] ?? 1).toFixed(4);
+    parts.push(`1 INT = ${sym}${rateVal} ${displayCurrency}`);
+  }
+  parts.push("ahousedividedgame.com");
+  return parts.join(" · ");
+}
+
+// ---------------------------------------------------------------------------
+// Embed builders
+// ---------------------------------------------------------------------------
+
+function buildOverviewEmbed(res: CorporationResponse, displayCurrency: string, rates: Record<string, number>): EmbedBuilder {
   const corp = res.corporation!;
-  const cc = currencyFor(corp.countryId);
+  const nativeCc = currencyFor(corp.countryId);
+  const cc = displayCurrency;
+  const cvt = (n: number | null | undefined): number | null | undefined => n != null ? Math.round(convertCurrency(n, nativeCc, displayCurrency, rates)) : n;
+
   const ceo = res.ceo ?? null;
   const financials = res.financials!;
   const sectors = res.sectors ?? [];
@@ -117,7 +143,7 @@ function buildOverviewEmbed(res: CorporationResponse): EmbedBuilder {
     .setTitle(corp.name.slice(0, 256))
     .setURL(corp.corpUrl)
     .setColor(hexToInt(corp.brandColor) || 0x3b82f6)
-    .setFooter({ text: "ahousedividedgame.com" });
+    .setFooter({ text: forexFooter(displayCurrency, nativeCc, rates) });
 
   if (corp.logoUrl) embed.setThumbnail(corp.logoUrl);
   if (corp.description) embed.setDescription(corp.description.slice(0, 4096));
@@ -130,18 +156,18 @@ function buildOverviewEmbed(res: CorporationResponse): EmbedBuilder {
     { name: "Type", value: corp.typeLabel, inline: true },
     { name: "HQ", value: corp.headquartersStateName, inline: true },
     { name: "CEO", value: ceoValue, inline: true },
-    { name: "Liquid Capital", value: formatCurrency(corp.liquidCapital, cc), inline: true },
-    { name: "Share Price", value: formatSharePrice(corp.sharePrice, cc), inline: true },
-    { name: "Market Cap", value: formatCurrency(corp.marketCapitalization, cc), inline: true },
-    { name: "Daily Revenue", value: formatCurrency(financials.totalRevenue, cc), inline: true },
-    { name: "Daily Costs", value: formatCurrency(financials.totalCosts, cc), inline: true },
-    { name: "Daily Income", value: formatCurrencySigned(financials.income, cc), inline: true },
+    { name: "Liquid Capital", value: formatCurrency(cvt(corp.liquidCapital), cc), inline: true },
+    { name: "Share Price", value: formatSharePrice(cvt(corp.sharePrice), cc), inline: true },
+    { name: "Market Cap", value: formatCurrency(cvt(corp.marketCapitalization), cc), inline: true },
+    { name: "Daily Revenue", value: formatCurrency(cvt(financials.totalRevenue), cc), inline: true },
+    { name: "Daily Costs", value: formatCurrency(cvt(financials.totalCosts), cc), inline: true },
+    { name: "Daily Income", value: formatCurrencySigned(cvt(financials.income), cc), inline: true },
   );
 
   if ((corp.dividendRate ?? 0) !== 0) {
     embed.addFields({
       name: "Dividends",
-      value: `${corp.dividendRate}% \u00b7 ${formatCurrency(financials.dailyDividendPayout, cc)}/day`,
+      value: `${corp.dividendRate}% · ${formatCurrency(cvt(financials.dailyDividendPayout), cc)}/day`,
       inline: true,
     });
   }
@@ -158,7 +184,7 @@ function buildOverviewEmbed(res: CorporationResponse): EmbedBuilder {
     const totalDebt = bonds.reduce((sum, b) => sum + (b.totalIssued ?? 0), 0);
     embed.addFields({
       name: "Debt",
-      value: `${formatCurrency(totalDebt, cc)} (${bonds.length} bond${bonds.length === 1 ? "" : "s"})`,
+      value: `${formatCurrency(cvt(totalDebt), cc)} (${bonds.length} bond${bonds.length === 1 ? "" : "s"})`,
       inline: true,
     });
   }
@@ -166,11 +192,11 @@ function buildOverviewEmbed(res: CorporationResponse): EmbedBuilder {
   if (shareholders.length > 0) {
     const maxShow = 3;
     const lines = shareholders.slice(0, maxShow).map(
-      (s) => `${s.name} \u2014 ${(s.shares ?? 0).toLocaleString("en-US")} (${(s.percentage ?? 0).toFixed(1)}%)`
+      (s) => `${s.name} — ${(s.shares ?? 0).toLocaleString("en-US")} (${(s.percentage ?? 0).toFixed(1)}%)`
     );
-    lines.push(`Public Float \u2014 ${(corp.publicFloat ?? 0).toLocaleString("en-US")} (${(corp.publicFloatPct ?? 0).toFixed(1)}%)`);
+    lines.push(`Public Float — ${(corp.publicFloat ?? 0).toLocaleString("en-US")} (${(corp.publicFloatPct ?? 0).toFixed(1)}%)`);
     if (shareholders.length > maxShow) {
-      lines.push(`\u2026and ${shareholders.length - maxShow} more`);
+      lines.push(`…and ${shareholders.length - maxShow} more`);
     }
     embed.addFields({
       name: "Shareholders",
@@ -181,7 +207,7 @@ function buildOverviewEmbed(res: CorporationResponse): EmbedBuilder {
 
   embed.addFields({
     name: "Marketing",
-    value: `Budget: ${formatCurrency(corp.marketingBudget, cc)} \u00b7 Strength: ${corp.marketingStrength ?? 0}`,
+    value: `Budget: ${formatCurrency(cvt(corp.marketingBudget), cc)} · Strength: ${corp.marketingStrength ?? 0}`,
     inline: false,
   });
 
@@ -189,10 +215,10 @@ function buildOverviewEmbed(res: CorporationResponse): EmbedBuilder {
     const maxShow = 5;
     const lines = sectors.slice(0, maxShow).map(
       (s) =>
-        `${s.stateName ?? "Unknown"} \u2014 ${formatCurrency(s.revenue, cc)} rev \u00b7 ${s.growthRate ?? 0}% growth \u00b7 ${s.workers ?? 0} workers`
+        `${s.stateName ?? "Unknown"} — ${formatCurrency(cvt(s.revenue), cc)} rev · ${s.growthRate ?? 0}% growth · ${s.workers ?? 0} workers`
     );
     if (sectors.length > maxShow) {
-      lines.push(`\u2026and ${sectors.length - maxShow} more`);
+      lines.push(`…and ${sectors.length - maxShow} more`);
     }
     embed.addFields({
       name: `Sectors (${sectors.length})`,
@@ -204,40 +230,45 @@ function buildOverviewEmbed(res: CorporationResponse): EmbedBuilder {
   return embed;
 }
 
-function buildBondsEmbed(res: BondsResponse, name: string, countryId?: string): EmbedBuilder {
+function buildBondsEmbed(res: BondsResponse, name: string, countryId: string | undefined, displayCurrency: string, rates: Record<string, number>): EmbedBuilder {
   if (!res.bonds || res.bonds.length === 0) {
     return new EmbedBuilder()
-      .setTitle(`${name} \u2014 Bonds`.slice(0, 256))
+      .setTitle(`${name} — Bonds`.slice(0, 256))
       .setColor(0x3b82f6)
       .setDescription(`${name} has no outstanding bonds.`)
       .setFooter({ text: "ahousedividedgame.com" });
   }
 
-  const cc = currencyFor(countryId ?? res.bonds[0]?.countryId);
+  const nativeCc = currencyFor(countryId ?? res.bonds[0]?.countryId);
+  const cc = displayCurrency;
+  const cvt = (n: number | null | undefined): number | null | undefined => n != null ? Math.round(convertCurrency(n, nativeCc, displayCurrency, rates)) : n;
   const color = hexToInt(res.bonds[0].brandColor) || 0x3b82f6;
 
   const bondLines = res.bonds.map((b) => {
-    const prefix = b.defaulted ? "\u26a0\ufe0f DEFAULTED \u2014 " : "";
+    const prefix = b.defaulted ? "⚠️ DEFAULTED — " : "";
     const label = `${b.maturityLabel} @ ${(b.couponRate ?? 0).toFixed(1)}%`;
     const url = b.bondUrl ? `[${label}](${b.bondUrl})` : label;
-    const details = `Price: ${formatSharePrice(b.marketPrice, cc)} \u00b7 YTM: ${(b.yieldToMaturity ?? 0).toFixed(1)}% \u00b7 ${formatCurrency(b.totalIssued, cc)} issued \u00b7 ${b.turnsRemaining ?? 0} turns left`;
+    const details = `Price: ${formatSharePrice(cvt(b.marketPrice), cc)} · YTM: ${(b.yieldToMaturity ?? 0).toFixed(1)}% · ${formatCurrency(cvt(b.totalIssued), cc)} issued · ${b.turnsRemaining ?? 0} turns left`;
     return `${prefix}**${url}**\n${details}`;
   });
 
   return new EmbedBuilder()
-    .setTitle(`${res.filterCorp ?? name} \u2014 Bonds`.slice(0, 256))
+    .setTitle(`${res.filterCorp ?? name} — Bonds`.slice(0, 256))
     .setColor(color)
     .setDescription(bondLines.join("\n\n").slice(0, 4096))
     .addFields(
-      { name: "Total Debt Outstanding", value: formatCurrency(res.totalOutstandingDebt, cc), inline: true },
+      { name: "Total Debt Outstanding", value: formatCurrency(cvt(res.totalOutstandingDebt), cc), inline: true },
       { name: "Active Bonds", value: String(res.bonds.length), inline: true },
     )
-    .setFooter({ text: "ahousedividedgame.com" });
+    .setFooter({ text: forexFooter(displayCurrency, nativeCc, rates) });
 }
 
-function buildFinancialsEmbed(res: FinancialsResponse): EmbedBuilder {
+function buildFinancialsEmbed(res: FinancialsResponse, displayCurrency: string, rates: Record<string, number>): EmbedBuilder {
   const corp = res.corporation;
-  const cc = currencyFor(corp.countryId);
+  const nativeCc = currencyFor(corp.countryId);
+  const cc = displayCurrency;
+  const cvt = (n: number | null | undefined): number | null | undefined => n != null ? Math.round(convertCurrency(n, nativeCc, displayCurrency, rates)) : n;
+
   const inc = res.incomeStatement;
   const bal = res.balanceSheet;
   const shares = res.shareStructure;
@@ -246,21 +277,21 @@ function buildFinancialsEmbed(res: FinancialsResponse): EmbedBuilder {
   const sectors = res.sectorBreakdown ?? [];
 
   const embed = new EmbedBuilder()
-    .setTitle(`Financial Statement \u2014 ${corp.name}`.slice(0, 256))
+    .setTitle(`Financial Statement — ${corp.name}`.slice(0, 256))
     .setURL(corp.corpUrl)
     .setColor(hexToInt(corp.brandColor) || 0x3b82f6)
-    .setFooter({ text: `ahousedividedgame.com \u00b7 ${corp.typeLabel} \u00b7 HQ: ${corp.headquartersStateName}` });
+    .setFooter({ text: forexFooter(displayCurrency, nativeCc, rates, `${corp.typeLabel} · HQ: ${corp.headquartersStateName}`) });
 
   if (corp.logoUrl) embed.setThumbnail(corp.logoUrl);
 
   const W = 14;
   const incomeBlock = [
-    padCurrency("Revenue:       ", inc.totalRevenue, W, cc),
-    padCurrency("- Operating:   ", inc.costs.operatingTotal, W, cc),
-    padCurrency("- Interest:    ", inc.costs.bondInterest, W, cc),
-    padCurrency("= Net Income:  ", inc.netIncome, W, cc),
-    padCurrency("Dividends:     ", inc.dailyDividendPayout, W, cc) + ` (${inc.dividendRate ?? 0}%)`,
-    padCurrency("Retained:      ", inc.retainedEarnings, W, cc),
+    padCurrency("Revenue:       ", cvt(inc.totalRevenue), W, cc),
+    padCurrency("- Operating:   ", cvt(inc.costs.operatingTotal), W, cc),
+    padCurrency("- Interest:    ", cvt(inc.costs.bondInterest), W, cc),
+    padCurrency("= Net Income:  ", cvt(inc.netIncome), W, cc),
+    padCurrency("Dividends:     ", cvt(inc.dailyDividendPayout), W, cc) + ` (${inc.dividendRate ?? 0}%)`,
+    padCurrency("Retained:      ", cvt(inc.retainedEarnings), W, cc),
   ].join("\n");
   embed.addFields({
     name: "Income Statement",
@@ -269,11 +300,11 @@ function buildFinancialsEmbed(res: FinancialsResponse): EmbedBuilder {
   });
 
   const balBlock = [
-    padCurrency("Assets:   ", bal.assets.totalAssets, W, cc),
-    padCurrency("  Cash:   ", bal.assets.cashOnHand, W, cc),
-    padCurrency("  NPV:    ", bal.assets.sectorNPV, W, cc),
-    padCurrency("Debt:     ", bal.liabilities.outstandingDebt, W, cc) + ` (${bal.liabilities.bondCount ?? 0} bond${(bal.liabilities.bondCount ?? 0) === 1 ? "" : "s"})`,
-    padCurrency("Equity:   ", bal.equity.bookValue, W, cc),
+    padCurrency("Assets:   ", cvt(bal.assets.totalAssets), W, cc),
+    padCurrency("  Cash:   ", cvt(bal.assets.cashOnHand), W, cc),
+    padCurrency("  NPV:    ", cvt(bal.assets.sectorNPV), W, cc),
+    padCurrency("Debt:     ", cvt(bal.liabilities.outstandingDebt), W, cc) + ` (${bal.liabilities.bondCount ?? 0} bond${(bal.liabilities.bondCount ?? 0) === 1 ? "" : "s"})`,
+    padCurrency("Equity:   ", cvt(bal.equity.bookValue), W, cc),
   ].join("\n");
   embed.addFields({
     name: "Balance Sheet",
@@ -282,12 +313,12 @@ function buildFinancialsEmbed(res: FinancialsResponse): EmbedBuilder {
   });
 
   const shareLines: string[] = [
-    `Price: ${formatSharePrice(shares.sharePrice, cc)} \u00b7 Market Cap: ${formatCurrency(shares.marketCapitalization, cc)}`,
+    `Price: ${formatSharePrice(cvt(shares.sharePrice), cc)} · Market Cap: ${formatCurrency(cvt(shares.marketCapitalization), cc)}`,
     `Float: ${(shares.publicFloat ?? 0).toLocaleString("en-US")} (${(shares.publicFloatPct ?? 0).toFixed(1)}%)`,
     "",
   ];
   for (const sh of shares.shareholders ?? []) {
-    const valStr = formatCurrency(sh.value, cc);
+    const valStr = formatCurrency(cvt(sh.value), cc);
     shareLines.push(`${sh.name}     ${(sh.shares ?? 0).toLocaleString("en-US")} (${(sh.percentage ?? 0).toFixed(1)}%)  ${valStr}`);
   }
   embed.addFields({
@@ -299,7 +330,7 @@ function buildFinancialsEmbed(res: FinancialsResponse): EmbedBuilder {
   const comp = credit.components;
   embed.addFields({
     name: "Credit Rating",
-    value: `${credit.rating} (${credit.compositeScore ?? 0}/100)\nD/E: ${(comp.debtToEquity ?? 0).toFixed(1)} \u00b7 IC: ${(comp.interestCoverage ?? 0).toFixed(1)} \u00b7 Prof: ${(comp.profitability ?? 0).toFixed(1)} \u00b7 Liq: ${(comp.liquidity ?? 0).toFixed(1)}`.slice(0, 1024),
+    value: `${credit.rating} (${credit.compositeScore ?? 0}/100)\nD/E: ${(comp.debtToEquity ?? 0).toFixed(1)} · IC: ${(comp.interestCoverage ?? 0).toFixed(1)} · Prof: ${(comp.profitability ?? 0).toFixed(1)} · Liq: ${(comp.liquidity ?? 0).toFixed(1)}`.slice(0, 1024),
     inline: true,
   });
 
@@ -311,8 +342,8 @@ function buildFinancialsEmbed(res: FinancialsResponse): EmbedBuilder {
 
   if (bonds.length > 0) {
     const bondLines = bonds.map((b) => {
-      const prefix = b.defaulted ? "\u26a0\ufe0f " : "";
-      return `${prefix}${b.maturityLabel} @ ${(b.couponRate ?? 0).toFixed(1)}% \u2014 ${formatCurrency(b.totalIssued, cc)} \u00b7 Price: ${formatSharePrice(b.marketPrice, cc)} \u00b7 YTM: ${(b.yieldToMaturity ?? 0).toFixed(1)}%`;
+      const prefix = b.defaulted ? "⚠️ " : "";
+      return `${prefix}${b.maturityLabel} @ ${(b.couponRate ?? 0).toFixed(1)}% — ${formatCurrency(cvt(b.totalIssued), cc)} · Price: ${formatSharePrice(cvt(b.marketPrice), cc)} · YTM: ${(b.yieldToMaturity ?? 0).toFixed(1)}%`;
     });
     embed.addFields({
       name: "Outstanding Bonds",
@@ -332,10 +363,10 @@ function buildFinancialsEmbed(res: FinancialsResponse): EmbedBuilder {
     const sorted = [...sectors].sort((a, b) => (b.revenue ?? 0) - (a.revenue ?? 0));
     const lines = sorted.slice(0, maxShow).map(
       (s) =>
-        `${s.stateName ?? "Unknown"} \u2014 ${formatCurrency(s.revenue, cc)} rev \u00b7 ${(s.effectiveMargin ?? 0).toFixed(1)}% margin \u00b7 ${formatCurrency(s.profit, cc)} profit`
+        `${s.stateName ?? "Unknown"} — ${formatCurrency(cvt(s.revenue), cc)} rev · ${(s.effectiveMargin ?? 0).toFixed(1)}% margin · ${formatCurrency(cvt(s.profit), cc)} profit`
     );
     if (sectors.length > maxShow) {
-      lines.push(`\u2026and ${sectors.length - maxShow} more`);
+      lines.push(`…and ${sectors.length - maxShow} more`);
     }
     embed.addFields({
       name: "Sector P&L",
@@ -355,23 +386,26 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   await interaction.deferReply();
 
   const name = interaction.options.getString("name", true);
+  const explicitCurrency = interaction.options.getString("currency");
 
   try {
-    // Fetch overview on initial load
-    const overviewRes = await getCorporation(name);
+    const [overviewRes, rates] = await Promise.all([
+      getCorporation(name),
+      fetchForexRates(),
+    ]);
     if (!overviewRes.found || !overviewRes.corporation) {
       await interaction.editReply({ content: "Corporation not found." });
       return;
     }
 
-    // Cache API responses so tab switches don't re-fetch unnecessarily
+    const displayCurrency = explicitCurrency || currencyFor(overviewRes.corporation.countryId);
+
     let bondsRes: BondsResponse | null = null;
     let financialsRes: FinancialsResponse | null = null;
-
     let currentTab: Tab = "overview";
 
     const message = await interaction.editReply({
-      embeds: [buildOverviewEmbed(overviewRes)],
+      embeds: [buildOverviewEmbed(overviewRes, displayCurrency, rates)],
       components: [buildTabRow("overview")],
     });
 
@@ -398,11 +432,11 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
         switch (tab) {
           case "overview":
-            embed = buildOverviewEmbed(overviewRes);
+            embed = buildOverviewEmbed(overviewRes, displayCurrency, rates);
             break;
           case "bonds":
             if (!bondsRes) bondsRes = await getBonds({ corp: name });
-            embed = buildBondsEmbed(bondsRes, name, overviewRes.corporation?.countryId);
+            embed = buildBondsEmbed(bondsRes, name, overviewRes.corporation?.countryId, displayCurrency, rates);
             break;
           case "financials":
             if (!financialsRes) {
@@ -412,7 +446,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
                 return;
               }
             }
-            embed = buildFinancialsEmbed(financialsRes);
+            embed = buildFinancialsEmbed(financialsRes, displayCurrency, rates);
             break;
           default:
             return;
@@ -435,7 +469,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     });
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
-      const msg = "Bot configuration error \u2014 contact an admin.";
+      const msg = "Bot configuration error — contact an admin.";
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply({ content: msg });
       } else {

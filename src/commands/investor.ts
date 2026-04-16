@@ -6,7 +6,7 @@ import {
 } from "discord.js";
 import { lookupByName, lookupByDiscordId, getAutocomplete } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
-import { currencyFor, formatCurrency } from "../utils/currency.js";
+import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES } from "../utils/currency.js";
 
 export const cooldown = 5;
 
@@ -18,6 +18,13 @@ export const data = new SlashCommandBuilder()
   )
   .addUserOption((o) =>
     o.setName("user").setDescription("Discord user to look up").setRequired(false)
+  )
+  .addStringOption((o) =>
+    o
+      .setName("currency")
+      .setDescription("Display currency for portfolio value (default: character's home currency)")
+      .setRequired(false)
+      .addChoices(...CURRENCY_CHOICES)
   );
 
 export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
@@ -38,17 +45,32 @@ const RANK_MEDAL: Record<number, string> = {
   3: "🥉",
 };
 
+function makeForexFooter(displayCurrency: string, rates: Record<string, number>, nativeCc?: string): string {
+  const parts: string[] = [];
+  if (displayCurrency !== "USD" && rates[displayCurrency] && rates[displayCurrency] !== 1) {
+    const sym = { USD: "$", GBP: "£", JPY: "¥", CAD: "C$", EUR: "€" }[displayCurrency] ?? displayCurrency;
+    const rateVal = displayCurrency === "JPY" ? rates[displayCurrency].toFixed(2) : rates[displayCurrency].toFixed(4);
+    parts.push(`1 INT = ${sym}${rateVal} ${displayCurrency}`);
+  }
+  parts.push("ahousedividedgame.com");
+  return parts.join(" · ");
+}
+
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
   const name = interaction.options.getString("name");
   const user = interaction.options.getUser("user");
+  const explicitCurrency = interaction.options.getString("currency");
   const isSelf = !name && !user;
 
   await interaction.deferReply({ ephemeral: isSelf });
 
   try {
-    const result = name
-      ? await lookupByName(name)
-      : await lookupByDiscordId(user?.id ?? interaction.user.id);
+    const [result, rates] = await Promise.all([
+      name
+        ? lookupByName(name)
+        : lookupByDiscordId(user?.id ?? interaction.user.id),
+      fetchForexRates(),
+    ]);
 
     if (!result.found || result.characters.length === 0) {
       const message = name
@@ -62,7 +84,8 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
     const char = result.characters[0];
     const color = hexToInt(char.partyColor);
-    const cc = currencyFor(char.countryId);
+    const nativeCc = currencyFor(char.countryId);
+    const displayCurrency = explicitCurrency || nativeCc;
 
     const hasCorpRole = char.isCeo || char.isInvestor;
 
@@ -74,7 +97,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
             .setTitle(`${char.name} — Corporate Positions`)
             .setColor(color)
             .setDescription(`${nameStr} holds no corporate roles.`)
-            .setFooter({ text: "ahousedividedgame.com" }),
+            .setFooter({ text: makeForexFooter(displayCurrency, rates, nativeCc) }),
         ],
       });
       return;
@@ -84,7 +107,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       .setTitle(`${char.name} — Corporate Positions`.slice(0, 256))
       .setColor(color)
       .setURL(char.profileUrl)
-      .setFooter({ text: "ahousedividedgame.com" });
+      .setFooter({ text: makeForexFooter(displayCurrency, rates, nativeCc) });
 
     if (char.avatarUrl) embed.setThumbnail(char.avatarUrl);
 
@@ -97,9 +120,8 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     if (char.isInvestor) {
       const medal = char.investorRank ? (RANK_MEDAL[char.investorRank] ?? "") : "";
       const rankStr = char.investorRank ? ` (Rank #${char.investorRank} ${medal})` : "";
-      const portfolio = char.portfolioValue != null
-        ? formatCurrency(Math.round(char.portfolioValue), cc)
-        : "Value unknown";
+      const portfolioConverted = Math.round(convertCurrency(char.portfolioValue ?? 0, nativeCc, displayCurrency, rates));
+      const portfolio = formatCurrency(portfolioConverted, displayCurrency);
       lines.push(`📈 **Investor**${rankStr} — Portfolio: ${portfolio}`);
     }
 

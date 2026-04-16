@@ -21,7 +21,7 @@ import {
 } from "../utils/api.js";
 import { syncMemberRoles } from "../utils/roles.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
-import { currencyFor, formatCurrency } from "../utils/currency.js";
+import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES } from "../utils/currency.js";
 
 export const cooldown = 5;
 
@@ -33,6 +33,13 @@ export const data = new SlashCommandBuilder()
   )
   .addUserOption((option) =>
     option.setName("user").setDescription("Discord user to look up").setRequired(false)
+  )
+  .addStringOption((option) =>
+    option
+      .setName("currency")
+      .setDescription("Display currency (default: character's home currency)")
+      .setRequired(false)
+      .addChoices(...CURRENCY_CHOICES)
   );
 
 export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
@@ -67,13 +74,25 @@ function policyLabel(val: number): string {
   return `${dir} (${clamped > 0 ? "+" : ""}${clamped})`;
 }
 
-function buildProfileEmbed(char: CharacterResult): EmbedBuilder {
-  const cc = currencyFor(char.countryId);
+function buildProfileEmbed(char: CharacterResult, displayCurrency: string, rates: Record<string, number>): EmbedBuilder {
+  const nativeCc = currencyFor(char.countryId);
+  const cvt = (n: number) => convertCurrency(n, nativeCc, displayCurrency, rates);
+  const fmt = (n: number) => formatCurrency(Math.round(n), displayCurrency);
+
   const embed = new EmbedBuilder()
     .setTitle(char.name)
     .setColor(partyColor(char))
-    .setURL(char.profileUrl)
-    .setFooter({ text: "ahousedividedgame.com" });
+    .setURL(char.profileUrl);
+
+  // Build footer with forex rate info when not displaying in anchor currency
+  const footerParts: string[] = [];
+  if (displayCurrency !== "USD" && rates[displayCurrency] && rates[displayCurrency] !== 1) {
+    const sym = { USD: "$", GBP: "£", JPY: "¥", CAD: "C$", EUR: "€" }[displayCurrency] ?? displayCurrency;
+    const rateVal = displayCurrency === "JPY" ? rates[displayCurrency].toFixed(2) : rates[displayCurrency].toFixed(4);
+    footerParts.push(`1 INT = ${sym}${rateVal} ${displayCurrency}`);
+  }
+  footerParts.push("ahousedividedgame.com");
+  embed.setFooter({ text: footerParts.join(" · ") });
 
   const hint = "\n-# Try `/compare` for side-by-side or `/investor` for portfolio details";
   if (char.bio) {
@@ -94,7 +113,7 @@ function buildProfileEmbed(char: CharacterResult): EmbedBuilder {
     { name: "Donor Base", value: String(Math.round(char.donorBaseLevel ?? 0)), inline: true },
     { name: "Economic", value: policyLabel(char.policies?.economic ?? 0), inline: true },
     { name: "Social", value: policyLabel(char.policies?.social ?? 0), inline: true },
-    { name: "Funds", value: formatCurrency(Math.round(char.funds ?? 0), cc), inline: true },
+    { name: "Funds", value: fmt(cvt(char.funds ?? 0)), inline: true },
   );
 
   if (char.createdAt) {
@@ -109,7 +128,7 @@ function buildProfileEmbed(char: CharacterResult): EmbedBuilder {
   if (char.isInvestor) {
     const rank = char.investorRank ? ` (Rank #${char.investorRank})` : "";
     const portfolio = char.portfolioValue != null
-      ? `${formatCurrency(Math.round(char.portfolioValue), cc)}${rank}`
+      ? `${fmt(cvt(char.portfolioValue))}${rank}`
       : `Investor${rank}`;
     embed.addFields({ name: "Portfolio", value: portfolio, inline: true });
   }
@@ -189,14 +208,18 @@ function buildTabRow(active: Tab, disabled = false): ActionRowBuilder<ButtonBuil
 export async function execute(interaction: ChatInputCommandInteraction) {
   const name = interaction.options.getString("name");
   const user = interaction.options.getUser("user");
+  const explicitCurrency = interaction.options.getString("currency");
   const isSelf = !name && !user;
 
   await interaction.deferReply({ ephemeral: isSelf });
 
   try {
-    const result = name
-      ? await lookupByName(name)
-      : await lookupByDiscordId(user?.id ?? interaction.user.id);
+    const [result, rates] = await Promise.all([
+      name
+        ? lookupByName(name)
+        : lookupByDiscordId(user?.id ?? interaction.user.id),
+      fetchForexRates(),
+    ]);
 
     if (result.characters.length === 0) {
       const message = name
@@ -209,6 +232,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     const char = result.characters[0];
+    const displayCurrency = explicitCurrency || currencyFor(char.countryId);
 
     // Best-effort: sync the invoking user's own game roles on every /profile run
     interaction.guild?.members.fetch(interaction.user.id).then(async (member) => {
@@ -229,7 +253,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     const message = await interaction.editReply({
       content: extras || undefined,
-      embeds: [buildProfileEmbed(char)],
+      embeds: [buildProfileEmbed(char, displayCurrency, rates)],
       components: [buildTabRow("profile")],
     });
 
@@ -248,7 +272,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
       if (btn.customId === "tab_profile") {
         activeTab = "profile";
-        await btn.editReply({ embeds: [buildProfileEmbed(char)], components: [buildTabRow("profile")] });
+        await btn.editReply({ embeds: [buildProfileEmbed(char, displayCurrency, rates)], components: [buildTabRow("profile")] });
       } else if (btn.customId === "tab_career") {
         activeTab = "career";
         if (!careerCache) {

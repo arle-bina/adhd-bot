@@ -5,7 +5,7 @@ import {
 } from "discord.js";
 import { getParty } from "../utils/api.js";
 import { hexToInt, replyWithError, standardFooter } from "../utils/helpers.js";
-import { currencyFor, formatCurrency } from "../utils/currency.js";
+import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES } from "../utils/currency.js";
 
 export function ideologyLabel(economic: number, social: number): string {
   const econ = economic < -20 ? "Left" : economic > 20 ? "Right" : "Center";
@@ -39,16 +39,27 @@ export const data = new SlashCommandBuilder()
         { name: "Canada", value: "CA" },
         { name: "Germany", value: "DE" },
       )
+  )
+  .addStringOption((option) =>
+    option
+      .setName("currency")
+      .setDescription("Display currency for treasury (default: party's home currency)")
+      .setRequired(false)
+      .addChoices(...CURRENCY_CHOICES)
   );
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   const id = interaction.options.getString("id", true);
   const country = interaction.options.getString("country", true);
+  const explicitCurrency = interaction.options.getString("currency");
 
   await interaction.deferReply();
 
   try {
-    const result = await getParty(id, country);
+    const [result, rates] = await Promise.all([
+      getParty(id, country),
+      fetchForexRates(),
+    ]);
 
     if (!result.found || !result.party) {
       await interaction.editReply({
@@ -58,12 +69,24 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     const party = result.party;
+    const nativeCc = currencyFor(country);
+    const displayCurrency = explicitCurrency || nativeCc;
+    const treasuryConverted = Math.round(convertCurrency(party.treasury, nativeCc, displayCurrency, rates));
 
     const topMembersValue =
       party.topMembers
         .slice(0, 5)
         .map((m, i) => `${i + 1}. ${m.name} — ${m.position}`)
         .join("\n") || "None";
+
+    // Build footer with forex awareness
+    const footerParts: string[] = ["Try /party-compare for side-by-side"];
+    if (displayCurrency !== "USD" && rates[displayCurrency] && rates[displayCurrency] !== 1) {
+      const sym = { USD: "$", GBP: "£", JPY: "¥", CAD: "C$", EUR: "€" }[displayCurrency] ?? displayCurrency;
+      const rateVal = displayCurrency === "JPY" ? rates[displayCurrency].toFixed(2) : rates[displayCurrency].toFixed(4);
+      footerParts.push(`1 INT = ${sym}${rateVal} ${displayCurrency}`);
+    }
+    footerParts.push("ahousedividedgame.com");
 
     const embed = new EmbedBuilder()
       .setTitle(`[${party.abbreviation}] ${party.name}`)
@@ -72,7 +95,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .addFields(
         { name: "Chair", value: party.chairName ?? "Vacant", inline: true },
         { name: "Members", value: party.memberCount.toLocaleString(), inline: true },
-        { name: "Treasury", value: formatCurrency(party.treasury, currencyFor(country)), inline: true },
+        { name: "Treasury", value: formatCurrency(treasuryConverted, displayCurrency), inline: true },
         {
           name: "Ideology",
           value: ideologyLabel(party.economicPosition, party.socialPosition),
@@ -80,7 +103,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         },
         { name: "Top Members", value: topMembersValue }
       )
-      .setFooter(standardFooter("Try /party-compare for side-by-side"));
+      .setFooter({ text: footerParts.join(" · ") });
 
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {

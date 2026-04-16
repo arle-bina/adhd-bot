@@ -4,9 +4,9 @@ import {
   AutocompleteInteraction,
   EmbedBuilder,
 } from "discord.js";
-import { lookupByName, getAutocomplete, type CharacterResult } from "../utils/api.js";
+import { lookupByName, lookupByDiscordId, getAutocomplete, type CharacterResult } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
-import { currencyFor, formatCurrency } from "../utils/currency.js";
+import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES } from "../utils/currency.js";
 
 export const cooldown = 5;
 
@@ -18,6 +18,13 @@ export const data = new SlashCommandBuilder()
   )
   .addStringOption((o) =>
     o.setName("politician2").setDescription("Second character name").setRequired(true).setAutocomplete(true)
+  )
+  .addStringOption((o) =>
+    o
+      .setName("currency")
+      .setDescription("Display currency (default: first character's home currency)")
+      .setRequired(false)
+      .addChoices(...CURRENCY_CHOICES)
   );
 
 export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
@@ -42,8 +49,18 @@ function statRow(label: string, a: string, b: string): string {
   return `**${label}**\n${a} vs ${b}`;
 }
 
-function buildCompareEmbed(a: CharacterResult, b: CharacterResult): EmbedBuilder {
-  // Use the dominant party color, fall back to blurple
+function makeForexFooter(displayCurrency: string, rates: Record<string, number>): string {
+  const parts: string[] = [];
+  if (displayCurrency !== "USD" && rates[displayCurrency] && rates[displayCurrency] !== 1) {
+    const sym = { USD: "$", GBP: "£", JPY: "¥", CAD: "C$", EUR: "€" }[displayCurrency] ?? displayCurrency;
+    const rateVal = displayCurrency === "JPY" ? rates[displayCurrency].toFixed(2) : rates[displayCurrency].toFixed(4);
+    parts.push(`1 INT = ${sym}${rateVal} ${displayCurrency}`);
+  }
+  parts.push("ahousedividedgame.com");
+  return parts.join(" · ");
+}
+
+function buildCompareEmbed(a: CharacterResult, b: CharacterResult, displayCurrency: string, rates: Record<string, number>): EmbedBuilder {
   const colorA = hexToInt(a.partyColor);
   const colorB = hexToInt(b.partyColor);
   const color = colorA !== 0x5865f2 ? colorA : colorB;
@@ -51,110 +68,62 @@ function buildCompareEmbed(a: CharacterResult, b: CharacterResult): EmbedBuilder
   const nameA = a.profileUrl ? `[${a.name}](${a.profileUrl})` : a.name;
   const nameB = b.profileUrl ? `[${b.name}](${b.profileUrl})` : b.name;
 
+  const cvtA = (n: number) => Math.round(convertCurrency(n, currencyFor(a.countryId), displayCurrency, rates));
+  const cvtB = (n: number) => Math.round(convertCurrency(n, currencyFor(b.countryId), displayCurrency, rates));
+
   const embed = new EmbedBuilder()
     .setTitle(`⚖️ ${a.name} vs ${b.name}`.slice(0, 256))
     .setColor(color)
-    .setFooter({ text: "ahousedividedgame.com" });
+    .setFooter({ text: makeForexFooter(displayCurrency, rates) });
 
   embed.addFields(
-    {
-      name: "Politician",
-      value: nameA,
-      inline: true,
-    },
-    {
-      name: "\u200b",
-      value: "vs",
-      inline: true,
-    },
-    {
-      name: "\u200b",
-      value: nameB,
-      inline: true,
-    },
-    {
-      name: "Party",
-      value: a.partyUrl ? `[${a.party}](${a.partyUrl})` : (a.party || "Unknown"),
-      inline: true,
-    },
+    { name: "Politician", value: nameA, inline: true },
+    { name: "\u200b", value: "vs", inline: true },
+    { name: "\u200b", value: nameB, inline: true },
+    { name: "Party", value: a.partyUrl ? `[${a.party}](${a.partyUrl})` : (a.party || "Unknown"), inline: true },
     { name: "\u200b", value: "\u200b", inline: true },
-    {
-      name: "\u200b",
-      value: b.partyUrl ? `[${b.party}](${b.partyUrl})` : (b.party || "Unknown"),
-      inline: true,
-    },
-    {
-      name: "Position",
-      value: a.position || "None",
-      inline: true,
-    },
+    { name: "\u200b", value: b.partyUrl ? `[${b.party}](${b.partyUrl})` : (b.party || "Unknown"), inline: true },
+    { name: "Position", value: a.position || "None", inline: true },
     { name: "\u200b", value: "\u200b", inline: true },
-    {
-      name: "\u200b",
-      value: b.position || "None",
-      inline: true,
-    },
-    {
-      name: "State",
-      value: a.stateUrl ? `[${a.state}](${a.stateUrl})` : (a.state || "Unknown"),
-      inline: true,
-    },
+    { name: "\u200b", value: b.position || "None", inline: true },
+    { name: "State", value: a.stateUrl ? `[${a.state}](${a.stateUrl})` : (a.state || "Unknown"), inline: true },
     { name: "\u200b", value: "\u200b", inline: true },
-    {
-      name: "\u200b",
-      value: b.stateUrl ? `[${b.state}](${b.stateUrl})` : (b.state || "Unknown"),
-      inline: true,
-    },
+    { name: "\u200b", value: b.stateUrl ? `[${b.state}](${b.stateUrl})` : (b.state || "Unknown"), inline: true },
   );
 
-  // Stats comparison block
   const statsLines = [
     statRow("Political Influence", Math.round(a.politicalInfluence ?? 0).toLocaleString(), Math.round(b.politicalInfluence ?? 0).toLocaleString()),
     statRow("National PI", Math.round(a.nationalInfluence ?? 0).toLocaleString(), Math.round(b.nationalInfluence ?? 0).toLocaleString()),
     statRow("Approval", `${Math.round(a.favorability ?? 0)}%`, `${Math.round(b.favorability ?? 0)}%`),
     statRow("Infamy", String(Math.round(a.infamy ?? 0)), String(Math.round(b.infamy ?? 0))),
-    statRow("Funds", formatCurrency(Math.round(a.funds ?? 0), currencyFor(a.countryId)), formatCurrency(Math.round(b.funds ?? 0), currencyFor(b.countryId))),
+    statRow("Funds", formatCurrency(cvtA(a.funds ?? 0), displayCurrency), formatCurrency(cvtB(b.funds ?? 0), displayCurrency)),
     statRow("Actions", String(Math.round(a.actions ?? 0)), String(Math.round(b.actions ?? 0))),
     statRow("Donor Base", String(Math.round(a.donorBaseLevel ?? 0)), String(Math.round(b.donorBaseLevel ?? 0))),
   ];
 
-  embed.addFields({
-    name: "Stats",
-    value: statsLines.join("\n").slice(0, 1024),
-    inline: false,
-  });
+  embed.addFields({ name: "Stats", value: statsLines.join("\n").slice(0, 1024), inline: false });
 
-  // Policy positions
   const policyLines = [
     statRow("Economic", policyLabel(a.policies?.economic ?? 0), policyLabel(b.policies?.economic ?? 0)),
     statRow("Social", policyLabel(a.policies?.social ?? 0), policyLabel(b.policies?.social ?? 0)),
   ];
-  embed.addFields({
-    name: "Policy Positions",
-    value: policyLines.join("\n").slice(0, 1024),
-    inline: false,
-  });
+  embed.addFields({ name: "Policy Positions", value: policyLines.join("\n").slice(0, 1024), inline: false });
 
-  // Corporate roles if either holds one
   const corpLines: string[] = [];
   if (a.isCeo && a.ceoOf) corpLines.push(`**${a.name}** — CEO of ${a.ceoOf}`);
   if (b.isCeo && b.ceoOf) corpLines.push(`**${b.name}** — CEO of ${b.ceoOf}`);
   if (a.isInvestor) {
     const rank = a.investorRank ? ` (Rank #${a.investorRank})` : "";
-    const val = a.portfolioValue != null ? ` · ${formatCurrency(Math.round(a.portfolioValue), currencyFor(a.countryId))}` : "";
+    const val = a.portfolioValue != null ? ` · ${formatCurrency(cvtA(a.portfolioValue), displayCurrency)}` : "";
     corpLines.push(`**${a.name}** — Investor${rank}${val}`);
   }
   if (b.isInvestor) {
     const rank = b.investorRank ? ` (Rank #${b.investorRank})` : "";
-    const val = b.portfolioValue != null ? ` · ${formatCurrency(Math.round(b.portfolioValue), currencyFor(b.countryId))}` : "";
+    const val = b.portfolioValue != null ? ` · ${formatCurrency(cvtB(b.portfolioValue), displayCurrency)}` : "";
     corpLines.push(`**${b.name}** — Investor${rank}${val}`);
   }
   if (corpLines.length > 0) {
-    embed.addFields({
-      name: "Corporate Roles",
-      value: corpLines.join("\n").slice(0, 1024),
-      inline: false,
-    });
+    embed.addFields({ name: "Corporate Roles", value: corpLines.join("\n").slice(0, 1024), inline: false });
   }
 
   const electionLines: string[] = [];
@@ -167,11 +136,7 @@ function buildCompareEmbed(a: CharacterResult, b: CharacterResult): EmbedBuilder
     electionLines.push(`**${b.name}** -- Running in ${type} (${b.activeElection.electionState ?? "Unknown"})`);
   }
   if (electionLines.length > 0) {
-    embed.addFields({
-      name: "Active Elections",
-      value: electionLines.join("\n").slice(0, 1024),
-      inline: false,
-    });
+    embed.addFields({ name: "Active Elections", value: electionLines.join("\n").slice(0, 1024), inline: false });
   }
 
   return embed;
@@ -180,13 +145,15 @@ function buildCompareEmbed(a: CharacterResult, b: CharacterResult): EmbedBuilder
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
   const name1 = interaction.options.getString("politician1", true);
   const name2 = interaction.options.getString("politician2", true);
+  const explicitCurrency = interaction.options.getString("currency");
 
   await interaction.deferReply();
 
   try {
-    const [res1, res2] = await Promise.all([
+    const [res1, res2, rates] = await Promise.all([
       lookupByName(name1),
       lookupByName(name2),
+      fetchForexRates(),
     ]);
 
     if (!res1.found || res1.characters.length === 0) {
@@ -206,7 +173,8 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       return;
     }
 
-    await interaction.editReply({ embeds: [buildCompareEmbed(charA, charB)] });
+    const displayCurrency = explicitCurrency || currencyFor(charA.countryId);
+    await interaction.editReply({ embeds: [buildCompareEmbed(charA, charB, displayCurrency, rates)] });
   } catch (error) {
     await replyWithError(interaction, "compare", error);
   }
