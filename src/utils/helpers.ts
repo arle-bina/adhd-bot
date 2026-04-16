@@ -13,8 +13,27 @@ const ERRORS_PER_PAGE = 3;
 
 export const SITE_FOOTER = "ahousedividedgame.com";
 
+import { forexSuffix, type ForexData, fetchForexData } from "./currency.js";
+
 export function standardFooter(extra?: string): { text: string } {
   return { text: extra ? `${extra} · ${SITE_FOOTER}` : SITE_FOOTER };
+}
+
+/**
+ * Build a footer with forex awareness.
+ * When displayCurrency is not the anchor (USD/rate=1), appends the conversion rate.
+ */
+export function forexFooter(
+  rates: Record<string, number>,
+  displayCurrency: string,
+  extra?: string,
+): { text: string } {
+  const parts: string[] = [];
+  if (extra) parts.push(extra);
+  const fx = forexSuffix(displayCurrency, rates);
+  if (fx) parts.push(fx);
+  parts.push(SITE_FOOTER);
+  return { text: parts.join(" · ") };
 }
 
 export function positionBar(val: number, width = 10): string {

@@ -6,7 +6,7 @@ import {
 } from "discord.js";
 import { getCorporationList, getBonds, ApiError, type CorporationListItem } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
-import { currencyFor, formatCurrency, formatSharePrice } from "../utils/currency.js";
+import { currencyFor, formatCurrency, formatSharePrice, convertCurrency, fetchForexRates, CURRENCY_CHOICES } from "../utils/currency.js";
 
 // ---------------------------------------------------------------------------
 // Corporation list cache (5-minute TTL)
@@ -63,6 +63,13 @@ export const data = new SlashCommandBuilder()
       .setDescription("Page number")
       .setRequired(false)
       .setMinValue(1)
+  )
+  .addStringOption((o) =>
+    o
+      .setName("currency")
+      .setDescription("Display currency (default: USD)")
+      .setRequired(false)
+      .addChoices(...CURRENCY_CHOICES)
   );
 
 export const cooldown = 5;
@@ -76,9 +83,13 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
   const corp = interaction.options.getString("corp") ?? undefined;
   const page = interaction.options.getInteger("page") ?? 1;
+  const targetCurrency = interaction.options.getString("currency") || "USD";
 
   try {
-    const res = await getBonds({ corp, page });
+    const [res, rates] = await Promise.all([
+      getBonds({ corp, page }),
+      fetchForexRates(),
+    ]);
 
     if (!res.found || !res.bonds || res.bonds.length === 0) {
       await interaction.editReply({ content: "No active bonds found." });
@@ -87,21 +98,27 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
     const { bonds, filterCorp, totalOutstandingDebt, pagination } = res;
 
+    const cvt = (n: number, countryId?: string | null) => {
+      const fromCc = currencyFor(countryId ?? undefined);
+      return convertCurrency(n, fromCc, targetCurrency, rates);
+    };
+    const fmt = (n: number) => formatCurrency(Math.round(n), targetCurrency);
+    const fmtS = (n: number) => formatSharePrice(n, targetCurrency);
+
     const description = bonds
       .map((b) => {
         const name = b.corporationName ?? "Unknown";
         const maturity = b.maturityLabel ?? "?";
         const coupon = (b.couponRate ?? 0).toFixed(1);
-        const bondCc = currencyFor(b.countryId);
-        const price = formatSharePrice(b.marketPrice, bondCc);
+        const price = fmtS(cvt(b.marketPrice, b.countryId));
         const ytm = `${(b.yieldToMaturity ?? 0).toFixed(1)}%`;
-        const issued = formatCurrency(b.totalIssued, bondCc);
+        const issued = fmt(cvt(b.totalIssued, b.countryId));
         const turns = b.turnsRemaining ?? 0;
         const holders = b.holders ?? 0;
-        const defaultPrefix = b.defaulted ? "\u26a0\ufe0f DEFAULTED \u2014 " : "";
+        const defaultPrefix = b.defaulted ? "⚠️ DEFAULTED — " : "";
 
         const titleLine = `**[${name} ${maturity} @ ${coupon}%](${b.bondUrl})**`;
-        const detailLine = `${defaultPrefix}Price: ${price} \u00b7 YTM: ${ytm} \u00b7 ${issued} issued \u00b7 ${turns} turns left \u00b7 ${holders} holders`;
+        const detailLine = `${defaultPrefix}Price: ${price} · YTM: ${ytm} · ${issued} issued · ${turns} turns left · ${holders} holders`;
 
         return `${titleLine}\n${detailLine}`;
       })
@@ -113,8 +130,21 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       : 0x3b82f6;
 
     const title = filterCorp
-      ? `Bonds \u2014 ${filterCorp}`
+      ? `Bonds — ${filterCorp}`
       : "Bond Market";
+
+    // Footer with forex info
+    const footerParts: string[] = [`Page ${pagination.page}/${pagination.totalPages}`, `${pagination.totalCount} active bonds`];
+    if (targetCurrency !== "USD" && rates[targetCurrency] && rates[targetCurrency] !== 1) {
+      const sym = { USD: "$", GBP: "£", JPY: "¥", CAD: "C$", EUR: "€" }[targetCurrency] ?? targetCurrency;
+      const rateVal = targetCurrency === "JPY" ? rates[targetCurrency].toFixed(2) : rates[targetCurrency].toFixed(4);
+      footerParts.push(`1 INT = ${sym}${rateVal} ${targetCurrency}`);
+    }
+    footerParts.push("ahousedividedgame.com");
+
+    const totalDebtDisplay = filterCorp
+      ? fmt(cvt(totalOutstandingDebt, bonds[0]?.countryId ?? null))
+      : `${totalOutstandingDebt.toLocaleString("en-US")} (mixed currencies)`;
 
     const embed = new EmbedBuilder()
       .setTitle(title.slice(0, 256))
@@ -122,20 +152,15 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       .setDescription(description)
       .addFields({
         name: "Total Outstanding",
-        // When filtered to a single corp, all bonds share one currency; otherwise aggregate is cross-currency
-        value: filterCorp
-          ? formatCurrency(totalOutstandingDebt, currencyFor(bonds[0]?.countryId))
-          : `${totalOutstandingDebt.toLocaleString("en-US")} (mixed currencies)`,
+        value: totalDebtDisplay,
         inline: true,
       })
-      .setFooter({
-        text: `Page ${pagination.page}/${pagination.totalPages} \u00b7 ${pagination.totalCount} active bonds \u00b7 ahousedividedgame.com`,
-      });
+      .setFooter({ text: footerParts.join(" · ") });
 
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
-      const msg = "Bot configuration error \u2014 contact an admin.";
+      const msg = "Bot configuration error — contact an admin.";
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply({ content: msg });
       } else {

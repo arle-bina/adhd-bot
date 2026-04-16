@@ -92,15 +92,22 @@ export function padCurrency(label: string, amount: number | null | undefined, wi
 
 interface ForexRatesResponse {
   rates: Record<string, number>;
+  baseRates?: Record<string, number>;
 }
 
 let cachedRates: Record<string, number> | null = null;
+let cachedBaseRates: Record<string, number> | null = null;
 let cacheExpiry = 0;
 const RATE_CACHE_TTL_MS = 60_000;
 
+export interface ForexData {
+  rates: Record<string, number>;
+  baseRates: Record<string, number>;
+}
+
 /**
  * Fetch current forex rates from the game API. Cached for 60 seconds.
- * Returns a map of currencyCode → rate (local currency per 1 internal unit).
+ * Returns rates & baseRates: currencyCode → rate (local currency per 1 internal unit).
  */
 export async function fetchForexRates(): Promise<Record<string, number>> {
   if (cachedRates && Date.now() < cacheExpiry) return cachedRates;
@@ -108,12 +115,24 @@ export async function fetchForexRates(): Promise<Record<string, number>> {
   try {
     const res = await apiFetchPublic<ForexRatesResponse>("/api/forex/rates");
     cachedRates = res.rates;
+    cachedBaseRates = res.baseRates ?? {};
     cacheExpiry = Date.now() + RATE_CACHE_TTL_MS;
     return cachedRates;
   } catch {
     // If rates unavailable, return identity rates (everything = 1.0)
     return cachedRates ?? { USD: 1, GBP: 1, JPY: 1, CAD: 1, EUR: 1 };
   }
+}
+
+/**
+ * Fetch current forex rates and baseRates from the game API. Cached for 60 seconds.
+ */
+export async function fetchForexData(): Promise<ForexData> {
+  await fetchForexRates(); // populate cache
+  return {
+    rates: cachedRates ?? { USD: 1, GBP: 1, JPY: 1, CAD: 1, EUR: 1 },
+    baseRates: cachedBaseRates ?? {},
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -125,6 +144,23 @@ export async function fetchForexRates(): Promise<Record<string, number>> {
  * Rates are "local currency per 1 internal unit."
  * Conversion: amount / rates[from] * rates[to]
  */
+// ---------------------------------------------------------------------------
+// Forex-aware footer helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Produce a footer suffix showing the exchange rate for a non-anchor currency.
+ * Returns empty string for anchor (USD / rate=1) since no conversion context needed.
+ * Example: "1 INT = £0.7500 GBP" for GBP, "" for USD.
+ */
+export function forexSuffix(currencyCode: string, rates: Record<string, number>): string {
+  const rate = rates[currencyCode];
+  if (!rate || rate === 1) return "";
+  const sym = symbolFor(currencyCode);
+  const formatted = currencyCode === "JPY" ? rate.toFixed(2) : rate.toFixed(4);
+  return `1 INT = ${sym}${formatted} ${currencyCode}`;
+}
+
 export function convertCurrency(
   amount: number,
   fromCurrency: string,
