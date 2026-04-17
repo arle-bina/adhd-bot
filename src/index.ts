@@ -22,7 +22,7 @@ import { errorMessage, replyWithError } from "./utils/helpers.js";
 import { recordMessage, recordMemberCount } from "./utils/statsStore.js";
 import { handleStarboardReaction } from "./utils/starboard.js";
 import { handleLockReaction, TICKET_CLOSE_MODAL_PREFIX, handleTicketCloseModalSubmit, TICKET_MERGE_MODAL_PREFIX, mergeTickets } from "./utils/tickets.js";
-import { getTicketByChannel } from "./utils/ticketStore.js";
+import { getTicketByChannel, getTicketByNumber } from "./utils/ticketStore.js";
 import { checkMessage } from "./utils/filter.js";
 import { isBotEnabled } from "./utils/botState.js";
 

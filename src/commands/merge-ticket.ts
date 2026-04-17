@@ -8,23 +8,54 @@ import {
   TextInputBuilder,
   TextInputStyle,
   ActionRowBuilder,
+  type AutocompleteInteraction,
 } from "discord.js";
 import {
   getTicketByChannel,
-  findOpenTicketsByUser,
+  getTicketByNumber,
+  getTickets,
 } from "../utils/ticketStore.js";
 import { mergeTickets, TICKET_MERGE_MODAL_PREFIX } from "../utils/tickets.js";
 
 export const data = new SlashCommandBuilder()
   .setName("merge-ticket")
-  .setDescription("Merge another user's ticket into this ticket channel")
-  .addUserOption((opt) =>
+  .setDescription("Merge another ticket into this ticket channel (staff only)")
+  .addIntegerOption((opt) =>
     opt
-      .setName("user")
-      .setDescription("The user whose open ticket you want to merge into this one")
-      .setRequired(true),
+      .setName("ticket")
+      .setDescription("The ticket number to merge into this channel (e.g. 42)")
+      .setRequired(true)
+      .setAutocomplete(true),
   )
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels);
+
+export async function autocomplete(interaction: AutocompleteInteraction) {
+  if (!interaction.guild) {
+    await interaction.respond([]);
+    return;
+  }
+
+  const focused = interaction.options.getFocused();
+  const allTickets = Object.values(getTickets(interaction.guild.id));
+  // Exclude tickets whose channel is the current one (can't merge into self)
+  const currentChannelId = interaction.channelId;
+
+  const choices = allTickets
+    .filter((t) => t.channelId !== currentChannelId)
+    .map((t) => ({
+      number: t.ticketNumber,
+      label: `#${String(t.ticketNumber).padStart(4, "0")} — ${t.category} — <@${t.userId}>${t.subject ? ` — ${t.subject}` : ""}`,
+    }))
+    .filter((t) => {
+      const q = focused.toString().toLowerCase();
+      return t.number.toString().includes(q) || t.label.toLowerCase().includes(q);
+    })
+    .slice(0, 25);
+
+  await interaction.respond(
+    choices.map((t) => ({ name: t.label.slice(0, 100), value: t.number })),
+  );
+}
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   if (!interaction.guild || !interaction.channel) {
@@ -42,43 +73,48 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   // Verify the current channel is a ticket (the merge destination)
   const targetTicket = getTicketByChannel(interaction.guild.id, targetChannel.id);
   if (!targetTicket) {
-    await interaction.reply({ content: "This channel is not a ticket. Run `/merge-ticket` in the ticket you want to merge *into*.", ephemeral: true });
+    await interaction.reply({
+      content: "This channel is not a ticket. Run `/merge-ticket` in the ticket you want to merge *into*.",
+      ephemeral: true,
+    });
     return;
   }
 
-  const sourceUser = interaction.options.getUser("user", true);
+  const ticketNumber = interaction.options.getInteger("ticket", true);
 
-  // Find the source user's tickets
-  const sourceTickets = findOpenTicketsByUser(interaction.guild.id, sourceUser.id);
-  const activeSourceTickets = sourceTickets.filter((t) => interaction.guild!.channels.cache.has(t.channelId));
-
-  if (activeSourceTickets.length === 0) {
-    await interaction.reply({ content: `<@${sourceUser.id}> has no open tickets.`, ephemeral: true });
+  // Find the source ticket by number
+  const sourceTicket = getTicketByNumber(interaction.guild.id, ticketNumber);
+  if (!sourceTicket) {
+    await interaction.reply({
+      content: `Ticket #${String(ticketNumber).padStart(4, "0")} not found. Make sure the ticket number is correct.`,
+      ephemeral: true,
+    });
     return;
   }
 
-  // Filter out the target ticket (can't merge a ticket into itself)
-  const mergeableTickets = activeSourceTickets.filter((t) => t.channelId !== targetChannel.id);
-  if (mergeableTickets.length === 0) {
-    await interaction.reply({ content: `<@${sourceUser.id}> only has this ticket open — nothing to merge.`, ephemeral: true });
+  // Can't merge a ticket into itself
+  if (sourceTicket.channelId === targetChannel.id) {
+    await interaction.reply({
+      content: "You can't merge a ticket into itself. Run `/merge-ticket` in the ticket you want to merge *into*.",
+      ephemeral: true,
+    });
     return;
   }
 
-  // If they have exactly one mergeable ticket, proceed with modal
-  // If multiple, we still proceed — we'll pick the first one (most likely scenario: user has 1 ticket to merge)
-  // For robustness with the 3-ticket limit, we show a modal asking for reason
-  const sourceTicket = mergeableTickets[0];
+  // Verify the source channel still exists
   const sourceChannel = interaction.guild.channels.cache.get(sourceTicket.channelId) as TextChannel | undefined;
-
   if (!sourceChannel) {
-    await interaction.reply({ content: "The source ticket channel no longer exists.", ephemeral: true });
+    await interaction.reply({
+      content: `Ticket #${String(ticketNumber).padStart(4, "0")}'s channel no longer exists (may have been deleted).`,
+      ephemeral: true,
+    });
     return;
   }
 
   // Show reason modal
   const modal = new ModalBuilder()
     .setCustomId(`${TICKET_MERGE_MODAL_PREFIX}${sourceTicket.channelId}:${targetChannel.id}`)
-    .setTitle("Merge Ticket — Reason");
+    .setTitle(`Merge Ticket #${String(ticketNumber).padStart(4, "0")}`);
 
   const reasonInput = new TextInputBuilder()
     .setCustomId("merge_reason")
