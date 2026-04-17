@@ -21,7 +21,8 @@ import { checkCooldown } from "./utils/cooldown.js";
 import { errorMessage, replyWithError } from "./utils/helpers.js";
 import { recordMessage, recordMemberCount } from "./utils/statsStore.js";
 import { handleStarboardReaction } from "./utils/starboard.js";
-import { handleLockReaction, TICKET_CLOSE_MODAL_PREFIX, handleTicketCloseModalSubmit } from "./utils/tickets.js";
+import { handleLockReaction, TICKET_CLOSE_MODAL_PREFIX, handleTicketCloseModalSubmit, TICKET_MERGE_MODAL_PREFIX, mergeTickets } from "./utils/tickets.js";
+import { getTicketByChannel } from "./utils/ticketStore.js";
 import { checkMessage } from "./utils/filter.js";
 import { isBotEnabled } from "./utils/botState.js";
 
@@ -334,6 +335,59 @@ client.on("interactionCreate", async (interaction) => {
       await handleTicketCloseModalSubmit(interaction);
     } catch (error) {
       console.error("Ticket close modal error:", error);
+    }
+    return;
+  }
+
+  // Ticket merge modal submission
+  if (interaction.isModalSubmit() && interaction.customId.startsWith(TICKET_MERGE_MODAL_PREFIX)) {
+    try {
+      if (!interaction.guild) {
+        await interaction.reply({ content: "This can only be used inside a server.", ephemeral: true });
+        return;
+      }
+
+      // Parse channel IDs from customId: ticket_merge_modal_<sourceChannelId>:<targetChannelId>
+      const payload = interaction.customId.slice(TICKET_MERGE_MODAL_PREFIX.length);
+      const [sourceChannelId, targetChannelId] = payload.split(":");
+      const reason = interaction.fields.getTextInputValue("merge_reason").trim();
+
+      const sourceChannel = interaction.guild.channels.cache.get(sourceChannelId) as TextChannel | undefined;
+      const targetChannel = interaction.guild.channels.cache.get(targetChannelId) as TextChannel | undefined;
+
+      if (!sourceChannel || !targetChannel) {
+        await interaction.reply({ content: "One of the ticket channels no longer exists.", ephemeral: true });
+        return;
+      }
+
+      const sourceTicket = getTicketByChannel(interaction.guild.id, sourceChannelId);
+      const targetTicket = getTicketByChannel(interaction.guild.id, targetChannelId);
+
+      if (!sourceTicket || !targetTicket) {
+        await interaction.reply({ content: "One of the tickets could not be found (may have been closed already).", ephemeral: true });
+        return;
+      }
+
+      const member = interaction.guild.members.cache.get(interaction.user.id)
+        ?? await interaction.guild.members.fetch(interaction.user.id);
+
+      await interaction.deferReply({ ephemeral: true });
+
+      const result = await mergeTickets(sourceChannel, targetChannel, sourceTicket, targetTicket, member, reason);
+      if (result.success) {
+        await interaction.editReply({ content: "Ticket merged successfully. The source ticket channel has been deleted." });
+      } else {
+        await interaction.editReply({ content: `Merge failed: ${result.reason}` });
+      }
+    } catch (error) {
+      console.error("Ticket merge modal error:", error);
+      try {
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp({ content: "Something went wrong while merging the ticket.", ephemeral: true });
+        } else {
+          await interaction.reply({ content: "Something went wrong while merging the ticket.", ephemeral: true });
+        }
+      } catch { /* nothing */ }
     }
     return;
   }

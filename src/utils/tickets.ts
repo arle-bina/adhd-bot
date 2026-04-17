@@ -25,10 +25,13 @@ import {
   removeTicket,
   getTicketByChannel,
   findOpenTicket,
+  findOpenTickets,
+  findOpenTicketsByUser,
   getNextTicketNumber,
   getCategoryId,
   setCategoryId,
   isPanel,
+  MAX_TICKETS_PER_CATEGORY,
 } from "./ticketStore.js";
 
 const CATEGORY_CONFIG: Record<TicketCategory, { label: string; emoji: string; color: number }> = {
@@ -158,19 +161,21 @@ export async function createTicket(
       return { success: false, reason: "I need the **Manage Channels** permission to create tickets." };
     }
 
-    // One-per-category check (with stale cleanup)
-    const existing = findOpenTicket(guild.id, userId, category);
-    if (existing) {
-      const channelStillExists = guild.channels.cache.has(existing.channelId);
-      if (channelStillExists) {
-        return {
-          success: false,
-          reason: `You already have an open ${category} ticket: <#${existing.channelId}>`,
-          existingChannelId: existing.channelId,
-        };
+    // Per-category limit check (with stale cleanup)
+    const existingTickets = findOpenTickets(guild.id, userId, category);
+    const activeTickets = existingTickets.filter((t) => guild.channels.cache.has(t.channelId));
+    // Clean up stale tickets
+    for (const t of existingTickets) {
+      if (!guild.channels.cache.has(t.channelId)) {
+        removeTicket(guild.id, t.channelId);
       }
-      // Stale — clean up
-      removeTicket(guild.id, existing.channelId);
+    }
+    if (activeTickets.length >= MAX_TICKETS_PER_CATEGORY) {
+      const ticketList = activeTickets.map((t) => `<#${t.channelId}>`).join(", ");
+      return {
+        success: false,
+        reason: `You already have ${activeTickets.length} open ${CATEGORY_CONFIG[category].label.toLowerCase()} tickets (max ${MAX_TICKETS_PER_CATEGORY}): ${ticketList}`,
+      };
     }
 
     const categoryId = await getOrCreateCategory(guild);
@@ -543,6 +548,112 @@ export async function closeTicket(
       confirmMsg.edit({ embeds: [timedOutEmbed], components: [] }).catch(() => {});
     }
   });
+}
+
+export const TICKET_MERGE_MODAL_PREFIX = "ticket_merge_modal_";
+
+export async function mergeTickets(
+  sourceChannel: TextChannel,
+  targetChannel: TextChannel,
+  sourceTicket: NonNullable<ReturnType<typeof getTicketByChannel>>,
+  targetTicket: NonNullable<ReturnType<typeof getTicketByChannel>>,
+  mergedBy: GuildMember,
+  reason: string,
+): Promise<{ success: true } | { success: false; reason: string }> {
+  const guild = sourceChannel.guild;
+  const sourceConfig = CATEGORY_CONFIG[sourceTicket.category];
+  const targetConfig = CATEGORY_CONFIG[targetTicket.category];
+
+  const sourceUser = await guild.client.users.fetch(sourceTicket.userId).catch(() => null);
+  const sourceMember = sourceUser
+    ? guild.members.cache.get(sourceUser.id) ?? (await guild.members.fetch(sourceUser.id).catch(() => null))
+    : null;
+
+  // 1. Post merge notice in target ticket channel
+  const mergeEmbed = new EmbedBuilder()
+    .setTitle("🔀 Ticket Merged")
+    .setColor(0x5865f2)
+    .addFields(
+      { name: "Merged from", value: `#${String(sourceTicket.ticketNumber).padStart(4, "0")} (${sourceConfig.label}) — <#${sourceChannel.id}>`, inline: false },
+      { name: "Merged by", value: `<@${mergedBy.id}>`, inline: true },
+      { name: "Reason", value: reason, inline: false },
+    )
+    .setFooter({ text: "ahousedividedgame.com" })
+    .setTimestamp();
+
+  if (sourceUser) {
+    mergeEmbed.addFields({ name: "Original reporter", value: `<@${sourceTicket.userId}>`, inline: true });
+  }
+
+  await targetChannel.send({ embeds: [mergeEmbed], content: sourceUser ? `<@${sourceTicket.userId}>` : undefined });
+
+  // 2. Copy key messages from source to target (up to 50 most recent)
+  const sourceMessages = await fetchAllMessages(sourceChannel, 50);
+  if (sourceMessages.length > 0) {
+    const copyHeader = new EmbedBuilder()
+      .setTitle(`📋 Messages from ticket #${String(sourceTicket.ticketNumber).padStart(4, "0")}`)
+      .setColor(sourceConfig.color)
+      .setDescription(`${sourceMessages.length} message${sourceMessages.length === 1 ? "" : "s"} copied from the merged ticket.`)
+      .setTimestamp();
+    await targetChannel.send({ embeds: [copyHeader] });
+
+    for (const msg of sourceMessages) {
+      if (msg.author.bot && msg.author.id === guild.client.user?.id) continue; // skip bot messages
+      await targetChannel.send(
+        `**${msg.author.displayName}** (<t:${Math.floor(msg.createdTimestamp / 1000)}:R>): ${msg.content || "*[embed/attachment]*"}`,
+      ).catch(() => {});
+    }
+  }
+
+  // 3. Ensure source user can see target channel
+  if (sourceMember) {
+    await targetChannel.permissionOverwrites.edit(sourceMember, {
+      ViewChannel: true,
+      SendMessages: true,
+      ReadMessageHistory: true,
+    }).catch(() => {});
+  }
+
+  // 4. DM the source user about the merge
+  if (sourceUser) {
+    try {
+      const dmEmbed = new EmbedBuilder()
+        .setTitle(`Your ticket has been merged`)
+        .setColor(0x5865f2)
+        .setDescription(
+          `Your **${sourceConfig.label}** ticket #${String(sourceTicket.ticketNumber).padStart(4, "0")} has been merged into ${targetConfig.label} ticket #${String(targetTicket.ticketNumber).padStart(4, "0")}.\n\nPlease continue the conversation in <#${targetChannel.id}>.`,
+        )
+        .addFields({ name: "Reason", value: reason })
+        .setFooter({ text: "ahousedividedgame.com" })
+        .setTimestamp();
+      await sourceUser.send({ embeds: [dmEmbed] });
+    } catch {
+      // DMs disabled — the channel mention is the fallback
+    }
+  }
+
+  // 5. Log the merge
+  const logChannelId = process.env.TICKET_LOG_CHANNEL_ID ?? "1483974417628270593";
+  const logChannel = guild.channels.cache.get(logChannelId) as TextChannel | undefined;
+  if (logChannel) {
+    const logEmbed = new EmbedBuilder()
+      .setTitle("🔀 Ticket Merged (Log)")
+      .setColor(0x5865f2)
+      .addFields(
+        { name: "Source", value: `#${String(sourceTicket.ticketNumber).padStart(4, "0")} — <#${sourceChannel.id}>`, inline: true },
+        { name: "Target", value: `#${String(targetTicket.ticketNumber).padStart(4, "0")} — <#${targetChannel.id}>`, inline: true },
+        { name: "Merged by", value: `<@${mergedBy.id}>`, inline: true },
+        { name: "Reason", value: reason },
+      )
+      .setTimestamp();
+    await logChannel.send({ embeds: [logEmbed] }).catch(() => {});
+  }
+
+  // 6. Remove source ticket from store and delete the channel
+  removeTicket(guild.id, sourceChannel.id);
+  await sourceChannel.delete(`Ticket merged into #${String(targetTicket.ticketNumber).padStart(4, "0")} by ${mergedBy.user.tag}`).catch(() => {});
+
+  return { success: true };
 }
 
 export async function handlePanelReaction(

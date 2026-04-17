@@ -87,6 +87,20 @@ export function findOpenTicket(guildId: string, userId: string, category: Ticket
   return Object.values(tickets).find((t) => t.userId === userId && t.category === category);
 }
 
+export function findOpenTickets(guildId: string, userId: string, category: TicketCategory): Ticket[] {
+  const tickets = getTickets(guildId);
+  return Object.values(tickets).filter(
+    (t) => t.userId === userId && t.category === category,
+  );
+}
+
+export function findOpenTicketsByUser(guildId: string, userId: string): Ticket[] {
+  const tickets = getTickets(guildId);
+  return Object.values(tickets).filter((t) => t.userId === userId);
+}
+
+export const MAX_TICKETS_PER_CATEGORY = 3;
+
 export function addPanel(guildId: string, messageId: string, panelChannelId: string): void {
   const data = loadData();
   if (!data.panels[guildId]) data.panels[guildId] = {};
