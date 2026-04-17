@@ -69,6 +69,7 @@ This repository contains the **Discord bot** — a companion app that connects t
 | `/accept` | Accept the server rules and gain access | — |
 | `/ticket` | Open a support ticket (Bug, Suggestion, or Moderation) | — |
 | `/close-ticket` | Close the current ticket channel (resolution modal; staff must message the opener) | — |
+| `/merge-ticket` | Merge another user's ticket into the current channel (staff only; copies messages, notifies user, deletes source) | `user` (required) |
 | `/ticket-panel` | Post a persistent ticket panel with buttons | — |
 | `/help` | Browse all bot commands via an interactive select menu | — |
 | `/serverstats` | View server activity graphs | `type`, `days` |
@@ -255,6 +256,10 @@ npm run test:watch
 ```
 
 33 unit tests cover `hexToInt`, `errorMessage`, `getMetricValue`, `ideologyLabel`, `formatElectionType`, and `formatOfficeType`. No mocking required — all tested functions are pure input/output.
+
+**Ticket limits:** Users can have up to **3 tickets per category** at a time.
+
+**Ticket merging:** Staff can use `/merge-ticket` inside a ticket channel to merge another user's ticket into it — the source ticket's messages are copied, the user is pinged and DM'd, and the source channel is deleted.
 
 ---
 

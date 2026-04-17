@@ -16,6 +16,8 @@ export interface Ticket {
   channelId: string;
   createdAt: string;
   ticketNumber: number;
+  subject?: string;
+  description?: string;
 }
 
 interface TicketData {
@@ -74,6 +76,11 @@ export function getTicketByChannel(guildId: string, channelId: string): Ticket |
   return data.tickets[guildId]?.[channelId];
 }
 
+export function getTicketByNumber(guildId: string, ticketNumber: number): Ticket | undefined {
+  const tickets = getTickets(guildId);
+  return Object.values(tickets).find((t) => t.ticketNumber === ticketNumber);
+}
+
 export function getNextTicketNumber(guildId: string): number {
   const data = loadData();
   const next = (data.counters[guildId] ?? 0) + 1;
@@ -82,9 +89,27 @@ export function getNextTicketNumber(guildId: string): number {
   return next;
 }
 
+export const MAX_TICKETS_PER_CATEGORY = 3;
+
 export function findOpenTicket(guildId: string, userId: string, category: TicketCategory): Ticket | undefined {
   const tickets = getTickets(guildId);
+  const guildChannels = new Set<string>(); // caller should check channel existence separately
   return Object.values(tickets).find((t) => t.userId === userId && t.category === category);
+}
+
+export function findOpenTickets(guildId: string): Ticket[] {
+  const tickets = getTickets(guildId);
+  return Object.values(tickets);
+}
+
+export function findOpenTicketsByUser(guildId: string, userId: string): Ticket[] {
+  const tickets = getTickets(guildId);
+  return Object.values(tickets).filter((t) => t.userId === userId);
+}
+
+export function countOpenTicketsByUserCategory(guildId: string, userId: string, category: TicketCategory): number {
+  const tickets = getTickets(guildId);
+  return Object.values(tickets).filter((t) => t.userId === userId && t.category === category).length;
 }
 
 export function addPanel(guildId: string, messageId: string, panelChannelId: string): void {

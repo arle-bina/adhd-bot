@@ -265,6 +265,13 @@ export const categories: Category[] = [
         examples: ["/close-ticket"],
       },
       {
+        name: "/merge-ticket",
+        usage: "/merge-ticket user:<@user>",
+        description:
+          "Merge another user's ticket into the current ticket channel (staff only). Copies messages, notifies the user, and deletes the source ticket.",
+        examples: ["/merge-ticket user:@johndoe"],
+      },
+      {
         name: "/ticket-panel",
         usage: "/ticket-panel",
         description:
