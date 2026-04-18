@@ -7,11 +7,17 @@ export function formatElectionType(type: string): string {
     stateSenate: "State Senate",
     governor: "Governor",
     president: "Presidential",
+    vicePresident: "Vice Presidential",
     commons: "Commons",
     primeMinister: "Prime Minister",
+    chancellor: "Chancellor",
     shugiin: "Shūgiin",
     sangiin: "Sangiin",
     bundestag: "Bundestag",
+    centralBankChair: "Central Bank Chair",
+    regionalCouncil: "Regional Council",
+    premier: "Premier",
+    ministerPresident: "Minister-President",
   };
   return map[type] ?? type;
 }
@@ -22,11 +28,18 @@ export function formatOfficeType(type: string): string {
     senate: "Senator",
     house: "Representative",
     stateSenate: "State Senator",
+    president: "President",
+    vicePresident: "Vice President",
     commons: "MP",
     primeMinister: "Prime Minister",
+    chancellor: "Chancellor",
     shugiin: "Representative",
     sangiin: "Councillor",
     bundestag: "MdB",
+    centralBankChair: "Central Bank Chair",
+    regionalCouncil: "Regional Councillor",
+    premier: "Premier",
+    ministerPresident: "Minister-President",
   };
   return map[type] ?? type;
 }
@@ -37,11 +50,17 @@ export const RACE_EMOJI: Record<string, string> = {
   stateSenate: "🏢",
   governor: "👔",
   president: "🇺🇸",
+  vicePresident: "🇺🇸",
   commons: "🇬🇧",
   primeMinister: "🇬🇧",
+  chancellor: "🇩🇪",
   shugiin: "🇯🇵",
   sangiin: "🇯🇵",
   bundestag: "🇩🇪",
+  centralBankChair: "🏦",
+  regionalCouncil: "🏛️",
+  premier: "🇨🇦",
+  ministerPresident: "🇩🇪",
 };
 
 export const COUNTRY_NAMES: Record<string, string> = {

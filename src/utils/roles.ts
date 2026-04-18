@@ -91,6 +91,23 @@ export async function syncMemberRoles(
     "#1 Investor",
     "#2 Investor",
     "#3 Investor",
+    // Office roles — match the game's getOfficeRoleName() outputs
+    "President",
+    "Vice President",
+    "Senator",
+    "Representative",
+    "State Senator",
+    "Governor",
+    "Prime Minister",
+    "Chancellor",
+    "MP",
+    "Central Bank Chair",
+    "Representative",  // Shūgiin
+    "Councillor",      // Sangiin
+    "MdB",             // Bundestag
+    "Regional Councillor",
+    "Premier",
+    "Minister-President",
   ]);
 
   // Protected role IDs that should never be removed

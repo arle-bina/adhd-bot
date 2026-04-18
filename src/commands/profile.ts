@@ -21,6 +21,7 @@ import {
 } from "../utils/api.js";
 import { syncMemberRoles } from "../utils/roles.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { formatOfficeType, COUNTRY_FLAG } from "../utils/formatting.js";
 import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES } from "../utils/currency.js";
 
 export const cooldown = 5;
@@ -102,7 +103,11 @@ function buildProfileEmbed(char: CharacterResult, displayCurrency: string, rates
   }
 
   embed.addFields(
-    { name: "Position", value: char.position || "None", inline: true },
+    {
+      name: "Position",
+      value: (COUNTRY_FLAG[char.countryId ?? ""] ? `${COUNTRY_FLAG[char.countryId!]} ` : "") + (char.position || "None"),
+      inline: true,
+    },
     { name: "Party", value: char.partyUrl ? `[${char.party}](${char.partyUrl})` : (char.party || "Unknown"), inline: true },
     { name: "State", value: (char.stateUrl ? `[${char.state}](${char.stateUrl})` : (char.state || "Unknown")) + (char.countryUrl ? ` · [Country](${char.countryUrl})` : ""), inline: true },
     { name: "PI", value: String(Math.round(char.politicalInfluence ?? 0)), inline: true },
@@ -134,7 +139,7 @@ function buildProfileEmbed(char: CharacterResult, displayCurrency: string, rates
   }
 
   if (char.activeElection?.electionType) {
-    const electionType = char.activeElection.electionType.charAt(0).toUpperCase() + char.activeElection.electionType.slice(1);
+    const electionType = formatOfficeType(char.activeElection.electionType);
     const electionState = char.activeElection.electionState ?? "Unknown";
     embed.addFields({ name: "Active Election", value: `${electionType} (${electionState})`, inline: false });
   }

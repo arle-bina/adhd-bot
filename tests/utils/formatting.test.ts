@@ -16,11 +16,17 @@ describe("formatElectionType", () => {
     ["stateSenate", "State Senate"],
     ["governor", "Governor"],
     ["president", "Presidential"],
+    ["vicePresident", "Vice Presidential"],
     ["commons", "Commons"],
     ["primeMinister", "Prime Minister"],
+    ["chancellor", "Chancellor"],
     ["shugiin", "Shūgiin"],
     ["sangiin", "Sangiin"],
     ["bundestag", "Bundestag"],
+    ["centralBankChair", "Central Bank Chair"],
+    ["regionalCouncil", "Regional Council"],
+    ["premier", "Premier"],
+    ["ministerPresident", "Minister-President"],
   ])("maps '%s' to '%s'", (input, expected) => {
     expect(formatElectionType(input)).toBe(expected);
   });
@@ -36,11 +42,18 @@ describe("formatOfficeType", () => {
     ["senate", "Senator"],
     ["house", "Representative"],
     ["stateSenate", "State Senator"],
+    ["president", "President"],
+    ["vicePresident", "Vice President"],
     ["commons", "MP"],
     ["primeMinister", "Prime Minister"],
+    ["chancellor", "Chancellor"],
     ["shugiin", "Representative"],
     ["sangiin", "Councillor"],
     ["bundestag", "MdB"],
+    ["centralBankChair", "Central Bank Chair"],
+    ["regionalCouncil", "Regional Councillor"],
+    ["premier", "Premier"],
+    ["ministerPresident", "Minister-President"],
   ])("maps '%s' to '%s'", (input, expected) => {
     expect(formatOfficeType(input)).toBe(expected);
   });
@@ -53,8 +66,10 @@ describe("formatOfficeType", () => {
 describe("constant maps", () => {
   it("RACE_EMOJI has entries for all election types", () => {
     expect(Object.keys(RACE_EMOJI).sort()).toEqual([
-      "bundestag", "commons", "governor", "house", "president",
-      "primeMinister", "sangiin", "senate", "shugiin", "stateSenate",
+      "bundestag", "centralBankChair", "chancellor", "commons", "governor",
+      "house", "ministerPresident", "premier", "president", "primeMinister",
+      "regionalCouncil", "sangiin", "senate", "shugiin", "stateSenate",
+      "vicePresident",
     ]);
   });
 

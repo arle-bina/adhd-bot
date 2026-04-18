@@ -9,6 +9,8 @@ describe("formatOfficeType", () => {
     ["stateSenate", "State Senator"],
     ["commons", "MP"],
     ["primeMinister", "Prime Minister"],
+    ["chancellor", "Chancellor"],
+    ["centralBankChair", "Central Bank Chair"],
   ])("maps '%s' to '%s'", (input, expected) => {
     expect(formatOfficeType(input)).toBe(expected);
   });

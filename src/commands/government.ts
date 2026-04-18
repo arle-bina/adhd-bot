@@ -9,11 +9,21 @@ import { COUNTRY_FLAG } from "../utils/formatting.js";
 
 export const cooldown = 5;
 
-const SECTION_TITLES: Record<string, string> = {
-  executive: "Executive",
-  leadership: "Congressional Leadership",
-  cabinet: "Cabinet",
-};
+function sectionTitle(section: string, country: string): string {
+  if (section === "leadership") {
+    if (country === "UK" || country === "CA") return "Parliamentary Leadership";
+    if (country === "DE") return "Bundestag Leadership";
+    if (country === "JP") return "Diet Leadership";
+    return "Congressional Leadership";
+  }
+  if (section === "cabinet") {
+    if (country === "UK") return "Government Cabinet";
+    if (country === "JP") return "Naikaku";
+    if (country === "DE") return "Bundeskabinett";
+    return "Cabinet";
+  }
+  return "Executive";
+}
 
 export const data = new SlashCommandBuilder()
   .setName("government")
@@ -65,7 +75,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       .setFooter(standardFooter());
 
     for (const [section, officials] of sections) {
-      const title = SECTION_TITLES[section] ?? section;
+      const title = sectionTitle(section, result.country);
       const lines = officials.map((o) => {
         const npp = o.isNPP ? " [NPC]" : "";
         if (!o.characterName) {
