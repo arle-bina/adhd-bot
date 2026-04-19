@@ -49,8 +49,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         return;
       }
 
+      const unverifiedRoleId = process.env.UNVERIFIED_ROLE_ID;
+
       let added = 0;
       let already = 0;
+      let skipped = 0;
       let failed = 0;
       let processed = 0;
       const CONCURRENCY = 5;
@@ -59,6 +62,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         const batch = humans.slice(i, i + CONCURRENCY);
         const results = await Promise.allSettled(
           batch.map(async (member) => {
+            if (unverifiedRoleId && member.roles.cache.has(unverifiedRoleId)) return "skipped" as const;
             if (member.roles.cache.has(betaRoleId)) return "already" as const;
             await member.roles.add(betaRoleId, "sync-roles beta-update");
             return "added" as const;
@@ -68,6 +72,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         for (const r of results) {
           if (r.status === "fulfilled") {
             if (r.value === "added") added++;
+            else if (r.value === "skipped") skipped++;
             else already++;
           } else {
             failed++;
@@ -83,7 +88,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       }
 
       await interaction.editReply({
-        content: `Beta-update done. **${added}** assigned · **${already}** already had it · **${failed}** errors — out of ${humans.length} members.`,
+        content: `Beta-update done. **${added}** assigned · **${already}** already had it · **${skipped}** unverified (skipped) · **${failed}** errors — out of ${humans.length} members.`,
       });
       return;
     }
