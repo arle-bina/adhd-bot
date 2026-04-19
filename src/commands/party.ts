@@ -8,8 +8,8 @@ import { hexToInt, replyWithError, standardFooter } from "../utils/helpers.js";
 import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES } from "../utils/currency.js";
 
 export function ideologyLabel(economic: number, social: number): string {
-  const econ = economic < -20 ? "Left" : economic > 20 ? "Right" : "Center";
-  const soc = social < -20 ? "Liberal" : social > 20 ? "Conservative" : "Center";
+  const econ = economic < -1 ? "Left" : economic > 1 ? "Right" : "Center";
+  const soc = social < -1 ? "Liberal" : social > 1 ? "Conservative" : "Center";
   if (econ === "Center" && soc === "Center") return "Centrist";
   if (soc === "Center") return econ;
   if (econ === "Center") return soc;

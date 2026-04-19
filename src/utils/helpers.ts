@@ -37,8 +37,8 @@ export function forexFooter(
 }
 
 export function positionBar(val: number, width = 10): string {
-  const normalised = (val + 100) / 200; // 0..1
-  const filled = Math.round(normalised * width);
+  const normalised = (val + 5) / 10; // 0..1 for -5..+5 scale
+  const filled = Math.round(Math.min(Math.max(normalised, 0), 1) * width);
   return "\u25C0" + "\u2500".repeat(Math.max(0, filled - 1)) + "\u25CF" + "\u2500".repeat(Math.max(0, width - filled)) + "\u25B6";
 }
 

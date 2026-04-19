@@ -4,8 +4,7 @@ import { errorMessage } from "../utils/helpers.js";
 import { EXCHANGE_CURRENCY } from "../utils/currency.js";
 import { generateLineChart, generateCandleChart } from "../utils/chartGenerator.js";
 
-export default {
-  data: new SlashCommandBuilder()
+export const data = new SlashCommandBuilder()
     .setName("market")
     .setDescription("View stock market charts with historical data")
     .addStringOption((option) =>
@@ -39,9 +38,9 @@ export default {
         .setRequired(false)
         .setMinValue(1)
         .setMaxValue(90)
-    ),
+    );
 
-  async execute(interaction: ChatInputCommandInteraction) {
+export async function execute(interaction: ChatInputCommandInteraction) {
     await interaction.deferReply();
 
     try {
@@ -125,4 +124,3 @@ export default {
       });
     }
   }
-};

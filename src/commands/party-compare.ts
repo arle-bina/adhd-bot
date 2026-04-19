@@ -13,7 +13,7 @@ export const data = new SlashCommandBuilder()
   .setName("party-compare")
   .setDescription("Compare two political parties side by side")
   .addStringOption((o) =>
-    o.setName("party1").setDescription("First party slug (e.g. labour, republican)").setRequired(true)
+    o.setName("party1").setDescription("First party ID number (e.g. 1, 2, 3)").setRequired(true)
   )
   .addStringOption((o) =>
     o.setName("country1").setDescription("Country for the first party").setRequired(true)
@@ -26,7 +26,7 @@ export const data = new SlashCommandBuilder()
       )
   )
   .addStringOption((o) =>
-    o.setName("party2").setDescription("Second party slug (e.g. labour, republican)").setRequired(true)
+    o.setName("party2").setDescription("Second party ID number (e.g. 1, 2, 3)").setRequired(true)
   )
   .addStringOption((o) =>
     o.setName("country2").setDescription("Country for the second party").setRequired(true)
@@ -40,33 +40,34 @@ export const data = new SlashCommandBuilder()
   );
 
 function ideologyLabel(economic: number, social: number): string {
-  const econ = economic > 15 ? "Left" : economic < -15 ? "Right" : "Centre";
-  const soc = social > 15 ? "Liberal" : social < -15 ? "Conservative" : "Moderate";
-  if (econ === "Centre" && soc === "Moderate") return "Centrist";
+  const econ = economic < -1 ? "Left" : economic > 1 ? "Right" : "Center";
+  const soc = social < -1 ? "Liberal" : social > 1 ? "Conservative" : "Center";
+  if (econ === "Center" && soc === "Center") return "Centrist";
+  if (soc === "Center") return econ;
+  if (econ === "Center") return soc;
   return `${econ}-${soc}`;
 }
 
-
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
-  const slug1 = interaction.options.getString("party1", true);
+  const id1 = interaction.options.getString("party1", true);
   const country1 = interaction.options.getString("country1", true);
-  const slug2 = interaction.options.getString("party2", true);
+  const id2 = interaction.options.getString("party2", true);
   const country2 = interaction.options.getString("country2", true);
 
   await interaction.deferReply();
 
   try {
     const [res1, res2] = await Promise.all([
-      getParty(slug1, country1),
-      getParty(slug2, country2),
+      getParty(id1, country1),
+      getParty(id2, country2),
     ]);
 
     if (!res1.found || !res1.party) {
-      await interaction.editReply({ content: `Party "${slug1}" not found in ${country1}.` });
+      await interaction.editReply({ content: `Party "${id1}" not found in ${country1}.` });
       return;
     }
     if (!res2.found || !res2.party) {
-      await interaction.editReply({ content: `Party "${slug2}" not found in ${country2}.` });
+      await interaction.editReply({ content: `Party "${id2}" not found in ${country2}.` });
       return;
     }
 
