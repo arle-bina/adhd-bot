@@ -132,14 +132,14 @@ function buildPicksEmbed(picks: ScoredPick[], total: number, targetCurrency: str
     const mcConverted = convertCurrency(p.marketCap, fromCc, targetCurrency, rates);
 
     const value = [
+      p.corpUrl ? `[${p.name}](${p.corpUrl})` : p.name,
       `Price: **${formatSharePrice(spConverted, targetCurrency)}** (${changeSign}${p.priceChange24h.toFixed(1)}%)`,
       `Income: ${formatCurrency(incConverted, targetCurrency)} · Mkt Cap: ${formatCurrency(mcConverted, targetCurrency)}`,
       `Float: ${p.publicFloat.toLocaleString("en-US")} (${p.publicFloatPct.toFixed(1)}%) · D/E: ${deStr}`,
       `Score: ${p.score}/100`,
     ].join("\n");
 
-    const fieldName = p.corpUrl ? `[${p.name}](${p.corpUrl})` : p.name;
-    embed.addFields({ name: fieldName, value: value.slice(0, 1024) });
+    embed.addFields({ name: "\u200b", value: value.slice(0, 1024) });
   }
 
   if (picks.length === 0) {
