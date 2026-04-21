@@ -379,6 +379,8 @@ export interface MarketShareResponse {
   totalItems: number;
   pageSize: 15;
   companies: MarketShareCompany[];
+  /** Home currency of the Discord user's linked game account, if found. */
+  suggestedCurrencyCode: string | null;
 }
 
 export async function getMarketShare(params: {
@@ -386,11 +388,13 @@ export async function getMarketShare(params: {
   country?: string;
   state?: string;
   page?: number;
+  discordId?: string;
 }): Promise<MarketShareResponse> {
   const p: Record<string, string> = { type: params.type };
   if (params.country) p.country = params.country;
   if (params.state) p.state = params.state;
   if (params.page != null) p.page = String(params.page);
+  if (params.discordId) p.discordId = params.discordId;
   return apiFetch<MarketShareResponse>("/api/discord-bot/marketshare", p);
 }
 

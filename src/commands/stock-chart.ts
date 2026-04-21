@@ -10,7 +10,7 @@ import {
   type CorporationListItem,
 } from "../utils/api.js";
 import { replyWithError, standardFooter } from "../utils/helpers.js";
-import { currencyFor, formatCurrency, formatSharePrice, EXCHANGE_CURRENCY } from "../utils/currency.js";
+import { formatCurrency, formatSharePrice, EXCHANGE_CURRENCY } from "../utils/currency.js";
 import {
   generateStockChartMarket,
   generateStockChartCorp,
@@ -183,7 +183,8 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         return;
       }
 
-      const cc = currencyFor(res.corporation.countryId);
+      // Corp financial data is in anchor currency (₳ = USD), same as market mode.
+      const cc = "USD";
       const chartBuffer = await generateStockChartCorp(res, { title, metric, currency: cc });
       const attachment = new AttachmentBuilder(chartBuffer, {
         name: `stock-chart-${res.corporation.name.replace(/\s+/g, "-").toLowerCase()}-${Date.now()}.png`,

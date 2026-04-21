@@ -11,7 +11,6 @@ import {
 } from "../utils/api.js";
 import { replyWithError } from "../utils/helpers.js";
 import {
-  currencyFor,
   formatCurrency,
   formatSharePrice,
   fetchForexRates,
@@ -126,10 +125,10 @@ function buildPicksEmbed(picks: ScoredPick[], total: number, targetCurrency: str
           ? "No equity"
           : p.debtToEquity.toFixed(2);
 
-    const fromCc = currencyFor(p.countryId);
-    const spConverted = convertCurrency(p.sharePrice, fromCc, targetCurrency, rates);
-    const incConverted = convertCurrency(p.income, fromCc, targetCurrency, rates);
-    const mcConverted = convertCurrency(p.marketCap, fromCc, targetCurrency, rates);
+    // Share price, income, and market cap are in anchor currency (₳ = USD).
+    const spConverted = convertCurrency(p.sharePrice, "USD", targetCurrency, rates);
+    const incConverted = convertCurrency(p.income, "USD", targetCurrency, rates);
+    const mcConverted = convertCurrency(p.marketCap, "USD", targetCurrency, rates);
 
     const value = [
       p.corpUrl ? `[${p.name}](${p.corpUrl})` : p.name,

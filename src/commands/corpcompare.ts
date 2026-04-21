@@ -13,7 +13,6 @@ import {
 } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
 import {
-  currencyFor,
   formatCurrency,
   formatSharePrice,
   fetchForexRates,
@@ -173,10 +172,8 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     });
 
     const rates = await fetchForexRates();
-    const convert = (amount: number, corpCountryId: string | undefined) => {
-      const fromCc = currencyFor(corpCountryId);
-      return convertCurrency(amount, fromCc, targetCurrency, rates);
-    };
+    // All API amounts are in anchor currency (₳ = USD).
+    const convert = (amount: number) => convertCurrency(amount, "USD", targetCurrency, rates);
 
     if (validCorps.length < 2) {
       const errorMsg = failedCorps.length > 0 
@@ -197,7 +194,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     if (primaryMetricData) {
       const values = validCorps.map(corp => {
         const raw = getMetricValue(corp.corporation, corp.financials, primaryMetric);
-        return primaryMetricData.monetary ? convert(raw, corp.corporation?.countryId) : raw;
+        return primaryMetricData.monetary ? convert(raw) : raw;
       });
       const maxValue = Math.max(...values);
 
@@ -234,7 +231,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       if (metric.id !== primaryMetric) {
         const values = validCorps.map(corp => {
           const raw = getMetricValue(corp.corporation, corp.financials, metric.id);
-          return metric.monetary ? convert(raw, corp.corporation?.countryId) : raw;
+          return metric.monetary ? convert(raw) : raw;
         });
         const lineParts = validCorps.map((corp, index) => {
           return `${corp.corporation!.name.slice(0, 10)}: ${metric.formatter(values[index], targetCurrency)}`;
@@ -256,8 +253,8 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     const details = validCorps.map(corp => {
       const c = corp.corporation!;
       return `🏢 **${c.name}**\n` +
-             `📍 ${c.headquartersStateName} | 💰 ${formatCurrency(convert(c.liquidCapital ?? 0, c.countryId), targetCurrency)}\n` +
-             `📈 ${formatSharePrice(convert(c.sharePrice ?? 0, c.countryId), targetCurrency)} | 🏭 ${c.typeLabel || c.type}`;
+             `📍 ${c.headquartersStateName} | 💰 ${formatCurrency(convert(c.liquidCapital ?? 0), targetCurrency)}\n` +
+             `📈 ${formatSharePrice(convert(c.sharePrice ?? 0), targetCurrency)} | 🏭 ${c.typeLabel || c.type}`;
     });
 
     embed.addFields({

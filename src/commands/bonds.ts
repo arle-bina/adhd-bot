@@ -6,7 +6,7 @@ import {
 } from "discord.js";
 import { getCorporationList, getBonds, ApiError, type CorporationListItem } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
-import { currencyFor, formatCurrency, formatSharePrice, convertCurrency, fetchForexRates, CURRENCY_CHOICES } from "../utils/currency.js";
+import { formatCurrency, formatSharePrice, convertCurrency, fetchForexRates, CURRENCY_CHOICES } from "../utils/currency.js";
 
 // ---------------------------------------------------------------------------
 // Corporation list cache (5-minute TTL)
@@ -98,10 +98,8 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
     const { bonds, filterCorp, totalOutstandingDebt, pagination } = res;
 
-    const cvt = (n: number, countryId?: string | null) => {
-      const fromCc = currencyFor(countryId ?? undefined);
-      return convertCurrency(n, fromCc, targetCurrency, rates);
-    };
+    // All bond amounts from the API are in anchor currency (₳ = USD).
+    const cvt = (n: number) => convertCurrency(n, "USD", targetCurrency, rates);
     const fmt = (n: number) => formatCurrency(Math.round(n), targetCurrency);
     const fmtS = (n: number) => formatSharePrice(n, targetCurrency);
 
@@ -110,9 +108,9 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         const name = b.corporationName ?? "Unknown";
         const maturity = b.maturityLabel ?? "?";
         const coupon = (b.couponRate ?? 0).toFixed(1);
-        const price = fmtS(cvt(b.marketPrice, b.countryId));
+        const price = fmtS(cvt(b.marketPrice));
         const ytm = `${(b.yieldToMaturity ?? 0).toFixed(1)}%`;
-        const issued = fmt(cvt(b.totalIssued, b.countryId));
+        const issued = fmt(cvt(b.totalIssued));
         const turns = b.turnsRemaining ?? 0;
         const holders = b.holders ?? 0;
         const defaultPrefix = b.defaulted ? "⚠️ DEFAULTED — " : "";
@@ -142,9 +140,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     }
     footerParts.push("ahousedividedgame.com");
 
-    const totalDebtDisplay = filterCorp
-      ? fmt(cvt(totalOutstandingDebt, bonds[0]?.countryId ?? null))
-      : `${totalOutstandingDebt.toLocaleString("en-US")} (mixed currencies)`;
+    const totalDebtDisplay = fmt(cvt(totalOutstandingDebt));
 
     const embed = new EmbedBuilder()
       .setTitle(title.slice(0, 256))

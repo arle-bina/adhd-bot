@@ -10,7 +10,6 @@ import {
 import { getSectors, SectorType, OwnedSectorsResponse, UnownedSectorsResponse } from "../utils/api.js";
 import { replyWithError } from "../utils/helpers.js";
 import {
-  currencyFor,
   formatCurrency,
   fetchForexRates,
   convertCurrency,
@@ -86,8 +85,8 @@ function buildOwnedEmbed(result: OwnedSectorsResponse, targetCurrency: string, r
   const lines = result.sectors.map((sector, index) => {
     const rank = (result.page - 1) * 10 + index + 1;
     const sectorHref = normalizeGamePageUrl(sector.sectorUrl);
-    const fromCc = currencyFor(sector.countryId);
-    const rev = convertCurrency(sector.revenue, fromCc, targetCurrency, rates);
+    // Sector revenue is in anchor currency (₳ = USD).
+    const rev = convertCurrency(sector.revenue, "USD", targetCurrency, rates);
     return `${rank}. [**${sector.corporationName}** — ${sector.stateName}](${sectorHref}) · ${formatCurrency(rev, targetCurrency)} rev · ${sector.growthRate.toFixed(1)}% growth · ${sector.workers.toLocaleString()} workers`;
   });
 
@@ -104,9 +103,9 @@ function buildUnownedEmbed(result: UnownedSectorsResponse, targetCurrency: strin
   const lines = result.sectors.map((sector, index) => {
     const rank = (result.page - 1) * 10 + index + 1;
     const stateHref = new URL(`/state/${encodeURIComponent(sector.stateId)}`, gameSiteOrigin()).href;
-    const fromCc = currencyFor(sector.countryId);
-    const unowned = convertCurrency(sector.unownedRevenue, fromCc, targetCurrency, rates);
-    const total = convertCurrency(sector.totalMarket, fromCc, targetCurrency, rates);
+    // All market amounts are in anchor currency (₳ = USD).
+    const unowned = convertCurrency(sector.unownedRevenue, "USD", targetCurrency, rates);
+    const total = convertCurrency(sector.totalMarket, "USD", targetCurrency, rates);
     return `${rank}. [**${sector.stateName}**](${stateHref}) — ${formatCurrency(unowned, targetCurrency)} unowned (of ${formatCurrency(total, targetCurrency)} total)`;
   });
 

@@ -181,8 +181,8 @@ function buildEmbed(result: MarketShareResponse, showUnowned: boolean, targetCur
         ? new URL(`/corporation/${c.corporationSequentialId}`, gameSiteOrigin()).href
         : null;
       const nameStr = corpHref ? `[${c.corporationName}](${corpHref})` : c.corporationName;
-      const fromCc = currencyFor(c.countryId);
-      const rev = convertCurrency(c.revenue, fromCc, targetCurrency, rates);
+      // Revenues from the API are always in anchor currency (₳ = USD). Convert from USD.
+      const rev = convertCurrency(c.revenue, "USD", targetCurrency, rates);
       return `${rank}. **${nameStr}** — ${c.marketSharePercent.toFixed(2)}% · ${formatCurrency(rev, targetCurrency)}${tag}`;
     });
     embed.setDescription(lines.join("\n").slice(0, 4096));
@@ -193,17 +193,16 @@ function buildEmbed(result: MarketShareResponse, showUnowned: boolean, targetCur
   if (result.totalPages > 1) {
     footerParts.push(`Page ${result.page}/${result.totalPages}`);
   }
+  // totalMarket and unownedRevenue are in anchor currency (₳ = USD).
   const unownedDollar = result.unownedRevenue;
   if (unownedDollar != null && unownedDollar > 0) {
-    const fromCc = currencyFor(result.scope.country);
-    const converted = convertCurrency(unownedDollar, fromCc, targetCurrency, rates);
+    const converted = convertCurrency(unownedDollar, "USD", targetCurrency, rates);
     footerParts.push(`Unowned: ${formatCurrency(converted, targetCurrency)} (${result.unownedPercent.toFixed(2)}%)`);
   } else {
     footerParts.push(`Unowned: ${result.unownedPercent.toFixed(2)}%`);
   }
   if (result.totalMarket > 0) {
-    const fromCc = currencyFor(result.scope.country);
-    const converted = convertCurrency(result.totalMarket, fromCc, targetCurrency, rates);
+    const converted = convertCurrency(result.totalMarket, "USD", targetCurrency, rates);
     footerParts.push(`TAM: ${formatCurrency(converted, targetCurrency)}`);
   }
   footerParts.push(`Values in ${targetCurrency}`);
@@ -248,12 +247,17 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   let page = interaction.options.getInteger("page") ?? 1;
   let showUnowned = false;
   const explicitCurrency = interaction.options.getString("currency");
-  const targetCurrency = explicitCurrency || (country ? currencyFor(country) : "USD");
 
   await interaction.deferReply();
 
   try {
-    let result = await getMarketShare({ type, country, state, page });
+    let result = await getMarketShare({ type, country, state, page, discordId: interaction.user.id });
+
+    // Priority: explicit user choice > linked account home currency > country scope > USD
+    const targetCurrency =
+      explicitCurrency ||
+      result.suggestedCurrencyCode ||
+      (country ? currencyFor(country) : "USD");
 
     if (!result.found) {
       await interaction.editReply({ content: "Could not retrieve market share data for that query." });
