@@ -22,6 +22,7 @@ import { errorMessage, replyWithError } from "./utils/helpers.js";
 import { recordMessage, recordMemberCount } from "./utils/statsStore.js";
 import { handleStarboardReaction } from "./utils/starboard.js";
 import { handleLockReaction, TICKET_CLOSE_MODAL_PREFIX, handleTicketCloseModalSubmit, TICKET_MERGE_MODAL_PREFIX, mergeTickets } from "./utils/tickets.js";
+import { postWebhookReaction } from "./utils/api-game.js";
 import { getTicketByChannel, getTicketByNumber } from "./utils/ticketStore.js";
 import { checkMessage } from "./utils/filter.js";
 import { isBotEnabled } from "./utils/botState.js";
@@ -91,6 +92,21 @@ client.once("ready", () => {
 
 // Track messages for server stats + content filter
 client.on("messageCreate", async (message) => {
+  // Add 👍/👎 to webhook posts in the configured news/suggestions channels
+  if (message.webhookId && message.guild) {
+    const newsChannelId = process.env.NEWS_CHANNEL_ID;
+    const suggestionsChannelId = process.env.SUGGESTIONS_CHANNEL_ID;
+    if (newsChannelId && message.channelId === newsChannelId ||
+        suggestionsChannelId && message.channelId === suggestionsChannelId) {
+      try {
+        await message.react("👍");
+        await message.react("👎");
+      } catch {
+        // non-fatal — bot may lack permissions or message was deleted
+      }
+    }
+  }
+
   if (message.author.bot || !message.guild) return;
   recordMessage(message.guild.id);
 
@@ -132,7 +148,7 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// Reaction handlers (tickets + starboard)
+// Reaction handlers (tickets + starboard + in-game reaction tracking)
 client.on("messageReactionAdd", async (reaction, user) => {
   try {
     if (user.bot) return;
@@ -148,6 +164,26 @@ client.on("messageReactionAdd", async (reaction, user) => {
 
     // Starboard
     await handleStarboardReaction(fullReaction, fullReaction.message.guild);
+
+    // In-game reaction tracking for news/suggestions webhook posts
+    const emoji = fullReaction.emoji.name;
+    if (emoji === "👍" || emoji === "👎") {
+      const channelId = fullReaction.message.channelId;
+      const newsChannelId = process.env.NEWS_CHANNEL_ID;
+      const suggestionsChannelId = process.env.SUGGESTIONS_CHANNEL_ID;
+      if ((newsChannelId && channelId === newsChannelId) ||
+          (suggestionsChannelId && channelId === suggestionsChannelId)) {
+        const channelType = channelId === newsChannelId ? "news" : "suggestion";
+        postWebhookReaction({
+          discordUserId: fullUser.id,
+          messageId: fullReaction.message.id,
+          channelType,
+          emoji,
+        }).catch(() => {
+          // non-fatal — user may not be linked or item not found
+        });
+      }
+    }
   } catch (error) {
     console.error("reactionAdd error:", error);
   }

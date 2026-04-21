@@ -58,6 +58,8 @@ export const data = new SlashCommandBuilder()
         { name: "Defense", value: "defense" },
         { name: "Telecommunications", value: "telecommunications" },
         { name: "Entertainment", value: "entertainment" },
+        { name: "Logistics", value: "logistics" },
+        { name: "Extraction", value: "extraction" },
       )
   )
   .addBooleanOption((option) =>

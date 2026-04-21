@@ -100,3 +100,25 @@ export interface BlackjackResolveResponse {
 export async function postBlackjackResolve(body: BlackjackResolveRequest): Promise<BlackjackResolveResponse> {
   return apiPost<BlackjackResolveResponse>("/api/discord-bot/blackjack/resolve", body);
 }
+
+// ---------------------------------------------------------------------------
+// Webhook Reactions
+// ---------------------------------------------------------------------------
+
+export interface WebhookReactionRequest {
+  discordUserId: string;
+  messageId: string;
+  channelType: "news" | "suggestion";
+  emoji: "👍" | "👎";
+}
+
+export interface WebhookReactionResponse {
+  linked: boolean;
+  itemFound?: boolean;
+  reactions?: Record<string, number>;
+  userReaction?: string | null;
+}
+
+export async function postWebhookReaction(body: WebhookReactionRequest): Promise<WebhookReactionResponse> {
+  return apiPost<WebhookReactionResponse>("/api/discord-bot/reactions", body);
+}

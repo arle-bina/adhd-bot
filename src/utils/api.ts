@@ -95,6 +95,7 @@ export {
   getBlackjackBalance,
   postBlackjackPlaceWager,
   postBlackjackResolve,
+  postWebhookReaction,
 } from "./api-game.js";
 
 export type {
@@ -106,6 +107,8 @@ export type {
   BlackjackPlaceWagerResponse,
   BlackjackResolveRequest,
   BlackjackResolveResponse,
+  WebhookReactionRequest,
+  WebhookReactionResponse,
 } from "./api-game.js";
 
 export {
