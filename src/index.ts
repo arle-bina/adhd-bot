@@ -22,7 +22,7 @@ import { errorMessage, replyWithError } from "./utils/helpers.js";
 import { recordMessage, recordMemberCount } from "./utils/statsStore.js";
 import { handleStarboardReaction } from "./utils/starboard.js";
 import { handleLockReaction, TICKET_CLOSE_MODAL_PREFIX, handleTicketCloseModalSubmit, TICKET_MERGE_MODAL_PREFIX, mergeTickets } from "./utils/tickets.js";
-import { postWebhookReaction } from "./utils/api-game.js";
+import { getChannelConfig, postWebhookReaction } from "./utils/api-game.js";
 import { getTicketByChannel, getTicketByNumber } from "./utils/ticketStore.js";
 import { checkMessage } from "./utils/filter.js";
 import { isBotEnabled } from "./utils/botState.js";
@@ -55,6 +55,21 @@ const client = new Client({
 
 const commands = new Collection<string, Command>();
 
+// Channel IDs for news/suggestions webhook reaction tracking — loaded from game config on ready
+let newsChannelId: string | null = null;
+let suggestionsChannelId: string | null = null;
+
+async function refreshChannelConfig() {
+  try {
+    const config = await getChannelConfig();
+    newsChannelId = config.newsChannelId;
+    suggestionsChannelId = config.suggestionsChannelId;
+    console.log(`Channel config loaded — news: ${newsChannelId ?? "none"}, suggestions: ${suggestionsChannelId ?? "none"}`);
+  } catch (err) {
+    console.error("Failed to load channel config from game API:", err);
+  }
+}
+
 const commandFiles = readdirSync(join(__dirname, "commands")).filter(
   (f) => f.endsWith(".js") || f.endsWith(".ts")
 );
@@ -80,6 +95,11 @@ client.once("ready", () => {
     status: "online",
   });
 
+  // Load news/suggestions channel IDs from game config (admin panel webhook config)
+  refreshChannelConfig();
+  // Re-sync hourly in case the admin updates webhook URLs
+  setInterval(refreshChannelConfig, 60 * 60 * 1000);
+
   // Snapshot member counts on startup and every hour
   const snapshotMembers = () => {
     for (const guild of client.guilds.cache.values()) {
@@ -94,10 +114,8 @@ client.once("ready", () => {
 client.on("messageCreate", async (message) => {
   // Add 👍/👎 to webhook posts in the configured news/suggestions channels
   if (message.webhookId && message.guild) {
-    const newsChannelId = process.env.NEWS_CHANNEL_ID;
-    const suggestionsChannelId = process.env.SUGGESTIONS_CHANNEL_ID;
-    if (newsChannelId && message.channelId === newsChannelId ||
-        suggestionsChannelId && message.channelId === suggestionsChannelId) {
+    if ((newsChannelId && message.channelId === newsChannelId) ||
+        (suggestionsChannelId && message.channelId === suggestionsChannelId)) {
       try {
         await message.react("👍");
         await message.react("👎");
@@ -169,8 +187,6 @@ client.on("messageReactionAdd", async (reaction, user) => {
     const emoji = fullReaction.emoji.name;
     if (emoji === "👍" || emoji === "👎") {
       const channelId = fullReaction.message.channelId;
-      const newsChannelId = process.env.NEWS_CHANNEL_ID;
-      const suggestionsChannelId = process.env.SUGGESTIONS_CHANNEL_ID;
       if ((newsChannelId && channelId === newsChannelId) ||
           (suggestionsChannelId && channelId === suggestionsChannelId)) {
         const channelType = channelId === newsChannelId ? "news" : "suggestion";

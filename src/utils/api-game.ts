@@ -102,6 +102,19 @@ export async function postBlackjackResolve(body: BlackjackResolveRequest): Promi
 }
 
 // ---------------------------------------------------------------------------
+// Channel Config
+// ---------------------------------------------------------------------------
+
+export interface ChannelConfigResponse {
+  newsChannelId: string | null;
+  suggestionsChannelId: string | null;
+}
+
+export async function getChannelConfig(): Promise<ChannelConfigResponse> {
+  return apiFetch<ChannelConfigResponse>("/api/discord-bot/channel-config");
+}
+
+// ---------------------------------------------------------------------------
 // Webhook Reactions
 // ---------------------------------------------------------------------------
 
