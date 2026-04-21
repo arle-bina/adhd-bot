@@ -120,6 +120,7 @@ export async function syncMemberRoles(
     ...(process.env.ALPHA_TESTER_ROLE_ID ? [process.env.ALPHA_TESTER_ROLE_ID] : []),
     ...(process.env.BETA_TESTER_ROLE_ID ? [process.env.BETA_TESTER_ROLE_ID] : []),
     ...(process.env.SUPPORTER_ROLE_ID ? [process.env.SUPPORTER_ROLE_ID] : []),
+    ...(process.env.SERVER_MODERATOR_ID ? [process.env.SERVER_MODERATOR_ID] : []),
     ...additionalProtected,
   ]);
 
