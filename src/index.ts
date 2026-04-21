@@ -165,6 +165,41 @@ client.on("messageReactionRemove", async (reaction, user) => {
   }
 });
 
+// Log self-deleted messages to moderation channel
+client.on("messageDelete", async (message) => {
+  try {
+    if (message.partial) return; // No content available for uncached messages
+    if (message.author?.bot) return;
+    if (!message.guild) return;
+
+    // Check audit log to determine who deleted the message
+    // If someone else deleted it (mod action), skip logging here
+    const auditLogs = await message.guild.fetchAuditLogs({ type: 72, limit: 1 }); // 72 = MessageDelete
+    const deleteLog = auditLogs.entries.first();
+    const deletedBySomeoneElse = deleteLog
+      && deleteLog.target?.id === message.author?.id
+      && deleteLog.executor?.id !== message.author?.id
+      && Date.now() - deleteLog.createdTimestamp < 5000;
+    if (deletedBySomeoneElse) return;
+
+    const logChannel = message.guild.channels.cache.get(process.env.FILTER_LOG_CHANNEL_ID!) as TextChannel | undefined;
+    if (!logChannel?.isTextBased()) return;
+
+    const embed = new EmbedBuilder()
+      .setTitle("Message Deleted")
+      .setColor(0x808080)
+      .addFields(
+        { name: "User", value: `${message.author} (${message.author?.tag ?? "Unknown"})`, inline: true },
+        { name: "Channel", value: `<#${message.channel.id}>`, inline: true },
+        { name: "Message Content", value: message.content?.slice(0, 1000) || "(empty or attachment-only)" }
+      )
+      .setTimestamp();
+    await logChannel.send({ embeds: [embed] });
+  } catch (error) {
+    console.error("messageDelete error:", error);
+  }
+});
+
 client.on("guildMemberAdd", async (member) => {
   try {
     // Assign unverified role
