@@ -97,6 +97,7 @@ export {
   postBlackjackResolve,
   getChannelConfig,
   postWebhookReaction,
+  postDiscordSuggestion,
 } from "./api-game.js";
 
 export type {
@@ -111,6 +112,8 @@ export type {
   ChannelConfigResponse,
   WebhookReactionRequest,
   WebhookReactionResponse,
+  SubmitSuggestionRequest,
+  SubmitSuggestionResponse,
 } from "./api-game.js";
 
 export {

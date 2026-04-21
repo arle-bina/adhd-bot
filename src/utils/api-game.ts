@@ -135,3 +135,27 @@ export interface WebhookReactionResponse {
 export async function postWebhookReaction(body: WebhookReactionRequest): Promise<WebhookReactionResponse> {
   return apiPost<WebhookReactionResponse>("/api/discord-bot/reactions", body);
 }
+
+// ---------------------------------------------------------------------------
+// Suggestions
+// ---------------------------------------------------------------------------
+
+export interface SubmitSuggestionRequest {
+  title: string;
+  description: string;
+  category: string;
+  gameSystem: string;
+  discordUserId: string;
+  discordUsername: string;
+}
+
+export interface SubmitSuggestionResponse {
+  issueNumber: number;
+  detailUrl: string;
+  githubIssueUrl?: string;
+  message: string;
+}
+
+export async function postDiscordSuggestion(body: SubmitSuggestionRequest): Promise<SubmitSuggestionResponse> {
+  return apiPost<SubmitSuggestionResponse>("/api/discord-bot/suggestions", body);
+}

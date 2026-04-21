@@ -26,6 +26,7 @@ import { getChannelConfig, postWebhookReaction } from "./utils/api-game.js";
 import { getTicketByChannel, getTicketByNumber } from "./utils/ticketStore.js";
 import { checkMessage } from "./utils/filter.js";
 import { isBotEnabled } from "./utils/botState.js";
+import { SUGGEST_MODAL_PREFIX, handleSuggestModal } from "./commands/suggest.js";
 
 validateEnv();
 
@@ -438,6 +439,16 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.showModal(modal);
     } catch (error) {
       console.error("Ticket panel button error:", error);
+    }
+    return;
+  }
+
+  // Suggest modal submission
+  if (interaction.isModalSubmit() && interaction.customId.startsWith(SUGGEST_MODAL_PREFIX)) {
+    try {
+      await handleSuggestModal(interaction);
+    } catch (error) {
+      console.error("Suggest modal error:", error);
     }
     return;
   }
