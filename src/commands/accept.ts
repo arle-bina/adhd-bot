@@ -2,6 +2,8 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   GuildMember,
+  EmbedBuilder,
+  TextChannel,
 } from "discord.js";
 import { getSyncRoles } from "../utils/api.js";
 import { syncMemberRoles } from "../utils/roles.js";
@@ -34,6 +36,21 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await member.roles.add(process.env.MEMBER_ROLE_ID!);
     await member.roles.add(BETA_TESTER_ROLE_ID);
     await interaction.editReply({ content: "✅ Welcome! You now have access to the server." });
+
+    // Post welcome message in general channel
+    try {
+      const generalChannel = interaction.guild?.channels.cache.get(process.env.GENERAL_CHANNEL_ID!) as TextChannel | undefined;
+      if (generalChannel?.isTextBased()) {
+        const welcomeEmbed = new EmbedBuilder()
+          .setTitle("A new member has joined!")
+          .setDescription(`Welcome ${member} to **${interaction.guild!.name}**! 🎉`)
+          .setColor(0x57f287)
+          .setThumbnail(member.user.displayAvatarURL());
+        await generalChannel.send({ embeds: [welcomeEmbed] });
+      }
+    } catch (error) {
+      console.error("General welcome post error:", error);
+    }
 
     // Best-effort: sync game roles if account is linked
     getSyncRoles(interaction.user.id).then(async (result) => {
