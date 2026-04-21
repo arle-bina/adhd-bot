@@ -8,6 +8,7 @@ import {
 import { getSyncRoles } from "../utils/api.js";
 import { syncMemberRoles } from "../utils/roles.js";
 import { replyWithError } from "../utils/helpers.js";
+import { isAcceptEnabled } from "../utils/botState.js";
 
 const BETA_TESTER_ROLE_ID = "1490410327387541687";
 
@@ -23,6 +24,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   if (!member) {
     await interaction.editReply({ content: "Could not find your server profile. Try again." });
+    return;
+  }
+
+  if (!isAcceptEnabled() && !member.permissions.has("Administrator")) {
+    await interaction.editReply({
+      content: "The `/accept` command is currently disabled. Please try again later.",
+    });
     return;
   }
 
