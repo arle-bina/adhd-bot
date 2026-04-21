@@ -87,6 +87,32 @@ client.once("ready", () => {
   };
   snapshotMembers();
   setInterval(snapshotMembers, 60 * 60 * 1000);
+
+  // Remind unverified users every 72 hours to read the rules and run /accept
+  const remindUnverified = async () => {
+    for (const guild of client.guilds.cache.values()) {
+      try {
+        const channel = guild.channels.cache.get(process.env.WELCOME_CHANNEL_ID!) as TextChannel | undefined;
+        if (!channel?.isTextBased()) continue;
+
+        const embed = new EmbedBuilder()
+          .setTitle("Reminder — Please Verify")
+          .setDescription(
+            `<@&${process.env.UNVERIFIED_ROLE_ID}>\n\nIf you haven't yet, please read the rules in <#${process.env.RULES_CHANNEL_ID}> and run \`/accept\` in this channel to gain access to the rest of the server.`,
+          )
+          .setColor(0x5865f2);
+
+        await channel.send({
+          content: `<@&${process.env.UNVERIFIED_ROLE_ID}>`,
+          embeds: [embed],
+          allowedMentions: { roles: [process.env.UNVERIFIED_ROLE_ID!] },
+        });
+      } catch (error) {
+        console.error("Unverified reminder error:", error);
+      }
+    }
+  };
+  setInterval(remindUnverified, 72 * 60 * 60 * 1000);
 });
 
 // Track messages for server stats + content filter
