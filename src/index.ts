@@ -26,6 +26,7 @@ import { getChannelConfig, postWebhookReaction } from "./utils/api-game.js";
 import { getTicketByChannel, getTicketByNumber } from "./utils/ticketStore.js";
 import { checkMessage } from "./utils/filter.js";
 import { isBotEnabled } from "./utils/botState.js";
+import { isChannelBanned } from "./utils/channelBans.js";
 import { SUGGEST_MODAL_PREFIX, handleSuggestModal } from "./commands/suggest.js";
 
 validateEnv();
@@ -592,6 +593,23 @@ client.on("interactionCreate", async (interaction) => {
     if (!member?.permissions.has("Administrator")) {
       await interaction.reply({
         content: "The bot is currently disabled. Please try again later.",
+        ephemeral: true,
+      });
+      return;
+    }
+  }
+
+  // Block non-admin users in channels where bot usage has been banned
+  if (
+    interaction.guild &&
+    interaction.commandName !== "ban-bot-channel-usage" &&
+    isChannelBanned(interaction.guild.id, interaction.channelId)
+  ) {
+    const member = interaction.guild.members.cache.get(interaction.user.id)
+      ?? await interaction.guild.members.fetch(interaction.user.id);
+    if (!member?.permissions.has("Administrator")) {
+      await interaction.reply({
+        content: "Bot commands are not allowed in this channel.",
         ephemeral: true,
       });
       return;
