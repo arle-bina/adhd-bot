@@ -286,6 +286,17 @@ export const categories: Category[] = [
         examples: ["/sync-roles"],
       },
       {
+        name: "/ban-bot-channel-usage",
+        usage: "/ban-bot-channel-usage add|remove channel:<channel>  ·  /ban-bot-channel-usage list",
+        description:
+          "Restrict bot command usage in specific channels. Non-admin users running commands in a banned channel get a polite block. Admins are unaffected. Requires Administrator permission.",
+        examples: [
+          "/ban-bot-channel-usage add channel:#general",
+          "/ban-bot-channel-usage remove channel:#general",
+          "/ban-bot-channel-usage list",
+        ],
+      },
+      {
         name: "/version",
         usage: "/version",
         description:
