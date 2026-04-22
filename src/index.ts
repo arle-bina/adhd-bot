@@ -412,6 +412,18 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.isButton() && interaction.customId.startsWith("ticket_panel_")) {
     try {
       const category = interaction.customId.replace("ticket_panel_", "");
+
+      // Suggestions go through /suggest, not tickets — railroad anyone who
+      // clicks the legacy Suggestion button on an older deployed panel.
+      if (category === "suggestion") {
+        await interaction.reply({
+          content:
+            "💡 Suggestions don't go through tickets — please run `/suggest` so your idea gets posted on the site for the team to review.",
+          ephemeral: true,
+        });
+        return;
+      }
+
       const modal = new ModalBuilder()
         .setCustomId(`ticket_modal_${category}`)
         .setTitle("Open a Ticket");
@@ -525,6 +537,16 @@ client.on("interactionCreate", async (interaction) => {
       // Panel modals come from button interactions, not command interactions
       if (!interaction.message) {
         // This is from /ticket's awaitModalSubmit — skip, it handles itself
+        return;
+      }
+      // Suggestions go through /suggest — defense-in-depth against stale modals
+      // from pre-rollout panels.
+      if (category === "suggestion") {
+        await interaction.reply({
+          content:
+            "💡 Suggestions don't go through tickets — please run `/suggest` so your idea gets posted on the site for the team to review.",
+          ephemeral: true,
+        });
         return;
       }
       await interaction.deferReply({ ephemeral: true });

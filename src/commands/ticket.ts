@@ -29,7 +29,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .setPlaceholder("Select a ticket type...")
       .addOptions(
         { label: "Bug Report", value: "bug", emoji: "🐛", description: "Report a bug or issue" },
-        { label: "Suggestion", value: "suggestion", emoji: "💡", description: "Suggest a feature or improvement" },
         { label: "Moderation Issue", value: "moderation", emoji: "🛡️", description: "Report a moderation concern" },
       ),
   );
