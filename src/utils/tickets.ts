@@ -55,18 +55,26 @@ function devTeamRoleId(): string | undefined {
   return raw && raw.length > 0 ? raw : undefined;
 }
 
+function moderatorRoleId(): string | undefined {
+  const raw = process.env.SERVER_MODERATOR_ID?.trim();
+  return raw && raw.length > 0 ? raw : undefined;
+}
+
 /**
- * Who counts as staff for tickets: matches who can access ticket channels (dev role, Manage Channels
- * on this channel or at guild level, Administrator). Guild-level `permissions` alone misses
- * channel-only overwrites and the dev team role — those cases previously skipped the resolution DM.
+ * Who counts as staff for tickets: matches who can access ticket channels (dev/mod role,
+ * Manage Channels on this channel or at guild level, ModerateMembers, Administrator).
+ * Guild-level `permissions` alone misses channel-only overwrites and the dev/mod roles.
  */
 function memberCanActAsTicketStaff(member: GuildMember, channel: TextChannel): boolean {
   if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
   if (member.permissions.has(PermissionFlagsBits.ManageChannels)) return true;
+  if (member.permissions.has(PermissionFlagsBits.ModerateMembers)) return true;
   const inChannel = channel.permissionsFor(member)?.has(PermissionFlagsBits.ManageChannels) ?? false;
   if (inChannel) return true;
   const devId = devTeamRoleId();
   if (devId && member.roles.cache.has(devId)) return true;
+  const modId = moderatorRoleId();
+  if (modId && member.roles.cache.has(modId)) return true;
   return false;
 }
 
@@ -194,6 +202,7 @@ export async function createTicket(
     const channelName = `ticket-${category}-${sanitizeUsername(username)}-${paddedNum}`;
 
     const devTeamRoleId = process.env.DEV_TEAM_ROLE_ID ?? "1470571508689535188";
+    const modRoleId = moderatorRoleId();
     const ticketViewerRoleId = "1483975767703552111";
 
     const permissionOverwrites = [
@@ -219,6 +228,18 @@ export async function createTicket(
         ? [
             {
               id: devTeamRoleId,
+              allow: [
+                PermissionFlagsBits.ViewChannel,
+                PermissionFlagsBits.SendMessages,
+                PermissionFlagsBits.ReadMessageHistory,
+              ],
+            },
+          ]
+        : []),
+      ...(modRoleId
+        ? [
+            {
+              id: modRoleId,
               allow: [
                 PermissionFlagsBits.ViewChannel,
                 PermissionFlagsBits.SendMessages,

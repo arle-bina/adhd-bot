@@ -27,8 +27,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     .setDescription("Click a button below to open a support ticket:")
     .addFields(
       { name: "🐛 Bug Report", value: "Report a bug or issue", inline: true },
-      { name: "💡 Suggestion", value: "Suggest a feature or improvement", inline: true },
       { name: "🛡️ Moderation", value: "Report a moderation concern", inline: true },
+      { name: "💡 Suggestions", value: "Use `/suggest` to submit ideas — they're posted on the site for the team to review.", inline: false },
     )
     .setColor(0x5865f2)
     .setFooter({ text: "ahousedividedgame.com" });
@@ -39,11 +39,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .setLabel("Bug Report")
       .setEmoji("🐛")
       .setStyle(ButtonStyle.Danger),
-    new ButtonBuilder()
-      .setCustomId("ticket_panel_suggestion")
-      .setLabel("Suggestion")
-      .setEmoji("💡")
-      .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId("ticket_panel_moderation")
       .setLabel("Moderation")

@@ -43,6 +43,15 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           SendMessages: true,
           ReadMessageHistory: true,
         });
+
+        const modRoleId = process.env.SERVER_MODERATOR_ID?.trim();
+        if (modRoleId) {
+          await channel.permissionOverwrites.edit(modRoleId, {
+            ViewChannel: true,
+            SendMessages: true,
+            ReadMessageHistory: true,
+          });
+        }
         updated++;
       } catch {
         failed++;
