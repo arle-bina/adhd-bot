@@ -194,6 +194,7 @@ export async function createTicket(
     const channelName = `ticket-${category}-${sanitizeUsername(username)}-${paddedNum}`;
 
     const devTeamRoleId = process.env.DEV_TEAM_ROLE_ID ?? "1470571508689535188";
+    const ticketViewerRoleId = "1483975767703552111";
 
     const permissionOverwrites = [
       { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
@@ -226,6 +227,14 @@ export async function createTicket(
             },
           ]
         : []),
+      {
+        id: ticketViewerRoleId,
+        allow: [
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.ReadMessageHistory,
+        ],
+      },
     ];
 
     const channel = await guild.channels.create({
