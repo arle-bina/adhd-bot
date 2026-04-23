@@ -3,7 +3,7 @@ import {
   ChatInputCommandInteraction,
   EmbedBuilder,
 } from "discord.js";
-import { getGovernment, type GovernmentOfficial } from "../utils/api.js";
+import { getGovernment, type GovernmentOfficial, type GovernmentFormationData } from "../utils/api.js";
 import { hexToInt, replyWithError, standardFooter } from "../utils/helpers.js";
 import { COUNTRY_FLAG } from "../utils/formatting.js";
 
@@ -74,6 +74,18 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       .setColor(embedColor)
       .setFooter(standardFooter());
 
+    // Government formation section for parliamentary countries
+    if (result.governmentFormation) {
+      const lines = buildFormationLines(result.governmentFormation, result.country);
+      if (lines.length > 0) {
+        embed.addFields({
+          name: "🏛️ Government Formation",
+          value: lines.join("\n").slice(0, 1024),
+          inline: false,
+        });
+      }
+    }
+
     for (const [section, officials] of sections) {
       const title = sectionTitle(section, result.country);
       const lines = officials.map((o) => {
@@ -99,4 +111,77 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   } catch (error) {
     await replyWithError(interaction, "government", error);
   }
+}
+
+const FORMATION_STATUS_EMOJI: Record<string, string> = {
+  formed: "✅",
+  pending: "⏳",
+  collapsed: "❌",
+};
+
+const FORMATION_TYPE_LABEL: Record<string, string> = {
+  majority: "Majority",
+  coalition: "Coalition",
+  minority: "Minority",
+  admin: "Admin",
+};
+
+function buildFormationLines(gf: GovernmentFormationData, country: string): string[] {
+  const lines: string[] = [];
+
+  // Status line
+  const statusEmoji = FORMATION_STATUS_EMOJI[gf.status] ?? "❓";
+  const statusLabel = gf.status.charAt(0).toUpperCase() + gf.status.slice(1);
+  const typeLabel = gf.formationType
+    ? FORMATION_TYPE_LABEL[gf.formationType] ?? gf.formationType
+    : null;
+  lines.push(
+    `**Status:** ${statusEmoji} ${statusLabel}${typeLabel ? ` (${typeLabel})` : ""}`
+  );
+
+  // PM line
+  if (gf.pmName) {
+    lines.push(`**Prime Minister:** ${gf.pmName}`);
+  } else if (gf.status === "pending") {
+    lines.push(`**Prime Minister:** None — appointment pending`);
+  }
+
+  // Seat support line
+  lines.push(
+    `**Seat Support:** ${gf.totalSeatsSupporting}/${gf.majorityThreshold} needed for majority`
+  );
+
+  // Active vote alert
+  if (gf.activeVoteId) {
+    lines.push(`⚠️ **Active vote in progress**`);
+  }
+
+  // PM vacancy deadline
+  if (gf.pmVacancyDeadlineTurn != null) {
+    lines.push(
+      `🔴 **Auto snap election** at turn ${gf.pmVacancyDeadlineTurn} if no PM seated`
+    );
+  }
+
+  // Seat breakdown — compact inline format using party names
+  const partySeats = Object.entries(gf.seatsByPartyNames)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 8); // limit to top 8 parties
+  if (partySeats.length > 0) {
+    const seatStr = partySeats
+      .map(([name, seats]) => `${name}: ${seats}`)
+      .join(" · ");
+    const overflow = Object.keys(gf.seatsByPartyNames).length - partySeats.length;
+    const suffix = overflow > 0 ? ` +${overflow} more` : "";
+    lines.push(`**Seats:** ${seatStr}${suffix} (Total: ${gf.totalSeats})`);
+  }
+
+  // Coalition parties (if coalition government)
+  if (gf.coalitionPartyNames && gf.coalitionPartyNames.length > 1) {
+    lines.push(`**Coalition:** ${gf.coalitionPartyNames.join(", ")}`);
+  } else if (gf.governingPartyName) {
+    lines.push(`**Governing Party:** ${gf.governingPartyName}`);
+  }
+
+  return lines;
 }

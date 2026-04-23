@@ -51,9 +51,13 @@ export const data = new SlashCommandBuilder()
         { name: "Governor", value: "governor" },
         { name: "President", value: "president" },
         { name: "Commons", value: "commons" },
+        { name: "Snap Commons", value: "snap_commons" },
         { name: "Prime Minister", value: "primeMinister" },
         { name: "Shūgiin (JP)", value: "shugiin" },
-        { name: "Sangiin (JP)", value: "sangiin" }
+        { name: "Snap Shūgiin (JP)", value: "snap_shugiin" },
+        { name: "Sangiin (JP)", value: "sangiin" },
+        { name: "Bundestag (DE)", value: "bundestag" },
+        { name: "Snap Bundestag (DE)", value: "snap_bundestag" }
       )
   );
 

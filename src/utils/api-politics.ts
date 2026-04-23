@@ -492,11 +492,30 @@ export interface GovernmentOfficial {
   isNPP: boolean;
 }
 
+export interface GovernmentFormationData {
+  status: "pending" | "formed" | "collapsed";
+  formationType: "majority" | "coalition" | "minority" | "admin" | null;
+  pmCharacterId: string | null;
+  pmName: string | null;
+  governingPartyId: string | null;
+  governingPartyName: string | null;
+  coalitionPartyIds: string[] | null;
+  coalitionPartyNames: string[] | null;
+  totalSeatsSupporting: number;
+  majorityThreshold: number;
+  seatsByParty: Record<string, number>;
+  seatsByPartyNames: Record<string, number>;
+  totalSeats: number;
+  activeVoteId: string | null;
+  pmVacancyDeadlineTurn: number | null;
+}
+
 export interface GovernmentResponse {
   found: boolean;
   country: string;
   countryName: string;
   officials: GovernmentOfficial[];
+  governmentFormation: GovernmentFormationData | null;
 }
 
 export async function getGovernment(country?: string): Promise<GovernmentResponse> {

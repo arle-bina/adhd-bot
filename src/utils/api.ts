@@ -41,6 +41,7 @@ export type {
   PredictionPartyEntry,
   PredictionResponse,
   GovernmentOfficial,
+  GovernmentFormationData,
   GovernmentResponse,
   SyncRolesDetails,
   SyncRolesResponse,

@@ -18,11 +18,14 @@ describe("formatElectionType", () => {
     ["president", "Presidential"],
     ["vicePresident", "Vice Presidential"],
     ["commons", "Commons"],
+    ["snap_commons", "Snap Commons"],
     ["primeMinister", "Prime Minister"],
     ["chancellor", "Chancellor"],
     ["shugiin", "Shūgiin"],
+    ["snap_shugiin", "Snap Shūgiin"],
     ["sangiin", "Sangiin"],
     ["bundestag", "Bundestag"],
+    ["snap_bundestag", "Snap Bundestag"],
     ["centralBankChair", "Central Bank Chair"],
     ["regionalCouncil", "Regional Council"],
     ["premier", "Premier"],
@@ -45,11 +48,14 @@ describe("formatOfficeType", () => {
     ["president", "President"],
     ["vicePresident", "Vice President"],
     ["commons", "MP"],
+    ["snap_commons", "MP"],
     ["primeMinister", "Prime Minister"],
     ["chancellor", "Chancellor"],
     ["shugiin", "Representative"],
+    ["snap_shugiin", "Representative"],
     ["sangiin", "Councillor"],
     ["bundestag", "MdB"],
+    ["snap_bundestag", "MdB"],
     ["centralBankChair", "Central Bank Chair"],
     ["regionalCouncil", "Regional Councillor"],
     ["premier", "Premier"],
@@ -64,12 +70,12 @@ describe("formatOfficeType", () => {
 });
 
 describe("constant maps", () => {
-  it("RACE_EMOJI has entries for all election types", () => {
+  it("RACE_EMOJI has entries for all election types including snaps", () => {
     expect(Object.keys(RACE_EMOJI).sort()).toEqual([
       "bundestag", "centralBankChair", "chancellor", "commons", "governor",
       "house", "ministerPresident", "premier", "president", "primeMinister",
-      "regionalCouncil", "sangiin", "senate", "shugiin", "stateSenate",
-      "vicePresident",
+      "regionalCouncil", "sangiin", "senate", "shugiin", "snap_bundestag",
+      "snap_commons", "snap_shugiin", "stateSenate", "vicePresident",
     ]);
   });
 
