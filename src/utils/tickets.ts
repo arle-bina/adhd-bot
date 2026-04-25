@@ -296,8 +296,9 @@ export async function createTicket(
 
     await channel.send({ embeds: [embed], components: [closeRow] });
 
-    if (devTeamRoleId) {
-      await channel.send(`<@&${devTeamRoleId}>`).catch(() => {});
+    const pingRoleId = category === "moderation" ? modRoleId : devTeamRoleId;
+    if (pingRoleId) {
+      await channel.send(`<@&${pingRoleId}>`).catch(() => {});
     }
 
     addTicket(guild.id, {
