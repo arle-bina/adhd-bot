@@ -98,8 +98,10 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
     const { bonds, filterCorp, totalOutstandingDebt, pagination } = res;
 
-    // All bond amounts from the API are in anchor currency (₳ = USD).
-    const cvt = (n: number) => convertCurrency(n, "USD", targetCurrency, rates);
+    // Each bond has its own currencyCode (e.g. JPY, GBP, USD).
+    // totalOutstandingDebt is in anchor currency (₳ = USD) since it normalizes across currencies.
+    const cvtFromAnchor = (n: number) => convertCurrency(n, "USD", targetCurrency, rates);
+    const cvtFromBond = (n: number, cc: string | null) => convertCurrency(n, cc || "USD", targetCurrency, rates);
     const fmt = (n: number) => formatCurrency(Math.round(n), targetCurrency);
     const fmtS = (n: number) => formatSharePrice(n, targetCurrency);
 
@@ -108,9 +110,9 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         const name = b.corporationName ?? "Unknown";
         const maturity = b.maturityLabel ?? "?";
         const coupon = (b.couponRate ?? 0).toFixed(1);
-        const price = fmtS(cvt(b.marketPrice));
+        const price = fmtS(cvtFromBond(b.marketPrice, b.currencyCode));
         const ytm = `${(b.yieldToMaturity ?? 0).toFixed(1)}%`;
-        const issued = fmt(cvt(b.totalIssued));
+        const issued = fmt(cvtFromBond(b.totalIssued, b.currencyCode));
         const turns = b.turnsRemaining ?? 0;
         const holders = b.holders ?? 0;
         const defaultPrefix = b.defaulted ? "⚠️ DEFAULTED — " : "";
@@ -138,9 +140,10 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       const rateVal = targetCurrency === "JPY" ? rates[targetCurrency].toFixed(2) : rates[targetCurrency].toFixed(4);
       footerParts.push(`1 INT = ${sym}${rateVal} ${targetCurrency}`);
     }
+    footerParts.push("Total debt is anchor-normalized (USD)");
     footerParts.push("ahousedividedgame.com");
 
-    const totalDebtDisplay = fmt(cvt(totalOutstandingDebt));
+    const totalDebtDisplay = fmt(cvtFromAnchor(totalOutstandingDebt));
 
     const embed = new EmbedBuilder()
       .setTitle(title.slice(0, 256))
