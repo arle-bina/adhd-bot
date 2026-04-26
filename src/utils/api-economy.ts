@@ -19,7 +19,10 @@ export interface CorporationSector {
   stateId: string;
   stateName: string | null;
   revenue: number | null;
-  growthRate: number | null;
+  /** Current growth rate (%). API field: currentGrowthRate. */
+  currentGrowthRate: number | null;
+  /** @deprecated Use currentGrowthRate — kept for backward compat. */
+  growthRate?: number | null;
   workers: number | null;
 }
 
@@ -249,7 +252,12 @@ export interface OwnedSector {
   stateName: string;
   countryId: string | null;
   revenue: number;
-  growthRate: number;
+  /** Anchor-currency revenue (₳/USD) for cross-corp comparisons. */
+  revenueAnchor: number;
+  /** Current growth rate (%). API field: currentGrowthRate. */
+  currentGrowthRate: number;
+  /** @deprecated Use currentGrowthRate — kept for backward compat with old API versions. */
+  growthRate?: number;
   workers: number;
   sectorUrl: string;
   /** Home currency code for this sector's revenue. */
@@ -370,7 +378,10 @@ export interface MarketShareCompany {
   corporationSequentialId: number | null;
   brandColor: string | null;
   countryId: string | null;
+  liquidCurrencyCode: string | null;
   revenue: number;
+  /** Anchor-currency revenue (₳/USD) for cross-corp comparisons. */
+  revenueAnchor: number;
   marketSharePercent: number;
   isNatcorp: boolean;
 }

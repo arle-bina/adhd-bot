@@ -92,7 +92,8 @@ function buildOwnedEmbed(result: OwnedSectorsResponse, targetCurrency: string, r
     // Convert from that currency to the user's chosen display currency.
     const sourceCurrency = sector.liquidCurrencyCode ?? currencyFor(sector.countryId);
     const rev = convertCurrency(sector.revenue, sourceCurrency, targetCurrency, rates);
-    return `${rank}. [**${sector.corporationName}** — ${sector.stateName}](${sectorHref}) · ${formatCurrency(rev, targetCurrency)} rev · ${sector.growthRate.toFixed(1)}% growth · ${sector.workers.toLocaleString()} workers`;
+    const growth = sector.currentGrowthRate ?? sector.growthRate ?? 0;
+    return `${rank}. [**${sector.corporationName}** — ${sector.stateName}](${sectorHref}) · ${formatCurrency(rev, targetCurrency)} rev · ${growth.toFixed(1)}% growth · ${sector.workers.toLocaleString()} workers`;
   });
 
   return new EmbedBuilder()

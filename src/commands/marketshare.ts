@@ -181,9 +181,9 @@ function buildEmbed(result: MarketShareResponse, showUnowned: boolean, targetCur
         ? new URL(`/corporation/${c.corporationSequentialId}`, gameSiteOrigin()).href
         : null;
       const nameStr = corpHref ? `[${c.corporationName}](${corpHref})` : c.corporationName;
-      // Per-company revenue is stored in the corp's local currency (JPY, GBP, etc).
-      // Convert from the corp's home currency to the user's chosen display currency.
-      const sourceCurrency = c.countryId ? currencyFor(c.countryId) : "USD";
+      // Per-company revenue is in the corp's local currency (JPY, GBP, etc).
+      // liquidCurrencyCode is authoritative; fall back to country-based mapping.
+      const sourceCurrency = c.liquidCurrencyCode || currencyFor(c.countryId);
       const rev = convertCurrency(c.revenue, sourceCurrency, targetCurrency, rates);
       return `${rank}. **${nameStr}** — ${c.marketSharePercent.toFixed(2)}% · ${formatCurrency(rev, targetCurrency)}${tag}`;
     });
@@ -195,10 +195,8 @@ function buildEmbed(result: MarketShareResponse, showUnowned: boolean, targetCur
   if (result.totalPages > 1) {
     footerParts.push(`Page ${result.page}/${result.totalPages}`);
   }
-  // totalMarket is in anchor currency (₳=USD) from the API.
-  // Unowned revenue is derived from GDP × usdExchangeRate, also in USD.
-  // NOTE: totalOwnedRevenue is a mixed-currency sum at the API level for global views;
-  // percentage and unowned values are only fully accurate for single-country scopes.
+  // totalMarket and totalOwnedRevenue are now in anchor currency (₳=USD) from the API.
+  // Convert to the user's chosen display currency.
   if (result.unownedRevenue != null && result.unownedRevenue > 0) {
     const converted = convertCurrency(result.unownedRevenue, "USD", targetCurrency, rates);
     footerParts.push(`Unowned: ${formatCurrency(converted, targetCurrency)} (${result.unownedPercent.toFixed(2)}%)`);
