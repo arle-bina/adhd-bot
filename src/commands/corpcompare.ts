@@ -17,6 +17,7 @@ import {
   formatSharePrice,
   fetchForexRates,
   convertCurrency,
+  currencyFor,
   CURRENCY_CHOICES,
 } from "../utils/currency.js";
 
@@ -172,8 +173,14 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     });
 
     const rates = await fetchForexRates();
-    // All API amounts are in anchor currency (₳ = USD).
-    const convert = (amount: number) => convertCurrency(amount, "USD", targetCurrency, rates);
+
+    // Per-corp currency resolver: use the API-provided liquidCurrencyCode (v0.2.6+)
+    // falling back to country-based mapping for legacy corps.
+    const nativeCurrencyFor = (corp: CorporationResponse): string =>
+      corp.corporation?.liquidCurrencyCode || currencyFor(corp.corporation?.countryId ?? "us");
+
+    const convertFromCorp = (amount: number, corp: CorporationResponse) =>
+      convertCurrency(amount, nativeCurrencyFor(corp), targetCurrency, rates);
 
     if (validCorps.length < 2) {
       const errorMsg = failedCorps.length > 0 
@@ -194,7 +201,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     if (primaryMetricData) {
       const values = validCorps.map(corp => {
         const raw = getMetricValue(corp.corporation, corp.financials, primaryMetric);
-        return primaryMetricData.monetary ? convert(raw) : raw;
+        return primaryMetricData.monetary ? convertFromCorp(raw, corp) : raw;
       });
       const maxValue = Math.max(...values);
 
@@ -231,7 +238,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       if (metric.id !== primaryMetric) {
         const values = validCorps.map(corp => {
           const raw = getMetricValue(corp.corporation, corp.financials, metric.id);
-          return metric.monetary ? convert(raw) : raw;
+          return metric.monetary ? convertFromCorp(raw, corp) : raw;
         });
         const lineParts = validCorps.map((corp, index) => {
           return `${corp.corporation!.name.slice(0, 10)}: ${metric.formatter(values[index], targetCurrency)}`;
@@ -252,9 +259,10 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     // Add corporation details
     const details = validCorps.map(corp => {
       const c = corp.corporation!;
+      const cvt = (n: number) => convertFromCorp(n, corp);
       return `🏢 **${c.name}**\n` +
-             `📍 ${c.headquartersStateName} | 💰 ${formatCurrency(convert(c.liquidCapital ?? 0), targetCurrency)}\n` +
-             `📈 ${formatSharePrice(convert(c.sharePrice ?? 0), targetCurrency)} | 🏭 ${c.typeLabel || c.type}`;
+             `📍 ${c.headquartersStateName} | 💰 ${formatCurrency(cvt(c.liquidCapital ?? 0), targetCurrency)}\n` +
+             `📈 ${formatSharePrice(cvt(c.sharePrice ?? 0), targetCurrency)} | 🏭 ${c.typeLabel || c.type}`;
     });
 
     embed.addFields({

@@ -68,6 +68,8 @@ export interface CorporationData {
   publicFloatPct: number;
   dividendRate: number;
   countryId: string;
+  /** Home currency code for this corporation's financial data (e.g. "USD", "GBP", "JPY"). */
+  liquidCurrencyCode: string;
 }
 
 export interface CorporationResponse {
@@ -101,6 +103,8 @@ export interface BondEntry {
   corporationId: number | string;
   brandColor: string | null;
   countryId: string | null;
+  /** Currency code for this bond's amounts (e.g. "USD", "GBP", "JPY"). */
+  currencyCode: string | null;
   couponRate: number;
   maturityLabel: string;
   totalIssued: number;
@@ -149,6 +153,8 @@ export interface FinancialsResponse {
     ceo: string;
     corpUrl: string;
     countryId: string;
+    /** Home currency code for this corporation's financial data. */
+    liquidCurrencyCode: string;
   };
   incomeStatement: {
     totalRevenue: number;
@@ -246,6 +252,8 @@ export interface OwnedSector {
   growthRate: number;
   workers: number;
   sectorUrl: string;
+  /** Home currency code for this sector's revenue. */
+  liquidCurrencyCode: string | null;
 }
 
 export interface UnownedSector {
@@ -300,6 +308,12 @@ export interface StockListing {
   marketCap: number;
   totalRevenue: number;
   exchange: string;
+  /** Home currency code for this listing's financial data. */
+  liquidCurrencyCode: string | null;
+  /** Anchor-currency share price (USD). Null if same as sharePrice. */
+  sharePriceAnchor: number | null;
+  /** Anchor-currency market cap (USD). Null if same as marketCap. */
+  marketCapAnchor: number | null;
 }
 
 interface StockExchangeResponse {
@@ -428,7 +442,7 @@ export interface StockChartMarketResponse {
 export interface StockChartCorpResponse {
   found: true;
   mode: "corporation";
-  corporation: { name: string; sequentialId: number; type: string; countryId: string };
+  corporation: { name: string; sequentialId: number; type: string; countryId: string; liquidCurrencyCode: string };
   points: StockChartCorpPoint[];
 }
 

@@ -181,8 +181,10 @@ function buildEmbed(result: MarketShareResponse, showUnowned: boolean, targetCur
         ? new URL(`/corporation/${c.corporationSequentialId}`, gameSiteOrigin()).href
         : null;
       const nameStr = corpHref ? `[${c.corporationName}](${corpHref})` : c.corporationName;
-      // Revenues from the API are always in anchor currency (₳ = USD). Convert from USD.
-      const rev = convertCurrency(c.revenue, "USD", targetCurrency, rates);
+      // Per-company revenue is stored in the corp's local currency (JPY, GBP, etc).
+      // Convert from the corp's home currency to the user's chosen display currency.
+      const sourceCurrency = c.countryId ? currencyFor(c.countryId) : "USD";
+      const rev = convertCurrency(c.revenue, sourceCurrency, targetCurrency, rates);
       return `${rank}. **${nameStr}** — ${c.marketSharePercent.toFixed(2)}% · ${formatCurrency(rev, targetCurrency)}${tag}`;
     });
     embed.setDescription(lines.join("\n").slice(0, 4096));
@@ -193,10 +195,12 @@ function buildEmbed(result: MarketShareResponse, showUnowned: boolean, targetCur
   if (result.totalPages > 1) {
     footerParts.push(`Page ${result.page}/${result.totalPages}`);
   }
-  // totalMarket and unownedRevenue are in anchor currency (₳ = USD).
-  const unownedDollar = result.unownedRevenue;
-  if (unownedDollar != null && unownedDollar > 0) {
-    const converted = convertCurrency(unownedDollar, "USD", targetCurrency, rates);
+  // totalMarket is in anchor currency (₳=USD) from the API.
+  // Unowned revenue is derived from GDP × usdExchangeRate, also in USD.
+  // NOTE: totalOwnedRevenue is a mixed-currency sum at the API level for global views;
+  // percentage and unowned values are only fully accurate for single-country scopes.
+  if (result.unownedRevenue != null && result.unownedRevenue > 0) {
+    const converted = convertCurrency(result.unownedRevenue, "USD", targetCurrency, rates);
     footerParts.push(`Unowned: ${formatCurrency(converted, targetCurrency)} (${result.unownedPercent.toFixed(2)}%)`);
   } else {
     footerParts.push(`Unowned: ${result.unownedPercent.toFixed(2)}%`);

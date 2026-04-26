@@ -15,6 +15,7 @@ import {
   formatSharePrice,
   fetchForexRates,
   convertCurrency,
+  currencyFor,
   CURRENCY_CHOICES,
 } from "../utils/currency.js";
 
@@ -26,6 +27,7 @@ interface ScoredPick {
   name: string;
   corpUrl: string | null;
   countryId: string | undefined;
+  liquidCurrencyCode: string | null;
   sharePrice: number;
   priceChange24h: number;
   income: number;
@@ -91,6 +93,7 @@ function scorePick(
     name: listing.name,
     corpUrl: corp.corporation?.corpUrl ?? null,
     countryId: corp.corporation?.countryId,
+    liquidCurrencyCode: corp.corporation?.liquidCurrencyCode ?? listing.liquidCurrencyCode ?? null,
     sharePrice: listing.sharePrice,
     priceChange24h: listing.priceChange24h,
     income,
@@ -125,10 +128,11 @@ function buildPicksEmbed(picks: ScoredPick[], total: number, targetCurrency: str
           ? "No equity"
           : p.debtToEquity.toFixed(2);
 
-    // Share price, income, and market cap are in anchor currency (₳ = USD).
-    const spConverted = convertCurrency(p.sharePrice, "USD", targetCurrency, rates);
-    const incConverted = convertCurrency(p.income, "USD", targetCurrency, rates);
-    const mcConverted = convertCurrency(p.marketCap, "USD", targetCurrency, rates);
+    // Each listing's native currency. Fall back to country-based mapping, then USD.
+    const listingCc = p.liquidCurrencyCode || (p.countryId ? currencyFor(p.countryId) : "USD");
+    const spConverted = convertCurrency(p.sharePrice, listingCc, targetCurrency, rates);
+    const incConverted = convertCurrency(p.income, listingCc, targetCurrency, rates);
+    const mcConverted = convertCurrency(p.marketCap, listingCc, targetCurrency, rates);
 
     const value = [
       p.corpUrl ? `[${p.name}](${p.corpUrl})` : p.name,

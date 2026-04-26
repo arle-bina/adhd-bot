@@ -13,6 +13,7 @@ import {
   formatCurrency,
   fetchForexRates,
   convertCurrency,
+  currencyFor,
   CURRENCY_CHOICES,
 } from "../utils/currency.js";
 
@@ -87,8 +88,10 @@ function buildOwnedEmbed(result: OwnedSectorsResponse, targetCurrency: string, r
   const lines = result.sectors.map((sector, index) => {
     const rank = (result.page - 1) * 10 + index + 1;
     const sectorHref = normalizeGamePageUrl(sector.sectorUrl);
-    // Sector revenue is in anchor currency (₳ = USD).
-    const rev = convertCurrency(sector.revenue, "USD", targetCurrency, rates);
+    // Sector revenue is in the corp's local currency (liquidCurrencyCode).
+    // Convert from that currency to the user's chosen display currency.
+    const sourceCurrency = sector.liquidCurrencyCode ?? currencyFor(sector.countryId);
+    const rev = convertCurrency(sector.revenue, sourceCurrency, targetCurrency, rates);
     return `${rank}. [**${sector.corporationName}** — ${sector.stateName}](${sectorHref}) · ${formatCurrency(rev, targetCurrency)} rev · ${sector.growthRate.toFixed(1)}% growth · ${sector.workers.toLocaleString()} workers`;
   });
 

@@ -128,7 +128,8 @@ function forexFooter(displayCurrency: string, nativeCc: string, rates: Record<st
 
 function buildOverviewEmbed(res: CorporationResponse, displayCurrency: string, rates: Record<string, number>): EmbedBuilder {
   const corp = res.corporation!;
-  const nativeCc = currencyFor(corp.countryId);
+  // Use the API-provided liquidCurrencyCode when available, fall back to country-based mapping.
+  const nativeCc = corp.liquidCurrencyCode || currencyFor(corp.countryId);
   const cc = displayCurrency;
   const cvt = (n: number | null | undefined): number | null | undefined => n != null ? Math.round(convertCurrency(n, nativeCc, displayCurrency, rates)) : n;
 
@@ -230,7 +231,7 @@ function buildOverviewEmbed(res: CorporationResponse, displayCurrency: string, r
   return embed;
 }
 
-function buildBondsEmbed(res: BondsResponse, name: string, countryId: string | undefined, displayCurrency: string, rates: Record<string, number>): EmbedBuilder {
+function buildBondsEmbed(res: BondsResponse, name: string, countryId: string | undefined, displayCurrency: string, rates: Record<string, number>, liquidCurrencyCode: string | null): EmbedBuilder {
   if (!res.bonds || res.bonds.length === 0) {
     return new EmbedBuilder()
       .setTitle(`${name} — Bonds`.slice(0, 256))
@@ -239,33 +240,42 @@ function buildBondsEmbed(res: BondsResponse, name: string, countryId: string | u
       .setFooter({ text: "ahousedividedgame.com" });
   }
 
-  const nativeCc = currencyFor(countryId ?? res.bonds[0]?.countryId);
+  // Each bond has its own currencyCode; totalOutstandingDebt is in anchor (USD).
   const cc = displayCurrency;
-  const cvt = (n: number | null | undefined): number | null | undefined => n != null ? Math.round(convertCurrency(n, nativeCc, displayCurrency, rates)) : n;
+  const cvtFromBond = (n: number | null | undefined, bondCc: string | null): number | null | undefined => {
+    if (n == null) return n;
+    const fromCc = bondCc || liquidCurrencyCode || currencyFor(countryId ?? "us");
+    return Math.round(convertCurrency(n, fromCc, displayCurrency, rates));
+  };
+  const cvtFromAnchor = (n: number | null | undefined): number | null | undefined => n != null ? Math.round(convertCurrency(n, "USD", displayCurrency, rates)) : n;
   const color = hexToInt(res.bonds[0].brandColor) || 0x3b82f6;
 
   const bondLines = res.bonds.map((b) => {
     const prefix = b.defaulted ? "⚠️ DEFAULTED — " : "";
     const label = `${b.maturityLabel} @ ${(b.couponRate ?? 0).toFixed(1)}%`;
     const url = b.bondUrl ? `[${label}](${b.bondUrl})` : label;
-    const details = `Price: ${formatSharePrice(cvt(b.marketPrice), cc)} · YTM: ${(b.yieldToMaturity ?? 0).toFixed(1)}% · ${formatCurrency(cvt(b.totalIssued), cc)} issued · ${b.turnsRemaining ?? 0} turns left`;
+    const details = `Price: ${formatSharePrice(cvtFromBond(b.marketPrice, b.currencyCode), cc)} · YTM: ${(b.yieldToMaturity ?? 0).toFixed(1)}% · ${formatCurrency(cvtFromBond(b.totalIssued, b.currencyCode), cc)} issued · ${b.turnsRemaining ?? 0} turns left`;
     return `${prefix}**${url}**\n${details}`;
   });
+
+  // totalOutstandingDebt is already anchor-normalized by the API.
+  const nativeCcForFooter = liquidCurrencyCode || currencyFor(countryId ?? res.bonds[0]?.countryId);
 
   return new EmbedBuilder()
     .setTitle(`${res.filterCorp ?? name} — Bonds`.slice(0, 256))
     .setColor(color)
     .setDescription(bondLines.join("\n\n").slice(0, 4096))
     .addFields(
-      { name: "Total Debt Outstanding", value: formatCurrency(cvt(res.totalOutstandingDebt), cc), inline: true },
+      { name: "Total Debt Outstanding", value: formatCurrency(cvtFromAnchor(res.totalOutstandingDebt), cc), inline: true },
       { name: "Active Bonds", value: String(res.bonds.length), inline: true },
     )
-    .setFooter({ text: forexFooter(displayCurrency, nativeCc, rates) });
+    .setFooter({ text: forexFooter(displayCurrency, nativeCcForFooter, rates, "Total debt in USD anchor") });
 }
 
 function buildFinancialsEmbed(res: FinancialsResponse, displayCurrency: string, rates: Record<string, number>): EmbedBuilder {
   const corp = res.corporation;
-  const nativeCc = currencyFor(corp.countryId);
+  // API provides liquidCurrencyCode on the corporation object.
+  const nativeCc = corp.liquidCurrencyCode || currencyFor(corp.countryId);
   const cc = displayCurrency;
   const cvt = (n: number | null | undefined): number | null | undefined => n != null ? Math.round(convertCurrency(n, nativeCc, displayCurrency, rates)) : n;
 
@@ -436,7 +446,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
             break;
           case "bonds":
             if (!bondsRes) bondsRes = await getBonds({ corp: name });
-            embed = buildBondsEmbed(bondsRes, name, overviewRes.corporation?.countryId, displayCurrency, rates);
+            embed = buildBondsEmbed(bondsRes, name, overviewRes.corporation?.countryId, displayCurrency, rates, overviewRes.corporation?.liquidCurrencyCode ?? null);
             break;
           case "financials":
             if (!financialsRes) {
