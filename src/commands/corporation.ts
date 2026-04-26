@@ -216,7 +216,7 @@ function buildOverviewEmbed(res: CorporationResponse, displayCurrency: string, r
     const maxShow = 5;
     const lines = sectors.slice(0, maxShow).map(
       (s) =>
-        `${s.stateName ?? "Unknown"} — ${formatCurrency(cvt(s.revenue), cc)} rev · ${s.growthRate ?? 0}% growth · ${s.workers ?? 0} workers`
+        `${s.stateName ?? "Unknown"} — ${formatCurrency(cvt(s.revenue), cc)} rev · ${s.currentGrowthRate ?? s.growthRate ?? 0}% growth · ${s.workers ?? 0} workers`
     );
     if (sectors.length > maxShow) {
       lines.push(`…and ${sectors.length - maxShow} more`);
