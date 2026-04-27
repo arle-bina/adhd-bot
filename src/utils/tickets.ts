@@ -658,19 +658,54 @@ export async function mergeTickets(
 
     await targetChannel.send({ embeds: [headerEmbed] });
 
+    // Collect all messages into transcript chunks (no pings)
+    const lines: string[] = [];
     for (const msg of messages) {
       if (msg.author.bot && msg.embeds.length > 0) continue; // skip bot embeds (initial ticket embed, etc.)
       if (!msg.content && msg.embeds.length === 0 && msg.attachments.size === 0) continue;
 
       const ts = msg.createdAt.toISOString().slice(0, 19).replace("T", " ");
-      let content = `**[${ts}] <@${msg.author.id}>:** ${msg.content}`;
-      if (content.length > 1900) content = content.slice(0, 1897) + "...";
-
-      await targetChannel.send({ content }).catch(() => {});
+      // Use the user's tag/username instead of mention to avoid pings
+      const author = msg.author.tag ?? msg.author.username ?? msg.author.id;
+      let content = msg.content || "";
+      if (msg.attachments.size > 0) {
+        const attachLinks = [...msg.attachments.values()].map((a) => a.url).join(" ");
+        content = content ? `${content}\n${attachLinks}` : attachLinks;
+      }
+      lines.push(`**[${ts}] ${author}:** ${content}`);
     }
 
-    // 3. Notify original opener
-    await targetChannel.send(`<@${sourceTicket.userId}> Your ticket has been merged here — please continue the conversation in this channel.`);
+    // Send transcript as embed(s), 4000-char chunks, mentions disabled
+    if (lines.length > 0) {
+      const chunks: string[] = [];
+      let current = "";
+      for (const line of lines) {
+        if (current.length + line.length + 1 > 4000) {
+          chunks.push(current);
+          current = line;
+        } else {
+          current = current ? `${current}\n${line}` : line;
+        }
+      }
+      if (current) chunks.push(current);
+
+      for (let i = 0; i < chunks.length; i++) {
+        const transcriptEmbed = new EmbedBuilder()
+          .setTitle(chunks.length > 1 ? `Transcript (${i + 1}/${chunks.length})` : "Transcript")
+          .setDescription(chunks[i])
+          .setColor(sourceConfig.color);
+        await targetChannel.send({
+          embeds: [transcriptEmbed],
+          allowedMentions: { parse: [] },
+        }).catch(() => {});
+      }
+    }
+
+    // 3. Notify original opener (single ping)
+    await targetChannel.send({
+      content: `<@${sourceTicket.userId}> Your ticket has been merged here — please continue the conversation in this channel.`,
+      allowedMentions: { users: [sourceTicket.userId] },
+    });
 
     // 4. DM the source opener
     try {
