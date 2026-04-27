@@ -18,6 +18,8 @@ export interface Ticket {
   ticketNumber: number;
   subject?: string;
   description?: string;
+  /** User IDs of openers whose tickets were merged into this one */
+  mergedFromUserIds?: string[];
 }
 
 interface TicketData {
