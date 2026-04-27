@@ -61,6 +61,9 @@ const commands = new Collection<string, Command>();
 let newsChannelId: string | null = null;
 let suggestionsChannelId: string | null = null;
 
+// Track messages deleted by the content filter to avoid duplicate logs
+const filterDeletedMessageIds = new Set<string>();
+
 async function refreshChannelConfig() {
   try {
     const config = await getChannelConfig();
@@ -160,6 +163,11 @@ client.on("messageCreate", async (message) => {
   const matchedTerm = checkMessage(message.content);
   if (matchedTerm) {
     try {
+      // Mark this message ID so the messageDelete handler skips logging it
+      filterDeletedMessageIds.add(message.id);
+      // Auto-cleanup after 30 seconds in case messageDelete never fires
+      setTimeout(() => filterDeletedMessageIds.delete(message.id), 30_000);
+
       // Delete the message
       await message.delete();
 
@@ -176,7 +184,7 @@ client.on("messageCreate", async (message) => {
         const logChannel = message.guild.channels.cache.get(logChannelId) as TextChannel | undefined;
         if (logChannel?.isTextBased()) {
           const embed = new EmbedBuilder()
-            .setTitle("Content Filter Triggered")
+            .setTitle("Content Filter Triggered & Deleted")
             .setColor(0xff6b6b)
             .addFields(
               { name: "User", value: `${message.author} (${message.author.tag})`, inline: true },
@@ -251,6 +259,12 @@ client.on("messageDelete", async (message) => {
     if (message.partial) return; // No content available for uncached messages
     if (message.author?.bot) return;
     if (!message.guild) return;
+
+    // Skip if this deletion was triggered by the content filter (already logged separately)
+    if (filterDeletedMessageIds.has(message.id)) {
+      filterDeletedMessageIds.delete(message.id);
+      return;
+    }
 
     // Check audit log to determine who deleted the message
     const auditLogs = await message.guild.fetchAuditLogs({ type: 72, limit: 1 }); // 72 = MessageDelete
