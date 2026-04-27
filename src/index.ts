@@ -245,7 +245,7 @@ client.on("messageReactionRemove", async (reaction, user) => {
   }
 });
 
-// Log self-deleted messages to moderation channel
+// Log deleted messages to moderation channel
 client.on("messageDelete", async (message) => {
   try {
     if (message.partial) return; // No content available for uncached messages
@@ -253,17 +253,29 @@ client.on("messageDelete", async (message) => {
     if (!message.guild) return;
 
     // Check audit log to determine who deleted the message
-    // If someone else deleted it (mod action), skip logging here
     const auditLogs = await message.guild.fetchAuditLogs({ type: 72, limit: 1 }); // 72 = MessageDelete
     const deleteLog = auditLogs.entries.first();
     const deletedBySomeoneElse = deleteLog
       && deleteLog.target?.id === message.author?.id
       && deleteLog.executor?.id !== message.author?.id
       && Date.now() - deleteLog.createdTimestamp < 5000;
-    if (deletedBySomeoneElse) return;
+
+    const deletedByLabel = deletedBySomeoneElse
+      ? `${deleteLog.executor} (${deleteLog.executor?.tag ?? "Unknown"})`
+      : "Self";
 
     const logChannel = message.guild.channels.cache.get(process.env.FILTER_LOG_CHANNEL_ID!) as TextChannel | undefined;
     if (!logChannel?.isTextBased()) return;
+
+    // Find first image attachment for embed
+    const imageAttachment = message.attachments?.find((a) =>
+      a.contentType?.startsWith("image/") || /\.(png|jpe?g|gif|webp)$/i.test(a.name ?? "")
+    );
+
+    // Collect any non-image attachment URLs to list
+    const otherAttachments = [...(message.attachments?.values() ?? [])].filter(
+      (a) => a !== imageAttachment
+    );
 
     const embed = new EmbedBuilder()
       .setTitle("Message Deleted")
@@ -271,9 +283,22 @@ client.on("messageDelete", async (message) => {
       .addFields(
         { name: "User", value: `${message.author} (${message.author?.tag ?? "Unknown"})`, inline: true },
         { name: "Channel", value: `<#${message.channel.id}>`, inline: true },
+        { name: "Deleted By", value: deletedByLabel, inline: true },
         { name: "Message Content", value: message.content?.slice(0, 1000) || "(empty or attachment-only)" }
       )
       .setTimestamp();
+
+    if (imageAttachment?.url) {
+      embed.setImage(imageAttachment.url);
+    }
+
+    if (otherAttachments.length > 0) {
+      embed.addFields({
+        name: "Other Attachments",
+        value: otherAttachments.map((a) => `[${a.name}](${a.url})`).join("\n").slice(0, 1024),
+      });
+    }
+
     await logChannel.send({ embeds: [embed] });
   } catch (error) {
     console.error("messageDelete error:", error);
