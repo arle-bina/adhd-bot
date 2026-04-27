@@ -14,6 +14,7 @@ import {
   formatCurrency,
   fetchForexRates,
   convertCurrency,
+  convertAnchorToCurrency,
   CURRENCY_CHOICES,
 } from "../utils/currency.js";
 
@@ -198,13 +199,13 @@ function buildEmbed(result: MarketShareResponse, showUnowned: boolean, targetCur
   // totalMarket and totalOwnedRevenue are now in anchor currency (₳=USD) from the API.
   // Convert to the user's chosen display currency.
   if (result.unownedRevenue != null && result.unownedRevenue > 0) {
-    const converted = convertCurrency(result.unownedRevenue, "USD", targetCurrency, rates);
+    const converted = convertAnchorToCurrency(result.unownedRevenue, targetCurrency, rates);
     footerParts.push(`Unowned: ${formatCurrency(converted, targetCurrency)} (${result.unownedPercent.toFixed(2)}%)`);
   } else {
     footerParts.push(`Unowned: ${result.unownedPercent.toFixed(2)}%`);
   }
   if (result.totalMarket > 0) {
-    const converted = convertCurrency(result.totalMarket, "USD", targetCurrency, rates);
+    const converted = convertAnchorToCurrency(result.totalMarket, targetCurrency, rates);
     footerParts.push(`TAM: ${formatCurrency(converted, targetCurrency)}`);
   }
   footerParts.push(`Values in ${targetCurrency}`);

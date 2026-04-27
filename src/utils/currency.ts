@@ -172,3 +172,15 @@ export function convertCurrency(
   const toRate = rates[toCurrency] ?? 1;
   return (amount / fromRate) * toRate;
 }
+
+/**
+ * Convert an anchor/internal-unit value directly into a display currency.
+ * Rates are "local currency per 1 internal unit", so this is a simple multiply.
+ */
+export function convertAnchorToCurrency(
+  amountAnchor: number,
+  toCurrency: string,
+  rates: Record<string, number>,
+): number {
+  return amountAnchor * (rates[toCurrency] ?? 1);
+}
