@@ -456,6 +456,30 @@ async function finalizeTicketClose(
     }
   }
 
+  // Notify openers of merged source tickets that the merged ticket is now closed
+  const mergedFromIds = (ticket.mergedFromUserIds ?? []).filter(
+    (id) => id !== ticket.userId && id !== closer.id,
+  );
+  for (const mergedUserId of mergedFromIds) {
+    try {
+      const mergedUser = await closer.client.users.fetch(mergedUserId);
+      const header = `A ticket your earlier ticket was merged into has been closed by ${closer.user.tag}.\n\n${
+        resolutionMessage ? "**Resolution**\n" : ""
+      }`;
+      const maxRes = Math.max(0, 4096 - header.length);
+      const mergedDm = new EmbedBuilder()
+        .setTitle(`Ticket #${paddedNum} closed`)
+        .setColor(0x95a5a6)
+        .setDescription(`${header}${resolutionMessage ? resolutionMessage.slice(0, maxRes) : ""}`.trim())
+        .setFooter({ text: "ahousedividedgame.com" })
+        .setTimestamp();
+
+      await mergedUser.send({ embeds: [mergedDm] });
+    } catch (err) {
+      console.warn(`Merged-ticket close DM to ${mergedUserId} failed:`, err);
+    }
+  }
+
   removeTicket(guild.id, channel.id);
   await channel.delete(`Ticket #${paddedNum} closed by ${closer.user.tag}`).catch(() => {});
   return resolutionDmDelivered;
@@ -751,7 +775,21 @@ export async function mergeTickets(
       await logChannel.send({ embeds: [mergeEmbed] }).catch(() => {});
     }
 
-    // 6. Remove source ticket from store and delete channel
+    // 6. Record the merge on the target ticket so closure DMs reach the source opener
+    const mergedIds = new Set<string>(targetTicket.mergedFromUserIds ?? []);
+    if (sourceTicket.userId !== targetTicket.userId) {
+      mergedIds.add(sourceTicket.userId);
+    }
+    // Also carry forward any users from a chain of merges into the source ticket
+    for (const id of sourceTicket.mergedFromUserIds ?? []) {
+      if (id !== targetTicket.userId) mergedIds.add(id);
+    }
+    addTicket(guild.id, {
+      ...targetTicket,
+      mergedFromUserIds: [...mergedIds],
+    });
+
+    // 7. Remove source ticket from store and delete channel
     removeTicket(guild.id, sourceTicket.channelId);
     await sourceChannel.delete(`Ticket #${sourcePadded} merged into #${targetPadded} by ${staffMember.user.tag}`).catch(() => {});
 
