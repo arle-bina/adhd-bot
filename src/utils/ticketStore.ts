@@ -20,6 +20,11 @@ export interface Ticket {
   description?: string;
   /** User IDs of openers whose tickets were merged into this one */
   mergedFromUserIds?: string[];
+  /** Staff member who claimed this ticket */
+  claimedByUserId?: string;
+  claimedAt?: string;
+  /** Message ID of the initial ticket embed (used to update it on claim) */
+  embedMessageId?: string;
 }
 
 interface TicketData {
@@ -62,6 +67,15 @@ export function addTicket(guildId: string, ticket: Ticket): void {
   const data = loadData();
   if (!data.tickets[guildId]) data.tickets[guildId] = {};
   data.tickets[guildId][ticket.channelId] = ticket;
+  saveData(data);
+}
+
+export function claimTicket(guildId: string, channelId: string, claimerUserId: string): void {
+  const data = loadData();
+  const ticket = data.tickets[guildId]?.[channelId];
+  if (!ticket) return;
+  ticket.claimedByUserId = claimerUserId;
+  ticket.claimedAt = new Date().toISOString();
   saveData(data);
 }
 

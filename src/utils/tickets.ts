@@ -23,6 +23,7 @@ import {
   type TicketCategory,
   addTicket,
   removeTicket,
+  claimTicket,
   getTicketByChannel,
   getTicketByNumber,
   findOpenTicket,
@@ -90,6 +91,24 @@ function isStaffClosingSomeoneElsesTicket(
   ticketOpenerId: string,
 ): boolean {
   return closer.id !== ticketOpenerId && memberCanActAsTicketStaff(closer, channel);
+}
+
+export const TICKET_CLAIM_BUTTON_ID = "ticket_claim";
+
+function buildTicketActionRow(claimed: boolean): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(TICKET_CLAIM_BUTTON_ID)
+      .setLabel(claimed ? "Claimed" : "Claim Ticket")
+      .setStyle(claimed ? ButtonStyle.Secondary : ButtonStyle.Success)
+      .setEmoji("🙋")
+      .setDisabled(claimed),
+    new ButtonBuilder()
+      .setCustomId("ticket_close")
+      .setLabel("Close Ticket")
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji("🔒"),
+  );
 }
 
 export const TICKET_CLOSE_MODAL_PREFIX = "ticket_close_modal_";
@@ -286,15 +305,7 @@ export async function createTicket(
 
     embed.setFooter({ text: "ahousedividedgame.com" }).setTimestamp();
 
-    const closeRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId("ticket_close")
-        .setLabel("Close Ticket")
-        .setStyle(ButtonStyle.Danger)
-        .setEmoji("🔒"),
-    );
-
-    await channel.send({ embeds: [embed], components: [closeRow] });
+    const embedMessage = await channel.send({ embeds: [embed], components: [buildTicketActionRow(false)] });
 
     const pingRoleId = category === "moderation" ? modRoleId : devTeamRoleId;
     if (pingRoleId) {
@@ -309,6 +320,7 @@ export async function createTicket(
       ticketNumber,
       subject: details?.subject,
       description: details?.description,
+      embedMessageId: embedMessage.id,
     });
 
     return { success: true, channelId: channel.id };
@@ -483,6 +495,62 @@ async function finalizeTicketClose(
   removeTicket(guild.id, channel.id);
   await channel.delete(`Ticket #${paddedNum} closed by ${closer.user.tag}`).catch(() => {});
   return resolutionDmDelivered;
+}
+
+export async function handleClaimTicket(
+  channel: TextChannel,
+  claimer: GuildMember,
+  interaction: ButtonInteraction | ChatInputCommandInteraction,
+): Promise<void> {
+  const guild = channel.guild;
+  const ticket = getTicketByChannel(guild.id, channel.id);
+
+  if (!ticket) {
+    const msg = "This channel is not a ticket.";
+    if (interaction.replied || interaction.deferred) await interaction.followUp({ content: msg, ephemeral: true });
+    else await interaction.reply({ content: msg, ephemeral: true });
+    return;
+  }
+
+  if (!memberCanActAsTicketStaff(claimer, channel)) {
+    const msg = "Only moderators and admins can claim tickets.";
+    if (interaction.replied || interaction.deferred) await interaction.followUp({ content: msg, ephemeral: true });
+    else await interaction.reply({ content: msg, ephemeral: true });
+    return;
+  }
+
+  if (ticket.claimedByUserId) {
+    const msg = `This ticket is already claimed by <@${ticket.claimedByUserId}>.`;
+    if (interaction.replied || interaction.deferred) await interaction.followUp({ content: msg, ephemeral: true });
+    else await interaction.reply({ content: msg, ephemeral: true });
+    return;
+  }
+
+  claimTicket(guild.id, channel.id, claimer.id);
+
+  // Find the embed message and update it
+  let embedMessage: Message | undefined;
+  if ("message" in interaction && interaction.message) {
+    embedMessage = interaction.message as Message;
+  } else if (ticket.embedMessageId) {
+    embedMessage = await channel.messages.fetch(ticket.embedMessageId).catch(() => undefined);
+  }
+
+  if (embedMessage?.embeds[0]) {
+    const updated = EmbedBuilder.from(embedMessage.embeds[0]).addFields({
+      name: "Claimed by",
+      value: `<@${claimer.id}>`,
+      inline: true,
+    });
+    await embedMessage.edit({ embeds: [updated], components: [buildTicketActionRow(true)] }).catch(() => {});
+  }
+
+  if ("message" in interaction && interaction.message) {
+    // Button interaction — deferUpdate was called by the caller; use followUp
+    await interaction.followUp({ content: "You have claimed this ticket.", ephemeral: true });
+  } else {
+    await interaction.reply({ content: "Ticket claimed.", ephemeral: true });
+  }
 }
 
 export async function handleTicketCloseModalSubmit(interaction: ModalSubmitInteraction): Promise<void> {

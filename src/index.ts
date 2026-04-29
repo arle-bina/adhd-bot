@@ -21,7 +21,7 @@ import { checkCooldown } from "./utils/cooldown.js";
 import { errorMessage, replyWithError } from "./utils/helpers.js";
 import { recordMessage, recordMemberCount } from "./utils/statsStore.js";
 import { handleStarboardReaction } from "./utils/starboard.js";
-import { handleLockReaction, TICKET_CLOSE_MODAL_PREFIX, handleTicketCloseModalSubmit, TICKET_MERGE_MODAL_PREFIX, mergeTickets } from "./utils/tickets.js";
+import { handleLockReaction, TICKET_CLOSE_MODAL_PREFIX, handleTicketCloseModalSubmit, TICKET_MERGE_MODAL_PREFIX, mergeTickets, TICKET_CLAIM_BUTTON_ID, handleClaimTicket } from "./utils/tickets.js";
 import { getChannelConfig, postWebhookReaction } from "./utils/api-game.js";
 import { getTicketByChannel, getTicketByNumber } from "./utils/ticketStore.js";
 import { checkMessage } from "./utils/filter.js";
@@ -608,6 +608,21 @@ client.on("interactionCreate", async (interaction) => {
       }
     } catch (error) {
       console.error("Ticket modal submit error:", error);
+    }
+    return;
+  }
+
+  // Ticket claim button
+  if (interaction.isButton() && interaction.customId === TICKET_CLAIM_BUTTON_ID) {
+    try {
+      await interaction.deferUpdate();
+      const member = interaction.guild?.members.cache.get(interaction.user.id)
+        ?? await interaction.guild?.members.fetch(interaction.user.id);
+      if (member && interaction.channel instanceof TextChannel) {
+        await handleClaimTicket(interaction.channel, member, interaction);
+      }
+    } catch (error) {
+      console.error("Ticket claim button error:", error);
     }
     return;
   }
