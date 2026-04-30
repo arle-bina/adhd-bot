@@ -18,6 +18,21 @@ export const data = new SlashCommandBuilder()
       .addStringOption((opt) =>
         opt.setName("term").setDescription("The term to filter").setRequired(true)
       )
+      .addChannelOption((opt) =>
+        opt.setName("channel1").setDescription("Limit to this channel (optional)").setRequired(false)
+      )
+      .addChannelOption((opt) =>
+        opt.setName("channel2").setDescription("Additional channel (optional)").setRequired(false)
+      )
+      .addChannelOption((opt) =>
+        opt.setName("channel3").setDescription("Additional channel (optional)").setRequired(false)
+      )
+      .addChannelOption((opt) =>
+        opt.setName("channel4").setDescription("Additional channel (optional)").setRequired(false)
+      )
+      .addChannelOption((opt) =>
+        opt.setName("channel5").setDescription("Additional channel (optional)").setRequired(false)
+      )
   )
   .addSubcommand((sub) =>
     sub
@@ -47,11 +62,20 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   if (subcommand === "add") {
     const term = interaction.options.getString("term", true);
-    const added = addFilteredTerm(term);
+    const channelIds: string[] = [];
+    for (const key of ["channel1", "channel2", "channel3", "channel4", "channel5"]) {
+      const ch = interaction.options.getChannel(key);
+      if (ch?.id) channelIds.push(ch.id);
+    }
+
+    const added = addFilteredTerm(term, channelIds);
+    const scope = channelIds.length > 0
+      ? ` in ${channelIds.map((id) => `<#${id}>`).join(", ")}`
+      : " (all channels)";
 
     if (added) {
       await interaction.reply({
-        content: `Added \`${term.toLowerCase()}\` to the filter.`,
+        content: `Added \`${term.toLowerCase()}\`${scope}.`,
         ephemeral: true,
       });
     } else {
@@ -86,9 +110,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       return;
     }
 
+    const lines = terms.map((t) => {
+      const scope = t.channels.length > 0
+        ? ` — ${t.channels.map((id) => `<#${id}>`).join(", ")}`
+        : " — all channels";
+      return `\`${t.term}\`${scope}`;
+    });
+
     const embed = new EmbedBuilder()
       .setTitle("Content Filter")
-      .setDescription(terms.map((t) => `\`${t}\``).join(", "))
+      .setDescription(lines.join("\n").slice(0, 4096))
       .setColor(0xff6b6b)
       .setFooter({ text: `${terms.length} term(s)` });
 
