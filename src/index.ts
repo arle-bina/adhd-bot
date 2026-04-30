@@ -160,7 +160,7 @@ client.on("messageCreate", async (message) => {
   recordMessage(message.guild.id);
 
   // Content filter check
-  const matchedTerm = checkMessage(message.content);
+  const matchedTerm = checkMessage(message.content, message.channelId);
   if (matchedTerm) {
     try {
       // Mark this message ID so the messageDelete handler skips logging it
