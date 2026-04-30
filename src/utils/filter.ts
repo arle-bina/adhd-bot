@@ -60,18 +60,26 @@ export function removeFilteredTerm(term: string): boolean {
   return true;
 }
 
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
- * Check if a message contains any filtered terms (exact word match, case insensitive)
- * Returns the matched term or null if no match
+ * Check if a message contains any filtered terms (whole-word match, case insensitive,
+ * tolerant of surrounding punctuation like "term!" or "term," or "(term)").
+ * Returns the matched term or null if no match.
  */
 export function checkMessage(content: string): string | null {
   const terms = getFilteredTerms();
   if (terms.length === 0) return null;
 
-  const words = content.toLowerCase().split(/\s+/);
+  const lower = content.toLowerCase();
 
   for (const term of terms) {
-    if (words.includes(term)) {
+    // Word boundary match — punctuation around the term still counts as a hit,
+    // but the term must not be embedded inside a larger word.
+    const re = new RegExp(`(?:^|[^\\p{L}\\p{N}_])${escapeRegex(term)}(?:[^\\p{L}\\p{N}_]|$)`, "u");
+    if (re.test(lower)) {
       return term;
     }
   }
