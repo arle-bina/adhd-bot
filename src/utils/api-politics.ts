@@ -1,6 +1,6 @@
 // Politics-domain API: characters, elections, parties, government, sync-roles.
 
-import { apiFetch } from "./api-base.js";
+import { apiFetch, apiPost } from "./api-base.js";
 
 // ---------------------------------------------------------------------------
 // Character Lookup
@@ -542,4 +542,26 @@ export interface SyncRolesResponse {
 
 export async function getSyncRoles(discordId: string): Promise<SyncRolesResponse> {
   return apiFetch<SyncRolesResponse>("/api/discord-bot/sync-roles", { discordId });
+}
+
+export interface SyncRolesBulkUser {
+  // Optional: server-side discordIdMap.get(...) can return undefined, which
+  // JSON.stringify drops from the payload entirely. Treat as possibly absent.
+  discordId?: string;
+  characterName: string;
+  roles: string[];
+  details: SyncRolesDetails;
+}
+
+export interface SyncRolesBulkResponse {
+  users: SyncRolesBulkUser[];
+}
+
+/**
+ * Bulk variant of getSyncRoles — returns every linked user in one call.
+ * Use this for admin /sync-roles backfills instead of looping per-member,
+ * which floods the per-endpoint rate limit on the game API.
+ */
+export async function getBulkSyncRoles(): Promise<SyncRolesBulkResponse> {
+  return apiPost<SyncRolesBulkResponse>("/api/discord-bot/sync-roles", {});
 }

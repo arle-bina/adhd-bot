@@ -18,6 +18,7 @@ export {
   getPrediction,
   getGovernment,
   getSyncRoles,
+  getBulkSyncRoles,
 } from "./api-politics.js";
 
 export type {
@@ -45,6 +46,8 @@ export type {
   GovernmentResponse,
   SyncRolesDetails,
   SyncRolesResponse,
+  SyncRolesBulkUser,
+  SyncRolesBulkResponse,
 } from "./api-politics.js";
 
 export {
