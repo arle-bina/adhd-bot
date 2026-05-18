@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits } from "discord.js";
-import { getSyncRoles } from "../utils/api.js";
+import { getBulkSyncRoles, type SyncRolesBulkUser } from "../utils/api.js";
 import { syncMemberRoles } from "../utils/roles.js";
 
 const BETA_TESTER_ROLE_ID = "1490410327387541687";
@@ -93,20 +93,32 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       return;
     }
 
+    /*
+     * One bulk POST returns every linked user's roles. Looping per-member used
+     * to flood the game-side per-endpoint rate limit (30/min), turning the
+     * other 234/264 members into 429 errors.
+     */
+    const bulk = await getBulkSyncRoles();
+    const byDiscordId = new Map<string, SyncRolesBulkUser>();
+    for (const u of bulk.users) {
+      if (u.discordId) byDiscordId.set(u.discordId, u);
+    }
+
     let synced = 0;
     let skipped = 0;
     let failed = 0;
     let processed = 0;
     const CONCURRENCY = 5;
 
-    // Process members in parallel batches
+    // Apply Discord role mutations in parallel batches. Concurrency stays
+    // low because Discord (not the game API) rate-limits role edits.
     for (let i = 0; i < humans.length; i += CONCURRENCY) {
       const batch = humans.slice(i, i + CONCURRENCY);
       const results = await Promise.allSettled(
         batch.map(async (member) => {
-          const result = await getSyncRoles(member.id);
-          if (result.found && result.roles.length > 0) {
-            await syncMemberRoles(member, result.roles, result.details);
+          const entry = byDiscordId.get(member.id);
+          if (entry && entry.roles.length > 0) {
+            await syncMemberRoles(member, entry.roles, entry.details);
             return "synced" as const;
           }
           return "skipped" as const;
@@ -135,6 +147,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     });
   } catch (error) {
     console.error("sync-roles error:", error);
-    await interaction.editReply({ content: "Failed to fetch members. Check bot permissions." });
+    await interaction.editReply({
+      content: "Sync failed. Check bot logs and permissions.",
+    });
   }
 }
