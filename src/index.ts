@@ -28,6 +28,7 @@ import { checkMessage } from "./utils/filter.js";
 import { isBotEnabled } from "./utils/botState.js";
 import { isChannelBanned } from "./utils/channelBans.js";
 import { SUGGEST_MODAL_PREFIX, handleSuggestModal } from "./commands/suggest.js";
+import { pruneAllExpired } from "./utils/strikeStore.js";
 
 validateEnv();
 
@@ -113,6 +114,19 @@ client.once("ready", () => {
   };
   snapshotMembers();
   setInterval(snapshotMembers, 60 * 60 * 1000);
+
+  // Drop strikes that have hit their 60-day expiry. Runs hourly; the store
+  // also prunes on read, so this is mostly to keep the JSON file tidy.
+  const prune = () => {
+    try {
+      const removed = pruneAllExpired();
+      if (removed > 0) console.log(`Strike pruner removed ${removed} expired strike(s)`);
+    } catch (err) {
+      console.error("Strike pruner error:", err);
+    }
+  };
+  prune();
+  setInterval(prune, 60 * 60 * 1000);
 
   // Remind unverified users every 72 hours to read the rules and run /accept
   const remindUnverified = async () => {

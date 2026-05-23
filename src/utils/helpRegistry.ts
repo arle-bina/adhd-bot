@@ -286,6 +286,19 @@ export const categories: Category[] = [
         examples: ["/sync-roles"],
       },
       {
+        name: "/strike",
+        usage: "/strike add user:<@user> reason:<text>  ·  /strike remove user:<@user> id:<id>  ·  /strike clear user:<@user>  ·  /strike info [user]",
+        description:
+          "Track user strikes. 4 strikes per user, each expires after 60 days. Strikes persist if the user leaves and rejoins. The user is DMed when a strike is added; everything is logged to the moderation channel and moderators are pinged when a user hits the 4-strike threshold. Moderate Members permission required to add/remove/clear; anyone can view their own with /strike info.",
+        examples: [
+          "/strike add user:@johndoe reason:Spam in #general",
+          "/strike info",
+          "/strike info user:@johndoe",
+          "/strike remove user:@johndoe id:a1b2c3",
+          "/strike clear user:@johndoe",
+        ],
+      },
+      {
         name: "/ban-bot-channel-usage",
         usage: "/ban-bot-channel-usage add|remove channel:<channel>  ·  /ban-bot-channel-usage list",
         description:
