@@ -12,6 +12,7 @@ import {
   removeStrike,
   clearStrikes,
   getActiveStrikes,
+  listUsersWithStrikes,
   STRIKE_THRESHOLD,
   STRIKE_DURATION_DAYS,
   type Strike,
@@ -74,6 +75,11 @@ export const data = new SlashCommandBuilder()
           .setDescription("The user to look up (mod only when not yourself)")
           .setRequired(false),
       ),
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("list")
+      .setDescription("List every user in the server with active strikes"),
   );
 
 function moderatorRoleId(): string | undefined {
@@ -301,7 +307,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
-  // add/remove/clear all require ModerateMembers — already enforced by
+  // add/remove/clear/list all require ModerateMembers — already enforced by
   // setDefaultMemberPermissions, but check explicitly for safety.
   const member =
     interaction.guild.members.cache.get(interaction.user.id) ??
@@ -310,6 +316,41 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     await interaction.reply({
       content: "You need the Moderate Members permission to manage strikes.",
       ephemeral: true,
+    });
+    return;
+  }
+
+  if (subcommand === "list") {
+    const summaries = listUsersWithStrikes(guild.id);
+    const embed = new EmbedBuilder()
+      .setTitle("Users with active strikes")
+      .setColor(summaries.length === 0 ? OK_COLOR : STRIKE_COLOR)
+      .setFooter(
+        standardFooter(
+          `${summaries.length} user(s) · ${STRIKE_THRESHOLD}-strike threshold`,
+        ),
+      )
+      .setTimestamp();
+
+    if (summaries.length === 0) {
+      embed.setDescription("No users currently have active strikes.");
+    } else {
+      const lines = summaries.map((s) => {
+        const count = s.strikes.length;
+        const flag = count >= STRIKE_THRESHOLD ? " ⚠️" : "";
+        const newest = s.strikes.reduce((a, b) =>
+          new Date(a.addedAt) > new Date(b.addedAt) ? a : b,
+        );
+        const newestTs = unix(newest.addedAt);
+        return `<@${s.userId}> — **${count}**/${STRIKE_THRESHOLD}${flag} · most recent <t:${newestTs}:R>`;
+      });
+      embed.setDescription(lines.join("\n").slice(0, 4000));
+    }
+
+    await interaction.reply({
+      embeds: [embed],
+      ephemeral: true,
+      allowedMentions: { parse: [] },
     });
     return;
   }

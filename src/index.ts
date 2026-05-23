@@ -28,7 +28,12 @@ import { checkMessage } from "./utils/filter.js";
 import { isBotEnabled } from "./utils/botState.js";
 import { isChannelBanned } from "./utils/channelBans.js";
 import { SUGGEST_MODAL_PREFIX, handleSuggestModal } from "./commands/suggest.js";
-import { pruneAllExpired } from "./utils/strikeStore.js";
+import {
+  pruneAllExpired,
+  getActiveStrikes,
+  STRIKE_DURATION_DAYS,
+  STRIKE_THRESHOLD,
+} from "./utils/strikeStore.js";
 
 validateEnv();
 
@@ -115,12 +120,58 @@ client.once("ready", () => {
   snapshotMembers();
   setInterval(snapshotMembers, 60 * 60 * 1000);
 
-  // Drop strikes that have hit their 60-day expiry. Runs hourly; the store
-  // also prunes on read, so this is mostly to keep the JSON file tidy.
-  const prune = () => {
+  // Drop strikes that have hit their 60-day expiry, then DM each affected
+  // user so they know they're back in good standing. Runs hourly. If the bot
+  // was offline when a strike expired, it gets caught on the next sweep.
+  const prune = async () => {
     try {
-      const removed = pruneAllExpired();
-      if (removed > 0) console.log(`Strike pruner removed ${removed} expired strike(s)`);
+      const expired = pruneAllExpired();
+      if (expired.length === 0) return;
+      console.log(`Strike pruner removed ${expired.length} expired strike(s)`);
+
+      // Group by guild+user so a user with multiple same-day expiries gets one DM.
+      const grouped = new Map<string, typeof expired>();
+      for (const item of expired) {
+        const key = `${item.guildId}:${item.userId}`;
+        const list = grouped.get(key);
+        if (list) list.push(item);
+        else grouped.set(key, [item]);
+      }
+
+      for (const items of grouped.values()) {
+        const { guildId, userId, remainingActive } = items[items.length - 1];
+        const guild = client.guilds.cache.get(guildId);
+        if (!guild) continue;
+        try {
+          const user = await client.users.fetch(userId);
+          const reasons = items
+            .map((i, idx) => `**${idx + 1}.** ${i.strike.reason || "(no reason)"}`)
+            .join("\n")
+            .slice(0, 1024);
+          const embed = new EmbedBuilder()
+            .setTitle(`Strike${items.length > 1 ? "s" : ""} expired in ${guild.name}`)
+            .setColor(0x57f287)
+            .setDescription(
+              items.length > 1
+                ? `${items.length} of your strikes have just expired (60 days have passed since they were issued).`
+                : `One of your strikes has just expired (60 days have passed since it was issued).`,
+            )
+            .addFields(
+              { name: items.length > 1 ? "Reasons" : "Reason", value: reasons },
+              {
+                name: "Remaining active strikes",
+                value: `${remainingActive}/${STRIKE_THRESHOLD}`,
+              },
+            )
+            .setFooter({ text: `Strikes expire ${STRIKE_DURATION_DAYS} days after they're issued` })
+            .setTimestamp();
+          await user.send({ embeds: [embed] }).catch(() => {
+            // DMs closed — nothing more we can do.
+          });
+        } catch {
+          // user unfetchable — skip silently
+        }
+      }
     } catch (err) {
       console.error("Strike pruner error:", err);
     }
@@ -350,6 +401,46 @@ client.on("guildMemberAdd", async (member) => {
       .setThumbnail(member.user.displayAvatarURL());
 
     await channel.send({ embeds: [embed] });
+
+    // Strikes persist when a user leaves — alert mods if a returning member
+    // still has active strikes so they're not caught off-guard.
+    const activeStrikes = getActiveStrikes(member.guild.id, member.id);
+    if (activeStrikes.length > 0) {
+      const logChannel = member.guild.channels.cache.get(process.env.FILTER_LOG_CHANNEL_ID!) as TextChannel | undefined;
+      if (logChannel?.isTextBased()) {
+        const atMax = activeStrikes.length >= STRIKE_THRESHOLD;
+        const newest = activeStrikes.reduce((a, b) =>
+          new Date(a.addedAt) > new Date(b.addedAt) ? a : b,
+        );
+        const oldestExpiry = activeStrikes.reduce((a, b) =>
+          new Date(a.expiresAt) < new Date(b.expiresAt) ? a : b,
+        );
+        const newestTs = Math.floor(new Date(newest.addedAt).getTime() / 1000);
+        const expiryTs = Math.floor(new Date(oldestExpiry.expiresAt).getTime() / 1000);
+
+        const strikeEmbed = new EmbedBuilder()
+          .setTitle(atMax ? "Returning member — AT STRIKE THRESHOLD" : "Returning member with active strikes")
+          .setColor(atMax ? 0xed4245 : 0xffa500)
+          .setThumbnail(member.user.displayAvatarURL())
+          .addFields(
+            { name: "User", value: `${member} (${member.user.tag} · ${member.id})` },
+            { name: "Active strikes", value: `${activeStrikes.length}/${STRIKE_THRESHOLD}`, inline: true },
+            { name: "Most recent strike", value: `<t:${newestTs}:R>`, inline: true },
+            { name: "Next expiry", value: `<t:${expiryTs}:R>`, inline: true },
+            { name: "Latest reason", value: (newest.reason || "(no reason)").slice(0, 1024) },
+          )
+          .setFooter({ text: "Use /strike info to see the full list" })
+          .setTimestamp();
+
+        const modRoleRaw = process.env.SERVER_MODERATOR_ID?.trim();
+        const modRoleId = modRoleRaw && modRoleRaw.length > 0 ? modRoleRaw : undefined;
+        await logChannel.send({
+          content: atMax && modRoleId ? `<@&${modRoleId}>` : undefined,
+          embeds: [strikeEmbed],
+          allowedMentions: atMax && modRoleId ? { roles: [modRoleId] } : { parse: [] },
+        });
+      }
+    }
   } catch (error) {
     console.error("guildMemberAdd error:", error);
   }

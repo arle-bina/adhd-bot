@@ -59,34 +59,35 @@ function isActive(strike: Strike, now: number): boolean {
   return new Date(strike.expiresAt).getTime() > now;
 }
 
-/** Prune expired strikes from a guild's stored data; mutates and saves if changed. */
-function pruneExpired(data: StrikesData, guildId: string): boolean {
-  const users = data.guilds[guildId];
-  if (!users) return false;
-  const now = Date.now();
-  let changed = false;
-  for (const userId of Object.keys(users)) {
-    const before = users[userId];
-    const after = before.filter((s) => isActive(s, now));
-    if (after.length !== before.length) {
-      changed = true;
-      if (after.length === 0) {
-        delete users[userId];
-      } else {
-        users[userId] = after;
-      }
-    }
-  }
-  return changed;
-}
-
 /** Get the active (non-expired) strikes for a user. */
 export function getActiveStrikes(guildId: string, userId: string): Strike[] {
+  // Don't prune on read — the hourly sweep owns deletion so it can collect
+  // the expired strikes and DM the affected users. Filtering by isActive here
+  // keeps stale rows invisible until that sweep runs.
   const data = loadData();
-  if (pruneExpired(data, guildId)) saveData(data);
   const strikes = data.guilds[guildId]?.[userId] ?? [];
   const now = Date.now();
   return strikes.filter((s) => isActive(s, now));
+}
+
+export interface UserStrikeSummary {
+  userId: string;
+  strikes: Strike[];
+}
+
+/** All users in the guild with at least one active strike, sorted by count desc. */
+export function listUsersWithStrikes(guildId: string): UserStrikeSummary[] {
+  const data = loadData();
+  const users = data.guilds[guildId];
+  if (!users) return [];
+  const now = Date.now();
+  const result: UserStrikeSummary[] = [];
+  for (const [userId, strikes] of Object.entries(users)) {
+    const active = strikes.filter((s) => isActive(s, now));
+    if (active.length > 0) result.push({ userId, strikes: active });
+  }
+  result.sort((a, b) => b.strikes.length - a.strikes.length);
+  return result;
 }
 
 export interface AddStrikeResult {
@@ -162,20 +163,42 @@ export function clearStrikes(guildId: string, userId: string): number {
   return count;
 }
 
-/** Run a pass to drop expired strikes across every guild — safe to call on a timer. */
-export function pruneAllExpired(): number {
+export interface ExpiredStrike {
+  guildId: string;
+  userId: string;
+  strike: Strike;
+  remainingActive: number;
+}
+
+/**
+ * Drop expired strikes across every guild and return the ones that were
+ * removed so callers can notify affected users.
+ */
+export function pruneAllExpired(): ExpiredStrike[] {
   const data = loadData();
-  let removed = 0;
+  const expired: ExpiredStrike[] = [];
   const now = Date.now();
+  let mutated = false;
   for (const guildId of Object.keys(data.guilds)) {
     const users = data.guilds[guildId];
     for (const userId of Object.keys(users)) {
-      const before = users[userId].length;
-      users[userId] = users[userId].filter((s) => isActive(s, now));
-      removed += before - users[userId].length;
-      if (users[userId].length === 0) delete users[userId];
+      const before = users[userId];
+      const kept: Strike[] = [];
+      const removed: Strike[] = [];
+      for (const strike of before) {
+        if (isActive(strike, now)) kept.push(strike);
+        else removed.push(strike);
+      }
+      if (removed.length > 0) {
+        mutated = true;
+        users[userId] = kept;
+        for (const strike of removed) {
+          expired.push({ guildId, userId, strike, remainingActive: kept.length });
+        }
+        if (kept.length === 0) delete users[userId];
+      }
     }
   }
-  if (removed > 0) saveData(data);
-  return removed;
+  if (mutated) saveData(data);
+  return expired;
 }

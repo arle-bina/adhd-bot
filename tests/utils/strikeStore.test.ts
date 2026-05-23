@@ -145,7 +145,7 @@ describe("strikeStore", () => {
     expect(getActiveStrikes("g2", "u1")).toHaveLength(1);
   });
 
-  it("pruneAllExpired removes only expired strikes", async () => {
+  it("pruneAllExpired removes only expired strikes and reports remaining count", async () => {
     const { addStrike, pruneAllExpired, getActiveStrikes } = await loadStore();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
@@ -156,12 +156,53 @@ describe("strikeStore", () => {
     addStrike("g1", "u1", "newer", "mod", "Mod");
 
     vi.setSystemTime(new Date("2026-03-05T00:00:00Z")); // 63 days from first
-    const removed = pruneAllExpired();
-    expect(removed).toBe(1);
+    const expired = pruneAllExpired();
+    expect(expired).toHaveLength(1);
+    expect(expired[0].strike.reason).toBe("old");
+    expect(expired[0].guildId).toBe("g1");
+    expect(expired[0].userId).toBe("u1");
+    expect(expired[0].remainingActive).toBe(1);
+
     const active = getActiveStrikes("g1", "u1");
     expect(active).toHaveLength(1);
     expect(active[0].reason).toBe("newer");
 
     vi.useRealTimers();
+  });
+
+  it("listUsersWithStrikes returns users sorted by active strike count desc", async () => {
+    const { addStrike, listUsersWithStrikes } = await loadStore();
+    addStrike("g1", "u1", "a", "mod", "Mod");
+    addStrike("g1", "u2", "b", "mod", "Mod");
+    addStrike("g1", "u2", "c", "mod", "Mod");
+    addStrike("g1", "u2", "d", "mod", "Mod");
+    addStrike("g1", "u3", "e", "mod", "Mod");
+    addStrike("g1", "u3", "f", "mod", "Mod");
+
+    const summaries = listUsersWithStrikes("g1");
+    expect(summaries.map((s) => s.userId)).toEqual(["u2", "u3", "u1"]);
+    expect(summaries.map((s) => s.strikes.length)).toEqual([3, 2, 1]);
+  });
+
+  it("listUsersWithStrikes excludes users whose strikes have all expired", async () => {
+    const { addStrike, listUsersWithStrikes } = await loadStore();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+
+    addStrike("g1", "u1", "old", "mod", "Mod");
+
+    vi.setSystemTime(new Date("2026-02-15T00:00:00Z")); // 45 days in
+    addStrike("g1", "u2", "fresh", "mod", "Mod");
+
+    vi.setSystemTime(new Date("2026-03-05T00:00:00Z")); // u1's strike has expired
+    const summaries = listUsersWithStrikes("g1");
+    expect(summaries.map((s) => s.userId)).toEqual(["u2"]);
+
+    vi.useRealTimers();
+  });
+
+  it("listUsersWithStrikes returns empty array for unknown guild", async () => {
+    const { listUsersWithStrikes } = await loadStore();
+    expect(listUsersWithStrikes("nope")).toEqual([]);
   });
 });
