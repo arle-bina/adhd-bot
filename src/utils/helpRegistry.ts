@@ -287,13 +287,14 @@ export const categories: Category[] = [
       },
       {
         name: "/strike",
-        usage: "/strike add user:<@user> reason:<text>  ·  /strike remove user:<@user> id:<id>  ·  /strike clear user:<@user>  ·  /strike info [user]",
+        usage: "/strike add user:<@user> reason:<text>  ·  /strike remove user:<@user> id:<id>  ·  /strike clear user:<@user>  ·  /strike list  ·  /strike info [user]",
         description:
-          "Track user strikes. 4 strikes per user, each expires after 60 days. Strikes persist if the user leaves and rejoins. The user is DMed when a strike is added; everything is logged to the moderation channel and moderators are pinged when a user hits the 4-strike threshold. Moderate Members permission required to add/remove/clear; anyone can view their own with /strike info.",
+          "Track user strikes. 4 strikes per user, each expires after 60 days. Strikes persist if the user leaves and rejoins — mods are alerted in the log channel when a struck user returns. The user is DMed when a strike is added or expires; everything is logged to the moderation channel and moderators are pinged when a user hits the 4-strike threshold. Moderate Members permission required for add/remove/clear/list; anyone can view their own with /strike info.",
         examples: [
           "/strike add user:@johndoe reason:Spam in #general",
           "/strike info",
           "/strike info user:@johndoe",
+          "/strike list",
           "/strike remove user:@johndoe id:a1b2c3",
           "/strike clear user:@johndoe",
         ],
