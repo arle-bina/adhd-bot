@@ -9,35 +9,44 @@ import { apiFetchPublic } from "./api-base.js";
 export const COUNTRY_CURRENCY: Record<string, string> = {
   US: "USD",
   UK: "GBP",
-  JP: "JPY",
-  CA: "CAD",
   DE: "EUR",
+  JP: "JPY",
+  IE: "EUR",
+  BR: "BRL",
+  CN: "CNY",
+  NG: "NGN",
 };
 
 export const CURRENCY_SYMBOLS: Record<string, string> = {
   USD: "$",
   GBP: "\u00a3",
-  JPY: "\u00a5",
-  CAD: "C$",
   EUR: "\u20ac",
+  JPY: "\u00a5",
+  BRL: "R$",
+  CNY: "\u00a5",
+  NGN: "\u20a6",
 };
 
 /** For discord.js `.addChoices()` on slash command string options. */
 export const CURRENCY_CHOICES: Array<{ name: string; value: string }> = [
   { name: "USD ($)", value: "USD" },
   { name: "GBP (\u00a3)", value: "GBP" },
-  { name: "JPY (\u00a5)", value: "JPY" },
-  { name: "CAD (C$)", value: "CAD" },
   { name: "EUR (\u20ac)", value: "EUR" },
+  { name: "JPY (\u00a5)", value: "JPY" },
+  { name: "BRL (R$)", value: "BRL" },
+  { name: "CNY (\u00a5)", value: "CNY" },
+  { name: "NGN (\u20a6)", value: "NGN" },
 ];
 
 /** Maps stock exchange codes to their home currency. */
 export const EXCHANGE_CURRENCY: Record<string, string> = {
   nyse: "USD",
   ftse: "GBP",
-  nikkei: "JPY",
-  tsx: "CAD",
   dax: "EUR",
+  nikkei: "JPY",
+  iseq: "EUR",
+  b3: "BRL",
+  sse: "CNY",
   global: "USD",
 };
 
@@ -120,7 +129,7 @@ export async function fetchForexRates(): Promise<Record<string, number>> {
     return cachedRates;
   } catch {
     // If rates unavailable, return identity rates (everything = 1.0)
-    return cachedRates ?? { USD: 1, GBP: 1, JPY: 1, CAD: 1, EUR: 1 };
+    return cachedRates ?? { USD: 1, GBP: 1, EUR: 1, JPY: 1, BRL: 1, CNY: 1, NGN: 1 };
   }
 }
 
@@ -130,7 +139,7 @@ export async function fetchForexRates(): Promise<Record<string, number>> {
 export async function fetchForexData(): Promise<ForexData> {
   await fetchForexRates(); // populate cache
   return {
-    rates: cachedRates ?? { USD: 1, GBP: 1, JPY: 1, CAD: 1, EUR: 1 },
+    rates: cachedRates ?? { USD: 1, GBP: 1, EUR: 1, JPY: 1, BRL: 1, CNY: 1, NGN: 1 },
     baseRates: cachedBaseRates ?? {},
   };
 }

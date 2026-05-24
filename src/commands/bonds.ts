@@ -6,7 +6,7 @@ import {
 } from "discord.js";
 import { getCorporationList, getBonds, ApiError, type CorporationListItem } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
-import { formatCurrency, formatSharePrice, convertCurrency, fetchForexRates, CURRENCY_CHOICES } from "../utils/currency.js";
+import { formatCurrency, formatSharePrice, convertCurrency, fetchForexRates, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
 
 // ---------------------------------------------------------------------------
 // Corporation list cache (5-minute TTL)
@@ -136,7 +136,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     // Footer with forex info
     const footerParts: string[] = [`Page ${pagination.page}/${pagination.totalPages}`, `${pagination.totalCount} active bonds`];
     if (targetCurrency !== "USD" && rates[targetCurrency] && rates[targetCurrency] !== 1) {
-      const sym = { USD: "$", GBP: "£", JPY: "¥", CAD: "C$", EUR: "€" }[targetCurrency] ?? targetCurrency;
+      const sym = CURRENCY_SYMBOLS[targetCurrency] ?? targetCurrency;
       const rateVal = targetCurrency === "JPY" ? rates[targetCurrency].toFixed(2) : rates[targetCurrency].toFixed(4);
       footerParts.push(`1 INT = ${sym}${rateVal} ${targetCurrency}`);
     }

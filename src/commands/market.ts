@@ -16,9 +16,11 @@ export const data = new SlashCommandBuilder()
           { name: "Global", value: "global" },
           { name: "United States (NYSE)", value: "us" },
           { name: "United Kingdom (FTSE)", value: "uk" },
+          { name: "Germany (DAX)", value: "de" },
           { name: "Japan (Nikkei)", value: "jp" },
-          { name: "Canada (TSX)", value: "ca" },
-          { name: "Germany (DAX)", value: "de" }
+          { name: "Ireland (ISEQ)", value: "ie" },
+          { name: "Brazil (B3)", value: "br" },
+          { name: "China (SSE)", value: "cn" }
         )
     )
     .addStringOption((option) =>
@@ -53,9 +55,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         global: "global",
         us: "nyse",
         uk: "ftse",
+        de: "dax",
         jp: "nikkei",
-        ca: "tsx",
-        de: "dax"
+        ie: "iseq",
+        br: "b3",
+        cn: "sse"
       };
 
       const exchange = exchangeMap[country] || "global";

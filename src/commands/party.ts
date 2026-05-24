@@ -4,8 +4,8 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { getParty } from "../utils/api.js";
-import { hexToInt, replyWithError, standardFooter } from "../utils/helpers.js";
-import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES } from "../utils/currency.js";
+import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
 
 export function ideologyLabel(economic: number, social: number): string {
   const econ = economic < -1 ? "Left" : economic > 1 ? "Right" : "Center";
@@ -35,9 +35,12 @@ export const data = new SlashCommandBuilder()
       .addChoices(
         { name: "United States", value: "US" },
         { name: "United Kingdom", value: "UK" },
-        { name: "Japan", value: "JP" },
-        { name: "Canada", value: "CA" },
         { name: "Germany", value: "DE" },
+        { name: "Japan", value: "JP" },
+        { name: "Ireland", value: "IE" },
+        { name: "Brazil", value: "BR" },
+        { name: "China", value: "CN" },
+        { name: "Nigeria", value: "NG" },
       )
   )
   .addStringOption((option) =>
@@ -82,7 +85,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     // Build footer with forex awareness
     const footerParts: string[] = ["Try /party-compare for side-by-side"];
     if (displayCurrency !== "USD" && rates[displayCurrency] && rates[displayCurrency] !== 1) {
-      const sym = { USD: "$", GBP: "£", JPY: "¥", CAD: "C$", EUR: "€" }[displayCurrency] ?? displayCurrency;
+      const sym = CURRENCY_SYMBOLS[displayCurrency] ?? displayCurrency;
       const rateVal = displayCurrency === "JPY" ? rates[displayCurrency].toFixed(2) : rates[displayCurrency].toFixed(4);
       footerParts.push(`1 INT = ${sym}${rateVal} ${displayCurrency}`);
     }

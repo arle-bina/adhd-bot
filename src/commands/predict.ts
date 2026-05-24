@@ -19,9 +19,12 @@ export const data = new SlashCommandBuilder()
       .addChoices(
         { name: "United States", value: "US" },
         { name: "United Kingdom", value: "UK" },
-        { name: "Japan", value: "JP" },
-        { name: "Canada", value: "CA" },
         { name: "Germany", value: "DE" },
+        { name: "Japan", value: "JP" },
+        { name: "Ireland", value: "IE" },
+        { name: "Brazil", value: "BR" },
+        { name: "China", value: "CN" },
+        { name: "Nigeria", value: "NG" },
       )
   )
   .addStringOption((option) =>
@@ -32,10 +35,13 @@ export const data = new SlashCommandBuilder()
       .addChoices(
         { name: "Senate (US)", value: "senate" },
         { name: "House (US)", value: "house" },
-        { name: "Commons (UK/CA)", value: "commons" },
+        { name: "Commons (UK)", value: "commons" },
         { name: "Shūgiin (JP)", value: "shugiin" },
         { name: "Sangiin (JP)", value: "sangiin" },
         { name: "Bundestag (DE)", value: "bundestag" },
+        { name: "Dáil (IE)", value: "dail" },
+        { name: "Chamber (BR)", value: "chamber" },
+        { name: "NPC (CN)", value: "npcDelegate" },
       )
   );
 

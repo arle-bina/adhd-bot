@@ -295,9 +295,11 @@ export interface ForexRateData {
 const FOREX_COLORS: Record<string, string> = {
   USD: "#4477AA",
   GBP: "#EE6677",
-  JPY: "#228833",
-  CAD: "#CCBB44",
   EUR: "#AA3377",
+  JPY: "#228833",
+  BRL: "#009C3B",
+  CNY: "#DE2910",
+  NGN: "#008751",
 };
 
 export async function generateForexChart(rates: ForexRateData[]): Promise<Buffer> {

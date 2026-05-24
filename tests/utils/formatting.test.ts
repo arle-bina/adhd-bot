@@ -72,26 +72,35 @@ describe("formatOfficeType", () => {
 describe("constant maps", () => {
   it("RACE_EMOJI has entries for all election types including snaps", () => {
     expect(Object.keys(RACE_EMOJI).sort()).toEqual([
-      "bundestag", "centralBankChair", "chancellor", "commons", "governor",
-      "house", "ministerPresident", "premier", "president", "primeMinister",
+      "bundestag", "centralBankChair", "chamber", "chancellor", "commons",
+      "dail", "governor", "house", "ministerPresident", "npcDelegate",
+      "peoplesCongress", "premier", "president", "primeMinister",
       "regionalCouncil", "sangiin", "senate", "shugiin", "snap_bundestag",
       "snap_commons", "snap_shugiin", "stateSenate", "vicePresident",
     ]);
   });
 
-  it("COUNTRY_NAMES covers all 5 countries", () => {
-    expect(Object.keys(COUNTRY_NAMES).sort()).toEqual(["CA", "DE", "JP", "UK", "US"]);
+  it("COUNTRY_NAMES covers every supported country", () => {
+    expect(Object.keys(COUNTRY_NAMES).sort()).toEqual([
+      "BR", "CN", "DE", "IE", "JP", "NG", "UK", "US",
+    ]);
   });
 
-  it("COUNTRY_FLAG covers all 5 countries", () => {
-    expect(Object.keys(COUNTRY_FLAG).sort()).toEqual(["CA", "DE", "JP", "UK", "US"]);
+  it("COUNTRY_FLAG covers every supported country", () => {
+    expect(Object.keys(COUNTRY_FLAG).sort()).toEqual([
+      "BR", "CN", "DE", "IE", "JP", "NG", "UK", "US",
+    ]);
   });
 
-  it("COUNTRY_COLORS covers all 5 countries", () => {
-    expect(Object.keys(COUNTRY_COLORS).sort()).toEqual(["CA", "DE", "JP", "UK", "US"]);
+  it("COUNTRY_COLORS covers every supported country", () => {
+    expect(Object.keys(COUNTRY_COLORS).sort()).toEqual([
+      "BR", "CN", "DE", "IE", "JP", "NG", "UK", "US",
+    ]);
   });
 
   it("EXCHANGE_LABELS covers all exchanges", () => {
-    expect(Object.keys(EXCHANGE_LABELS).sort()).toEqual(["dax", "ftse", "global", "nikkei", "nyse", "tsx"]);
+    expect(Object.keys(EXCHANGE_LABELS).sort()).toEqual([
+      "b3", "dax", "ftse", "global", "iseq", "nikkei", "nyse", "sse",
+    ]);
   });
 });

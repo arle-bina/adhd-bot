@@ -19,7 +19,7 @@ import {
   type FinancialsResponse,
 } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
-import { currencyFor, formatCurrency, formatSharePrice, formatCurrencySigned, padCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES } from "../utils/currency.js";
+import { currencyFor, formatCurrency, formatSharePrice, formatCurrencySigned, padCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
 
 // ---------------------------------------------------------------------------
 // Corporation list cache (5-minute TTL)
@@ -114,7 +114,7 @@ function forexFooter(displayCurrency: string, nativeCc: string, rates: Record<st
   const parts: string[] = [];
   if (extra) parts.push(extra);
   if (displayCurrency !== nativeCc) {
-    const sym = { USD: "$", GBP: "£", JPY: "¥", CAD: "C$", EUR: "€" }[displayCurrency] ?? displayCurrency;
+    const sym = CURRENCY_SYMBOLS[displayCurrency] ?? displayCurrency;
     const rateVal = displayCurrency === "JPY" ? (rates[displayCurrency] ?? 1).toFixed(2) : (rates[displayCurrency] ?? 1).toFixed(4);
     parts.push(`1 INT = ${sym}${rateVal} ${displayCurrency}`);
   }
