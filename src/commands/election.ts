@@ -31,9 +31,12 @@ export const data = new SlashCommandBuilder()
       .addChoices(
         { name: "United States", value: "US" },
         { name: "United Kingdom", value: "UK" },
+        { name: "Germany", value: "DE" },
         { name: "Japan", value: "JP" },
-        { name: "Canada", value: "CA" },
-        { name: "Germany", value: "DE" }
+        { name: "Ireland", value: "IE" },
+        { name: "Brazil", value: "BR" },
+        { name: "China", value: "CN" },
+        { name: "Nigeria", value: "NG" }
       )
   )
   .addStringOption((o) =>

@@ -77,7 +77,7 @@ export const categories: Category[] = [
       },
       {
         name: "/election",
-        usage: "/election country:<US|UK|JP|CA|DE> [state] [race]",
+        usage: "/election country:<US|UK|DE|JP|IE|BR|CN|NG> [state] [race]",
         description:
           "Drill into a specific race — shows phase (upcoming/primary/general/ended), candidate standings, vote shares, electoral votes, and a link to the election page. Omit state and race to browse all elections for a country.",
         examples: [
@@ -102,14 +102,14 @@ export const categories: Category[] = [
       },
       {
         name: "/party",
-        usage: "/party id:<slug> country:<US|UK|JP|CA|DE>",
+        usage: "/party id:<slug> country:<US|UK|DE|JP|IE|BR|CN|NG>",
         description:
           "Look up a political party — ideology, membership count, treasury, chair, and top politicians.",
         examples: ["/party id:labour country:UK", "/party id:republican country:US"],
       },
       {
         name: "/party-compare",
-        usage: "/party-compare party1:<slug> country1:<US|UK|JP|CA|DE> party2:<slug> country2:<US|UK|JP|CA|DE>",
+        usage: "/party-compare party1:<slug> country1:<US|UK|DE|JP|IE|BR|CN|NG> party2:<slug> country2:<US|UK|DE|JP|IE|BR|CN|NG>",
         description:
           "Side-by-side comparison of two parties — ideology positions (with visual bars), membership, treasury, chair, and top members.",
         examples: [

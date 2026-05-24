@@ -11,15 +11,19 @@ export const cooldown = 5;
 
 function sectionTitle(section: string, country: string): string {
   if (section === "leadership") {
-    if (country === "UK" || country === "CA") return "Parliamentary Leadership";
+    if (country === "UK") return "Parliamentary Leadership";
     if (country === "DE") return "Bundestag Leadership";
     if (country === "JP") return "Diet Leadership";
+    if (country === "IE") return "Oireachtas Leadership";
+    if (country === "CN") return "NPC Leadership";
     return "Congressional Leadership";
   }
   if (section === "cabinet") {
     if (country === "UK") return "Government Cabinet";
     if (country === "JP") return "Naikaku";
     if (country === "DE") return "Bundeskabinett";
+    if (country === "IE") return "Government";
+    if (country === "CN") return "State Council";
     return "Cabinet";
   }
   return "Executive";
@@ -36,9 +40,12 @@ export const data = new SlashCommandBuilder()
       .addChoices(
         { name: "United States", value: "US" },
         { name: "United Kingdom", value: "UK" },
-        { name: "Japan", value: "JP" },
-        { name: "Canada", value: "CA" },
         { name: "Germany", value: "DE" },
+        { name: "Japan", value: "JP" },
+        { name: "Ireland", value: "IE" },
+        { name: "Brazil", value: "BR" },
+        { name: "China", value: "CN" },
+        { name: "Nigeria", value: "NG" },
       )
   );
 
@@ -126,7 +133,7 @@ const FORMATION_TYPE_LABEL: Record<string, string> = {
   admin: "Admin",
 };
 
-function buildFormationLines(gf: GovernmentFormationData, country: string): string[] {
+function buildFormationLines(gf: GovernmentFormationData, _country: string): string[] {
   const lines: string[] = [];
 
   // Status line

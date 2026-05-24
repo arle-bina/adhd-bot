@@ -74,9 +74,11 @@ export const data = new SlashCommandBuilder()
       .addChoices(
         { name: "United States (NYSE)", value: "us" },
         { name: "United Kingdom (FTSE)", value: "uk" },
-        { name: "Japan (Nikkei)", value: "jp" },
-        { name: "Canada (TSX)", value: "ca" },
         { name: "Germany (DAX)", value: "de" },
+        { name: "Japan (Nikkei)", value: "jp" },
+        { name: "Ireland (ISEQ)", value: "ie" },
+        { name: "Brazil (B3)", value: "br" },
+        { name: "China (SSE)", value: "cn" },
       ),
   )
   .addStringOption((o) =>

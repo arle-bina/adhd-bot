@@ -6,7 +6,7 @@ import {
 } from "discord.js";
 import { lookupByName, lookupByDiscordId, getAutocomplete } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
-import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES } from "../utils/currency.js";
+import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
 
 export const cooldown = 5;
 
@@ -45,10 +45,10 @@ const RANK_MEDAL: Record<number, string> = {
   3: "🥉",
 };
 
-function makeForexFooter(displayCurrency: string, rates: Record<string, number>, nativeCc?: string): string {
+function makeForexFooter(displayCurrency: string, rates: Record<string, number>, _nativeCc?: string): string {
   const parts: string[] = [];
   if (displayCurrency !== "USD" && rates[displayCurrency] && rates[displayCurrency] !== 1) {
-    const sym = { USD: "$", GBP: "£", JPY: "¥", CAD: "C$", EUR: "€" }[displayCurrency] ?? displayCurrency;
+    const sym = CURRENCY_SYMBOLS[displayCurrency] ?? displayCurrency;
     const rateVal = displayCurrency === "JPY" ? rates[displayCurrency].toFixed(2) : rates[displayCurrency].toFixed(4);
     parts.push(`1 INT = ${sym}${rateVal} ${displayCurrency}`);
   }

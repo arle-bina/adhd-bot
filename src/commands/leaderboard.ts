@@ -8,8 +8,8 @@ import {
   ComponentType,
 } from "discord.js";
 import { getLeaderboard, LeaderboardCharacter, LeaderboardMetric } from "../utils/api.js";
-import { replyWithError, standardFooter } from "../utils/helpers.js";
-import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES } from "../utils/currency.js";
+import { replyWithError } from "../utils/helpers.js";
+import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
 
 // Explicit conditional avoids TypeScript's TS7053 "any" error from dynamic key indexing (char[metric]).
 export function getMetricValue(
@@ -51,9 +51,12 @@ export const data = new SlashCommandBuilder()
       .addChoices(
         { name: "United States", value: "US" },
         { name: "United Kingdom", value: "UK" },
+        { name: "Germany", value: "DE" },
         { name: "Japan", value: "JP" },
-        { name: "Canada", value: "CA" },
-        { name: "Germany", value: "DE" }
+        { name: "Ireland", value: "IE" },
+        { name: "Brazil", value: "BR" },
+        { name: "China", value: "CN" },
+        { name: "Nigeria", value: "NG" }
       )
   )
   .addIntegerOption((option) =>
@@ -93,7 +96,6 @@ function buildLeaderboardEmbed(
   const slice = characters.slice(start, start + PAGE_SIZE);
   const metricLabel = metricLabels[metric];
 
-  const nativeCc = country ? currencyFor(country) : "USD";
   const lines = slice.map((char) => {
     const raw = getMetricValue(char, metric);
     let value: string;
@@ -112,7 +114,7 @@ function buildLeaderboardEmbed(
   if (totalPages > 1) footerParts.push(`Page ${page + 1} of ${totalPages}`);
   if (country) footerParts.push(`Country: ${country}`);
   if (metric === "funds" && displayCurrency !== "USD" && rates[displayCurrency] && rates[displayCurrency] !== 1) {
-    const sym = { USD: "$", GBP: "£", JPY: "¥", CAD: "C$", EUR: "€" }[displayCurrency] ?? displayCurrency;
+    const sym = CURRENCY_SYMBOLS[displayCurrency] ?? displayCurrency;
     const rateVal = displayCurrency === "JPY" ? rates[displayCurrency].toFixed(2) : rates[displayCurrency].toFixed(4);
     footerParts.push(`1 INT = ${sym}${rateVal} ${displayCurrency}`);
   }

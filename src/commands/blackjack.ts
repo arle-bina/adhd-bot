@@ -24,8 +24,8 @@ import {
   cardLabel,
   type Card,
 } from "../utils/blackjackGame.js";
-import { replyWithError, standardFooter } from "../utils/helpers.js";
-import { currencyFor, formatCurrency, symbolFor, convertCurrency, fetchForexRates, CURRENCY_CHOICES } from "../utils/currency.js";
+import { replyWithError } from "../utils/helpers.js";
+import { currencyFor, formatCurrency, symbolFor, convertCurrency, fetchForexRates, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
 
 export const cooldown = 10;
 
@@ -38,7 +38,7 @@ function blackjackFooter(displayCurrency: string, nativeCc: string, rates: Recor
   const parts: string[] = [];
   if (extra) parts.push(extra);
   if (displayCurrency !== nativeCc && displayCurrency !== "USD" && rates[displayCurrency] && rates[displayCurrency] !== 1) {
-    const sym = { USD: "$", GBP: "£", JPY: "¥", CAD: "C$", EUR: "€" }[displayCurrency] ?? displayCurrency;
+    const sym = CURRENCY_SYMBOLS[displayCurrency] ?? displayCurrency;
     const rateVal = displayCurrency === "JPY" ? rates[displayCurrency].toFixed(2) : rates[displayCurrency].toFixed(4);
     parts.push(`1 INT = ${sym}${rateVal} ${displayCurrency}`);
   }

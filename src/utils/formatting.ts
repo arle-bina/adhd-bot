@@ -21,6 +21,10 @@ export function formatElectionType(type: string): string {
     regionalCouncil: "Regional Council",
     premier: "Premier",
     ministerPresident: "Minister-President",
+    npcDelegate: "National People's Congress",
+    peoplesCongress: "Provincial People's Congress",
+    dail: "Dáil",
+    chamber: "Chamber of Deputies",
   };
   return map[type] ?? type;
 }
@@ -46,6 +50,11 @@ export function formatOfficeType(type: string): string {
     regionalCouncil: "Regional Councillor",
     premier: "Premier",
     ministerPresident: "Minister-President",
+    taoiseach: "Taoiseach",
+    npcDelegate: "NPC Delegate",
+    peoplesCongress: "Provincial Delegate",
+    dail: "TD",
+    chamber: "Federal Deputy",
   };
   return map[type] ?? type;
 }
@@ -68,39 +77,54 @@ export const RACE_EMOJI: Record<string, string> = {
   snap_bundestag: "🇩🇪",
   centralBankChair: "🏦",
   regionalCouncil: "🏛️",
-  premier: "🇨🇦",
+  premier: "🇨🇳",
   ministerPresident: "🇩🇪",
+  npcDelegate: "🇨🇳",
+  peoplesCongress: "🇨🇳",
+  dail: "🇮🇪",
+  chamber: "🇧🇷",
 };
 
 export const COUNTRY_NAMES: Record<string, string> = {
   US: "United States",
   UK: "United Kingdom",
-  JP: "Japan",
-  CA: "Canada",
   DE: "Germany",
+  JP: "Japan",
+  IE: "Ireland",
+  BR: "Brazil",
+  CN: "China",
+  NG: "Nigeria",
 };
 
 export const COUNTRY_FLAG: Record<string, string> = {
   US: "🇺🇸",
   UK: "🇬🇧",
-  JP: "🇯🇵",
-  CA: "🇨🇦",
   DE: "🇩🇪",
+  JP: "🇯🇵",
+  IE: "🇮🇪",
+  BR: "🇧🇷",
+  CN: "🇨🇳",
+  NG: "🇳🇬",
 };
 
 export const COUNTRY_COLORS: Record<string, number> = {
   US: 0x3c5a9a,
   UK: 0x9a3c3c,
-  CA: 0xd52b1e,
   DE: 0xffcc00,
   JP: 0xbc002d,
+  IE: 0x009a44,
+  BR: 0x009c3b,
+  CN: 0xde2910,
+  NG: 0x008751,
 };
 
 export const EXCHANGE_LABELS: Record<string, string> = {
   global: "Global Stock Market",
   nyse: "NYSE",
   ftse: "FTSE",
-  nikkei: "Nikkei",
-  tsx: "TSX",
   dax: "DAX",
+  nikkei: "Nikkei",
+  iseq: "ISEQ",
+  b3: "B3",
+  sse: "SSE",
 };
