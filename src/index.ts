@@ -384,6 +384,44 @@ client.on("messageDelete", async (message) => {
   }
 });
 
+// Log edited messages to moderation channel
+client.on("messageUpdate", async (oldMessage, newMessage) => {
+  try {
+    // Resolve partials
+    const oldMsg = oldMessage.partial ? await oldMessage.fetch().catch(() => null) : oldMessage;
+    const newMsg = newMessage.partial ? await newMessage.fetch().catch(() => null) : newMessage;
+    if (!oldMsg || !newMsg) return;
+    if (newMsg.author?.bot) return;
+    if (!newMsg.guild) return;
+
+    // Skip non-content updates (embed loads, pin changes, reactions, etc.)
+    if (oldMsg.content === newMsg.content) return;
+
+    const logChannel = newMsg.guild.channels.cache.get(process.env.FILTER_LOG_CHANNEL_ID!) as TextChannel | undefined;
+    if (!logChannel?.isTextBased()) return;
+
+    const before = (oldMsg.content || "(empty)").slice(0, 1024);
+    const after = (newMsg.content || "(empty)").slice(0, 1024);
+
+    const embed = new EmbedBuilder()
+      .setTitle("Message Edited")
+      .setColor(0x3498db)
+      .setURL(newMsg.url)
+      .addFields(
+        { name: "User", value: `${newMsg.author} (${newMsg.author?.tag ?? "Unknown"})`, inline: true },
+        { name: "Channel", value: `<#${newMsg.channel.id}>`, inline: true },
+        { name: "Jump", value: `[Message](${newMsg.url})`, inline: true },
+        { name: "Before", value: before },
+        { name: "After", value: after }
+      )
+      .setTimestamp();
+
+    await logChannel.send({ embeds: [embed] });
+  } catch (error) {
+    console.error("messageUpdate error:", error);
+  }
+});
+
 client.on("guildMemberAdd", async (member) => {
   try {
     // Assign unverified role
