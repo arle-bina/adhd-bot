@@ -325,6 +325,9 @@ client.on("messageDelete", async (message) => {
     if (message.author?.bot) return;
     if (!message.guild) return;
 
+    // Skip excluded channels (e.g., dev/test channels)
+    if (process.env.DEV_CHANNEL_ID && message.channelId === process.env.DEV_CHANNEL_ID) return;
+
     // Skip if this deletion was triggered by the content filter (already logged separately)
     if (filterDeletedMessageIds.has(message.id)) {
       filterDeletedMessageIds.delete(message.id);
@@ -394,6 +397,9 @@ client.on("messageUpdate", async (oldMessage, newMessage) => {
     if (!newMsg) return;
     if (newMsg.author?.bot) return;
     if (!newMsg.guild) return;
+
+    // Skip excluded channels (e.g., dev/test channels)
+    if (process.env.DEV_CHANNEL_ID && newMsg.channelId === process.env.DEV_CHANNEL_ID) return;
 
     // Ignore link-unfurl / embed-load events that aren't real user edits
     if (!newMsg.editedAt) return;
