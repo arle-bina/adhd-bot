@@ -387,20 +387,31 @@ client.on("messageDelete", async (message) => {
 // Log edited messages to moderation channel
 client.on("messageUpdate", async (oldMessage, newMessage) => {
   try {
-    // Resolve partials
-    const oldMsg = oldMessage.partial ? await oldMessage.fetch().catch(() => null) : oldMessage;
+    const wasUncached = oldMessage.partial;
+
+    // Always fetch the new message if needed to confirm this is a real edit
     const newMsg = newMessage.partial ? await newMessage.fetch().catch(() => null) : newMessage;
-    if (!oldMsg || !newMsg) return;
+    if (!newMsg) return;
     if (newMsg.author?.bot) return;
     if (!newMsg.guild) return;
 
-    // Skip non-content updates (embed loads, pin changes, reactions, etc.)
-    if (oldMsg.content === newMsg.content) return;
+    // Ignore link-unfurl / embed-load events that aren't real user edits
+    if (!newMsg.editedAt) return;
+
+    // If the old message was cached, we can compare; otherwise we just log "(not cached)"
+    let before: string;
+    if (wasUncached) {
+      before = "(message wasn't cached — bot may have been offline when it was sent)";
+    } else {
+      const oldContent = oldMessage.content ?? "";
+      const newContent = newMsg.content ?? "";
+      if (oldContent === newContent) return; // pure non-content update
+      before = oldContent || "(empty)";
+    }
 
     const logChannel = newMsg.guild.channels.cache.get(process.env.FILTER_LOG_CHANNEL_ID!) as TextChannel | undefined;
     if (!logChannel?.isTextBased()) return;
 
-    const before = (oldMsg.content || "(empty)").slice(0, 1024);
     const after = (newMsg.content || "(empty)").slice(0, 1024);
 
     const embed = new EmbedBuilder()
@@ -411,7 +422,7 @@ client.on("messageUpdate", async (oldMessage, newMessage) => {
         { name: "User", value: `${newMsg.author} (${newMsg.author?.tag ?? "Unknown"})`, inline: true },
         { name: "Channel", value: `<#${newMsg.channel.id}>`, inline: true },
         { name: "Jump", value: `[Message](${newMsg.url})`, inline: true },
-        { name: "Before", value: before },
+        { name: "Before", value: before.slice(0, 1024) },
         { name: "After", value: after }
       )
       .setTimestamp();
