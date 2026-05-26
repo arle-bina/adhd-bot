@@ -88,7 +88,7 @@ function moderatorRoleId(): string | undefined {
 }
 
 function logChannel(guild: Guild): TextChannel | null {
-  const id = process.env.FILTER_LOG_CHANNEL_ID;
+  const id = process.env.STRIKE_CHANNEL_ID ?? process.env.FILTER_LOG_CHANNEL_ID;
   if (!id) return null;
   const ch = guild.channels.cache.get(id);
   return ch && ch.isTextBased() ? (ch as TextChannel) : null;
