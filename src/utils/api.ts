@@ -19,6 +19,8 @@ export {
   getGovernment,
   getSyncRoles,
   getBulkSyncRoles,
+  postSupporter,
+  deleteSupporter,
 } from "./api-politics.js";
 
 export type {
@@ -48,6 +50,7 @@ export type {
   SyncRolesResponse,
   SyncRolesBulkUser,
   SyncRolesBulkResponse,
+  SupporterResponse,
 } from "./api-politics.js";
 
 export {

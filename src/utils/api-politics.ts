@@ -565,3 +565,32 @@ export interface SyncRolesBulkResponse {
 export async function getBulkSyncRoles(): Promise<SyncRolesBulkResponse> {
   return apiPost<SyncRolesBulkResponse>("/api/discord-bot/sync-roles", {});
 }
+
+// ---------------------------------------------------------------------------
+// Supporter Management
+// ---------------------------------------------------------------------------
+
+export interface SupporterResponse {
+  found: boolean;
+  characterId?: string;
+  characterName?: string;
+  discordId?: string;
+  discordUsername?: string;
+  tier?: "regular" | "plus" | null;
+  message?: string;
+}
+
+export async function postSupporter(body: {
+  discordId?: string;
+  name?: string;
+  tier: "regular" | "plus";
+}): Promise<SupporterResponse> {
+  return apiPost<SupporterResponse>("/api/discord-bot/supporter", body);
+}
+
+export async function deleteSupporter(body: {
+  discordId?: string;
+  name?: string;
+}): Promise<SupporterResponse> {
+  return apiPost<SupporterResponse>("/api/discord-bot/supporter/remove", body);
+}
