@@ -13,6 +13,8 @@ const required = [
   "FILTER_LOG_CHANNEL_ID",
   "DEVELOPER_ROLE_ID",
   "GENERAL_CHANNEL_ID",
+  "SUPPORTER_ROLE_ID",
+  "SUPPORTER_PLUS_ROLE_ID",
 ] as const;
 
 export function validateEnv() {
