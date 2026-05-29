@@ -17,6 +17,10 @@ npm install
 echo "Building project..."
 npm run build
 
+# Register slash commands with Discord
+echo "Registering slash commands..."
+npm run register
+
 # Restart the bot
 echo "Restarting bot..."
 pm2 restart adhd-bot
