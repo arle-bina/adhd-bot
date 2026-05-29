@@ -23,6 +23,16 @@ export const data = new SlashCommandBuilder()
       .setDescription("Grant supporter status to a player")
       .addStringOption((opt) =>
         opt
+          .setName("tier")
+          .setDescription("Supporter tier")
+          .setRequired(true)
+          .addChoices(
+            { name: "Regular", value: "regular" },
+            { name: "Plus", value: "plus" },
+          ),
+      )
+      .addStringOption((opt) =>
+        opt
           .setName("name")
           .setDescription("In-game character name")
           .setRequired(false)
@@ -33,16 +43,6 @@ export const data = new SlashCommandBuilder()
           .setName("user")
           .setDescription("Discord user to look up")
           .setRequired(false),
-      )
-      .addStringOption((opt) =>
-        opt
-          .setName("tier")
-          .setDescription("Supporter tier")
-          .setRequired(true)
-          .addChoices(
-            { name: "Regular", value: "regular" },
-            { name: "Plus", value: "plus" },
-          ),
       ),
   )
   .addSubcommand((sub) =>
