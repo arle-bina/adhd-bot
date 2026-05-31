@@ -1,6 +1,6 @@
 // Politics-domain API: characters, elections, parties, government, sync-roles.
 
-import { apiFetch, apiPost } from "./api-base.js";
+import { apiFetch, apiPost, ApiError } from "./api-base.js";
 
 // ---------------------------------------------------------------------------
 // Character Lookup
@@ -217,8 +217,34 @@ interface StateResponse {
   state?: StateData;
 }
 
+/**
+ * Derive a country code from a state/region ID.
+ * Prefix convention: UK_ → UK, DE_ → DE, JP_ → JP, IE_ → IE, BR_ → BR, CN_ → CN, NG_ → NG.
+ * No prefix (e.g. "CA", "TX") defaults to US.
+ */
+function countryFromStateId(stateId: string): string {
+  if (stateId.startsWith("UK_")) return "UK";
+  if (stateId.startsWith("DE_")) return "DE";
+  if (stateId.startsWith("JP_")) return "JP";
+  if (stateId.startsWith("IE_")) return "IE";
+  if (stateId.startsWith("BR_")) return "BR";
+  if (stateId.startsWith("CN_")) return "CN";
+  if (stateId.startsWith("NG_")) return "NG";
+  return "US";
+}
+
 export async function getState(id: string): Promise<StateResponse> {
-  return apiFetch<StateResponse>("/api/discord-bot/state", { id });
+  // Try the new country-scoped endpoint first; fall back to legacy path if it 404s.
+  const countryCode = countryFromStateId(id);
+  try {
+    return await apiFetch<StateResponse>(`/api/discord-bot/country/${countryCode}/region`, { id });
+  } catch (err: unknown) {
+    // If the new endpoint returns 404 (unknown state in that country), try the legacy path.
+    if (err instanceof ApiError && err.status === 404) {
+      return apiFetch<StateResponse>("/api/discord-bot/state", { id });
+    }
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------
