@@ -11,6 +11,29 @@ const INVESTOR_RANK_COLORS: Record<string, number> = {
   "3": 0xcd7f32,
 };
 
+/** Pre-existing Discord roles assigned by ID (renamed in Discord; never created by name). */
+const HEAD_OF_GOV_ROLE_ID = process.env.HEAD_OF_GOV_ROLE_ID ?? "1490113651510738976";
+const CENTRAL_BANK_CHAIR_ROLE_ID = process.env.CBC_ROLE_ID ?? "1494953191685750936";
+
+/** All fixed role IDs this bot manages, for cleanup tracking. */
+const FIXED_MANAGED_ROLE_IDS = [HEAD_OF_GOV_ROLE_ID, CENTRAL_BANK_CHAIR_ROLE_ID].filter(
+  (id): id is string => Boolean(id),
+);
+
+/**
+ * Map API role tokens that correspond to a single fixed, pre-existing Discord
+ * role to that role's ID. These roles are assigned by ID (not by name) because
+ * they were renamed in Discord and a name lookup would re-create a stray role.
+ */
+export function fixedRoleIdsForTokens(roles: string[]): string[] {
+  const ids = new Set<string>();
+  for (const role of roles) {
+    if (role === "headOfGov" && HEAD_OF_GOV_ROLE_ID) ids.add(HEAD_OF_GOV_ROLE_ID);
+    if (role === "centralBankChair" && CENTRAL_BANK_CHAIR_ROLE_ID) ids.add(CENTRAL_BANK_CHAIR_ROLE_ID);
+  }
+  return [...ids];
+}
+
 /** Convert a role string from the API into a Discord role name and color. */
 function resolveRole(
   role: string,
@@ -83,6 +106,12 @@ export async function syncMemberRoles(
     desiredIds.add(id);
   }
 
+  // Fixed-ID roles (headOfGov, centralBankChair) — assign by existing Discord
+  // role ID, bypassing getOrCreateRole-by-name.
+  for (const id of fixedRoleIdsForTokens(roles)) {
+    desiredIds.add(id);
+  }
+
   // Build the set of all role names this bot could manage
   const allManagedNames = new Set<string>([
     ...Object.values(COUNTRY_NAMES),
@@ -132,9 +161,11 @@ export async function syncMemberRoles(
     if (desiredIds.has(id)) continue;
     if (role.managed) continue;
 
-    // A role is "tracked" if it matches a known managed name OR has a non-default color
-    // (colored roles are likely party/office roles the bot created)
-    const isTracked = allManagedNames.has(role.name) || role.color !== 0;
+    // A role is "tracked" if it matches a known managed name, is a fixed-ID
+    // managed role, OR has a non-default color (colored roles are likely
+    // party/office roles the bot created)
+    const isTracked =
+      allManagedNames.has(role.name) || role.color !== 0 || FIXED_MANAGED_ROLE_IDS.includes(id);
     if (isTracked) {
       await member.roles.remove(id).catch(() => {});
     }
