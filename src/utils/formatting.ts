@@ -23,7 +23,12 @@ export function formatElectionType(type: string): string {
     ministerPresident: "Minister-President",
     npcDelegate: "National People's Congress",
     peoplesCongress: "Provincial People's Congress",
+    landtag: "Landtag",
+    taoiseach: "Taoiseach",
     dail: "Dáil",
+    snap_dail: "Snap Dáil",
+    uachtaran: "Uachtarán",
+    localCouncil: "Local Council",
     chamber: "Chamber of Deputies",
   };
   return map[type] ?? type;
@@ -51,9 +56,14 @@ export function formatOfficeType(type: string): string {
     premier: "Premier",
     ministerPresident: "Minister-President",
     taoiseach: "Taoiseach",
+    tanaiste: "Tánaiste",
+    uachtaran: "Uachtarán",
     npcDelegate: "NPC Delegate",
     peoplesCongress: "Provincial Delegate",
+    landtag: "MdL",
     dail: "TD",
+    snap_dail: "TD",
+    localCouncil: "Councillor",
     chamber: "Federal Deputy",
   };
   return map[type] ?? type;
@@ -81,7 +91,12 @@ export const RACE_EMOJI: Record<string, string> = {
   ministerPresident: "🇩🇪",
   npcDelegate: "🇨🇳",
   peoplesCongress: "🇨🇳",
+  taoiseach: "🇮🇪",
   dail: "🇮🇪",
+  snap_dail: "🇮🇪",
+  uachtaran: "🇮🇪",
+  localCouncil: "🇮🇪",
+  landtag: "🇩🇪",
   chamber: "🇧🇷",
 };
 
