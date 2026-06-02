@@ -30,6 +30,13 @@ describe("formatElectionType", () => {
     ["regionalCouncil", "Regional Council"],
     ["premier", "Premier"],
     ["ministerPresident", "Minister-President"],
+    ["landtag", "Landtag"],
+    ["taoiseach", "Taoiseach"],
+    ["dail", "Dáil"],
+    ["snap_dail", "Snap Dáil"],
+    ["uachtaran", "Uachtarán"],
+    ["localCouncil", "Local Council"],
+    ["chamber", "Chamber of Deputies"],
   ])("maps '%s' to '%s'", (input, expected) => {
     expect(formatElectionType(input)).toBe(expected);
   });
@@ -60,6 +67,14 @@ describe("formatOfficeType", () => {
     ["regionalCouncil", "Regional Councillor"],
     ["premier", "Premier"],
     ["ministerPresident", "Minister-President"],
+    ["landtag", "MdL"],
+    ["taoiseach", "Taoiseach"],
+    ["tanaiste", "Tánaiste"],
+    ["uachtaran", "Uachtarán"],
+    ["dail", "TD"],
+    ["snap_dail", "TD"],
+    ["localCouncil", "Councillor"],
+    ["chamber", "Federal Deputy"],
   ])("maps '%s' to '%s'", (input, expected) => {
     expect(formatOfficeType(input)).toBe(expected);
   });
@@ -73,10 +88,11 @@ describe("constant maps", () => {
   it("RACE_EMOJI has entries for all election types including snaps", () => {
     expect(Object.keys(RACE_EMOJI).sort()).toEqual([
       "bundestag", "centralBankChair", "chamber", "chancellor", "commons",
-      "dail", "governor", "house", "ministerPresident", "npcDelegate",
-      "peoplesCongress", "premier", "president", "primeMinister",
-      "regionalCouncil", "sangiin", "senate", "shugiin", "snap_bundestag",
-      "snap_commons", "snap_shugiin", "stateSenate", "vicePresident",
+      "dail", "governor", "house", "landtag", "localCouncil",
+      "ministerPresident", "npcDelegate", "peoplesCongress", "premier",
+      "president", "primeMinister", "regionalCouncil", "sangiin", "senate",
+      "shugiin", "snap_bundestag", "snap_commons", "snap_dail",
+      "snap_shugiin", "stateSenate", "taoiseach", "uachtaran", "vicePresident",
     ]);
   });
 
