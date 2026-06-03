@@ -33,8 +33,11 @@ export const data = new SlashCommandBuilder()
       .setDescription("Legislative chamber")
       .setRequired(true)
       .addChoices(
-        { name: "Senate (US)", value: "senate" },
-        { name: "House (US)", value: "house" },
+        // Shared chamber values cover multiple countries; the server validates
+        // the (country, race) pair, so one choice per chamber type — not per
+        // country — avoids duplicate Discord choice values.
+        { name: "Senate (US/BR/NG)", value: "senate" },
+        { name: "House (US/NG)", value: "house" },
         { name: "Commons (UK)", value: "commons" },
         { name: "Shūgiin (JP)", value: "shugiin" },
         { name: "Sangiin (JP)", value: "sangiin" },
