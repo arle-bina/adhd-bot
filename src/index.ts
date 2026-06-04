@@ -23,6 +23,8 @@ import { recordMessage, recordMemberCount } from "./utils/statsStore.js";
 import { handleStarboardReaction } from "./utils/starboard.js";
 import { handleLockReaction, TICKET_CLOSE_MODAL_PREFIX, handleTicketCloseModalSubmit, TICKET_MERGE_MODAL_PREFIX, mergeTickets, TICKET_CLAIM_BUTTON_ID, handleClaimTicket } from "./utils/tickets.js";
 import { getChannelConfig, postWebhookReaction } from "./utils/api-game.js";
+import { getBulkSyncRoles, type SyncRolesBulkUser } from "./utils/api.js";
+import { syncMemberRoles } from "./utils/roles.js";
 import { getTicketByChannel, getTicketByNumber } from "./utils/ticketStore.js";
 import { checkMessage } from "./utils/filter.js";
 import { isBotEnabled } from "./utils/botState.js";
@@ -204,6 +206,46 @@ client.once("ready", () => {
     }
   };
   setInterval(remindUnverified, 72 * 60 * 60 * 1000);
+
+  // Bulk-sync game roles for all linked members every 6 hours.
+  // Uses the single /sync-roles bulk endpoint to avoid per-user rate limits.
+  const autoSyncRoles = async () => {
+    try {
+      const bulk = await getBulkSyncRoles();
+      const byDiscordId = new Map<string, SyncRolesBulkUser>();
+      for (const u of bulk.users) {
+        if (u.discordId) byDiscordId.set(u.discordId, u);
+      }
+
+      let synced = 0;
+      let failed = 0;
+      for (const guild of client.guilds.cache.values()) {
+        const members = await guild.members.fetch().catch(() => null);
+        if (!members) continue;
+        const humans = [...members.values()].filter((m) => !m.user.bot);
+
+        const CONCURRENCY = 5;
+        for (let i = 0; i < humans.length; i += CONCURRENCY) {
+          const batch = humans.slice(i, i + CONCURRENCY);
+          const results = await Promise.allSettled(
+            batch.map(async (member) => {
+              const entry = byDiscordId.get(member.id);
+              if (!entry || entry.roles.length === 0) return;
+              await syncMemberRoles(member, entry.roles, entry.details);
+            }),
+          );
+          for (const r of results) {
+            if (r.status === "fulfilled") synced++;
+            else failed++;
+          }
+        }
+      }
+      console.log(`Auto sync-roles: ${synced} processed, ${failed} errors`);
+    } catch (err) {
+      console.error("Auto sync-roles error:", err);
+    }
+  };
+  setInterval(autoSyncRoles, 6 * 60 * 60 * 1000);
 });
 
 // Track messages for server stats + content filter
