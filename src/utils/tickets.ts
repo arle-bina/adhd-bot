@@ -329,7 +329,7 @@ export async function createTicket(
   }
 }
 
-async function fetchAllMessages(channel: TextChannel, cap: number): Promise<Message[]> {
+export async function fetchAllMessages(channel: TextChannel, cap: number): Promise<Message[]> {
   const all: Message[] = [];
   let lastId: string | undefined;
 
@@ -545,11 +545,14 @@ export async function handleClaimTicket(
     await embedMessage.edit({ embeds: [updated], components: [buildTicketActionRow(true)] }).catch(() => {});
   }
 
+  // Surface the claim in the channel so everyone in the ticket can see who claimed it
+  const claimMsg = `🙋 <@${claimer.id}> has claimed this ticket.`;
+
   if ("message" in interaction && interaction.message) {
     // Button interaction — deferUpdate was called by the caller; use followUp
-    await interaction.followUp({ content: "You have claimed this ticket.", ephemeral: true });
+    await interaction.followUp({ content: claimMsg });
   } else {
-    await interaction.reply({ content: "Ticket claimed.", ephemeral: true });
+    await interaction.reply({ content: claimMsg });
   }
 }
 
