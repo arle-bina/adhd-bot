@@ -5,7 +5,7 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { lookupByName, lookupByDiscordId, getAutocomplete } from "../utils/api.js";
-import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { hexToInt, replyWithError, safeEmbedUrl } from "../utils/helpers.js";
 import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
 
 export const cooldown = 5;
@@ -106,10 +106,11 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     const embed = new EmbedBuilder()
       .setTitle(`${char.name} — Corporate Positions`.slice(0, 256))
       .setColor(color)
-      .setURL(char.profileUrl)
+      .setURL(safeEmbedUrl(char.profileUrl) ?? null)
       .setFooter({ text: makeForexFooter(displayCurrency, rates, nativeCc) });
 
-    if (char.avatarUrl) embed.setThumbnail(char.avatarUrl);
+    const avatarThumb = safeEmbedUrl(char.avatarUrl);
+    if (avatarThumb) embed.setThumbnail(avatarThumb);
 
     const lines: string[] = [];
 

@@ -20,7 +20,7 @@ import {
   type Achievement,
 } from "../utils/api.js";
 import { syncMemberRoles } from "../utils/roles.js";
-import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { hexToInt, replyWithError, safeEmbedUrl } from "../utils/helpers.js";
 import { formatOfficeType, COUNTRY_FLAG } from "../utils/formatting.js";
 import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
 
@@ -83,7 +83,7 @@ function buildProfileEmbed(char: CharacterResult, displayCurrency: string, rates
   const embed = new EmbedBuilder()
     .setTitle(char.name)
     .setColor(partyColor(char))
-    .setURL(char.profileUrl);
+    .setURL(safeEmbedUrl(char.profileUrl) ?? null);
 
   // Build footer with forex rate info when not displaying in anchor currency
   const footerParts: string[] = [];
@@ -144,7 +144,9 @@ function buildProfileEmbed(char: CharacterResult, displayCurrency: string, rates
     embed.addFields({ name: "Active Election", value: `${electionType} (${electionState})`, inline: false });
   }
 
-  const thumbnail = char.avatarUrl ?? char.discordAvatarUrl;
+  // Validate before setting: a relative/invalid avatarUrl would otherwise throw
+  // and abort the command. Fall back to the (always-absolute) Discord avatar.
+  const thumbnail = safeEmbedUrl(char.avatarUrl) ?? safeEmbedUrl(char.discordAvatarUrl);
   if (thumbnail) embed.setThumbnail(thumbnail);
 
   return embed;
@@ -154,7 +156,7 @@ function buildCareerEmbed(char: CharacterResult, career: CareerEvent[]): EmbedBu
   const embed = new EmbedBuilder()
     .setTitle(`${char.name} — Career History`)
     .setColor(partyColor(char))
-    .setURL(char.profileUrl)
+    .setURL(safeEmbedUrl(char.profileUrl) ?? null)
     .setFooter({ text: "ahousedividedgame.com" });
 
   if (career.length === 0) {
@@ -176,7 +178,7 @@ function buildAchievementsEmbed(char: CharacterResult, achievements: Achievement
   const embed = new EmbedBuilder()
     .setTitle(`${char.name} — Achievements`)
     .setColor(partyColor(char))
-    .setURL(char.profileUrl)
+    .setURL(safeEmbedUrl(char.profileUrl) ?? null)
     .setFooter({ text: "ahousedividedgame.com" });
 
   if (achievements.length === 0) {
