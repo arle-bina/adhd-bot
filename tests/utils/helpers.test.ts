@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { EmbedBuilder } from "discord.js";
 import { hexToInt, errorMessage, safeEmbedUrl } from "../../src/utils/helpers.js";
+import { FETCH_TIMEOUT_MS } from "../../src/utils/api-base.js";
 
 /** Capture the real error discord.js throws when given an invalid embed URL. */
 function captureInvalidUrlError(badUrl: string): unknown {
@@ -43,6 +44,15 @@ describe("errorMessage", () => {
     expect(errorMessage(new Error("API error: 500"))).toBe(
       "Game API error (500). Try again shortly."
     );
+  });
+
+  it("reports a TimeoutError with the configured timeout in seconds", () => {
+    const err = Object.assign(new Error("The operation was aborted due to timeout"), {
+      name: "TimeoutError",
+    });
+    const msg = errorMessage(err);
+    expect(msg).toContain(`${FETCH_TIMEOUT_MS / 1000}s timeout`);
+    expect(msg).toContain("took too long");
   });
 
   it("maps TypeError fetch failed to network error", () => {

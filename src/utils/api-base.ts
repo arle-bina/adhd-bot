@@ -30,7 +30,7 @@ async function throwApiError(response: Response, endpoint: string): Promise<neve
 // ---------------------------------------------------------------------------
 
 const MAX_CONCURRENT = 5;
-const FETCH_TIMEOUT_MS = 10_000;
+export const FETCH_TIMEOUT_MS = 15_000;
 
 let active = 0;
 const waiting: Array<() => void> = [];

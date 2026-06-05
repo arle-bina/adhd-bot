@@ -14,6 +14,7 @@ const ERRORS_PER_PAGE = 3;
 export const SITE_FOOTER = "ahousedividedgame.com";
 
 import { forexSuffix, type ForexData, fetchForexData } from "./currency.js";
+import { FETCH_TIMEOUT_MS } from "./api-base.js";
 
 export function standardFooter(extra?: string): { text: string } {
   return { text: extra ? `${extra} · ${SITE_FOOTER}` : SITE_FOOTER };
@@ -288,7 +289,7 @@ export function errorMessage(error: unknown): string {
 
   // --- Network / timeout errors ---
   if (error instanceof Error && error.name === "TimeoutError") {
-    return "The game server took too long to respond (10s timeout). Try again shortly.";
+    return `The game server took too long to respond (${FETCH_TIMEOUT_MS / 1000}s timeout). Try again shortly.`;
   }
 
   if (error instanceof TypeError && msg === "fetch failed") {
