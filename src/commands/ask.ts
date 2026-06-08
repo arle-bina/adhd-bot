@@ -21,6 +21,19 @@ function stripMermaid(text: string): string {
   );
 }
 
+/** Strip meta-commentary preamble lines ("I'll examine...", "Let me check...", etc.). */
+function stripPreamble(text: string): string {
+  const preamblePatterns = [
+    /^\s*(I'll examine|Let me (check|read|look)|I need to (look|check|examine)|I will (search|look|examine)|Let me search)[^.]*\.\s*/i,
+    /^\s*(I'll|I will|Let me|I need to)\s+[^.]*(?:the relevant|the key|the files|the code|the routes|the components)[^.]*\.\s*/i,
+  ];
+  let cleaned = text;
+  for (const pattern of preamblePatterns) {
+    cleaned = cleaned.replace(pattern, "");
+  }
+  return cleaned.trim();
+}
+
 /** Strip tool call artifacts (XML tags, function invocations). */
 function stripToolCalls(text: string): string {
   return text
@@ -44,6 +57,7 @@ function truncateLongCodeBlocks(text: string, maxLines = 30): string {
 /** Format the LLM answer for Discord. */
 function formatForDiscord(answer: string): string {
   let cleaned = stripMermaid(answer);
+  cleaned = stripPreamble(cleaned);
   cleaned = stripToolCalls(cleaned);
   cleaned = truncateLongCodeBlocks(cleaned, 30);
   return cleaned;
