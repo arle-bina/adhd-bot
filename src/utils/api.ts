@@ -2,7 +2,10 @@
 // This file exists so existing imports continue to work unchanged.
 // Once all imports point to the domain files, delete this barrel.
 
-export { ApiError } from "./api-base.js";
+export {
+  ApiError,
+  apiPostPublic,
+} from "./api-base.js";
 
 export {
   lookupByName,
