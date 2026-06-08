@@ -21,6 +21,16 @@ function stripMermaid(text: string): string {
   );
 }
 
+/** Strip tool call artifacts (XML tags, function invocations). */
+function stripToolCalls(text: string): string {
+  return text
+    .replace(/<function_calls>[\s\S]*?<\/function_calls>/g, "")
+    .replace(/<invoke[\s\S]*?<\/invoke>/g, "")
+    .replace(/<parameter[\s\S]*?<\/parameter>/g, "")
+    .replace(/\b(read_file|read_files)\s*\([^)]*\)/g, "")
+    .trim();
+}
+
 /** Truncate code blocks that are too long for Discord. */
 function truncateLongCodeBlocks(text: string, maxLines = 30): string {
   return text.replace(/```(\w+)?\n([\s\S]*?)```/g, (_match, lang, code) => {
@@ -31,9 +41,10 @@ function truncateLongCodeBlocks(text: string, maxLines = 30): string {
   });
 }
 
-/** Format the LLM answer for Discord: strip mermaid, truncate long blocks. */
+/** Format the LLM answer for Discord. */
 function formatForDiscord(answer: string): string {
   let cleaned = stripMermaid(answer);
+  cleaned = stripToolCalls(cleaned);
   cleaned = truncateLongCodeBlocks(cleaned, 30);
   return cleaned;
 }
@@ -70,7 +81,11 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     return;
   }
 
-  await interaction.deferReply();
+  // Show "Thinking..." immediately, then edit when answer arrives
+  const thinkingMsg = await interaction.reply({
+    content: "🤔 Thinking...",
+    fetchReply: true,
+  });
 
   try {
     const result = await apiPostPublic<AskResponse>(
@@ -80,23 +95,16 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     );
 
     const answer = formatForDiscord(result.answer);
-    const fileList = result.files.length
-      ? result.files.map((f) => `\`${f}\``).join(", ")
-      : "*(none identified)*";
 
-    const header = `**Question:** ${question}\n**Sources:** ${fileList}\n\n`;
-    const footer = `\n\n_Model: ${result.model} · ${result.usage.input}+${result.usage.output} tokens_`;
-
-    // Build the full message
-    let fullMessage = header + answer + footer;
+    // Build the full message — no sources, no question repeat, no model metadata
+    let fullMessage = answer;
 
     // Discord message limit is 2000 chars
     if (fullMessage.length > MAX_MESSAGE_LENGTH) {
-      const truncated = answer.slice(0, MAX_MESSAGE_LENGTH - header.length - footer.length - 50);
-      fullMessage = header + truncated + "\n\n*(Answer truncated — view full response in ops dashboard)*" + footer;
+      fullMessage = answer.slice(0, MAX_MESSAGE_LENGTH - 30) + "\n\n*(truncated)*";
     }
 
-    await interaction.editReply({ content: fullMessage });
+    await thinkingMsg.edit(fullMessage);
   } catch (error) {
     // Use the bot's standard error handling pattern
     const { replyWithError } = await import("../utils/helpers.js");
