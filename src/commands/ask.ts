@@ -97,8 +97,12 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
   const question = interaction.options.getString("question", true).trim();
 
-  // Role gate: only users with one of the allowed roles may use /ask
-  const allowedIds = process.env.ASK_ALLOWED_ROLE_IDS!.split(",").map((id) => id.trim()).filter(Boolean);
+  // Role gate: only admins, moderators, and developers may use /ask
+  const allowedIds = [
+    process.env.DEVELOPER_ROLE_ID!,
+    process.env.SERVER_MODERATOR_ID!,
+    process.env.DEV_TEAM_ROLE_ID!,
+  ].filter(Boolean);
   const memberRoles = interaction.member?.roles;
   const hasAllowedRole = memberRoles && "cache" in memberRoles
     ? allowedIds.some((id) => memberRoles.cache.has(id))
