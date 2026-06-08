@@ -97,6 +97,21 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
   const question = interaction.options.getString("question", true).trim();
 
+  // Role gate: only users with one of the allowed roles may use /ask
+  const allowedIds = process.env.ASK_ALLOWED_ROLE_IDS!.split(",").map((id) => id.trim()).filter(Boolean);
+  const memberRoles = interaction.member?.roles;
+  const hasAllowedRole = memberRoles && "cache" in memberRoles
+    ? allowedIds.some((id) => memberRoles.cache.has(id))
+    : false;
+
+  if (!hasAllowedRole) {
+    await interaction.reply({
+      content: "You don't have permission to use this command.",
+      ephemeral: true,
+    });
+    return;
+  }
+
   await interaction.deferReply();
 
   try {
