@@ -74,6 +74,10 @@ export const data = new SlashCommandBuilder()
       .setMaxLength(2000)
   );
 
+// LLM calls can take up to 75s on the server side; give ourselves 90s so the
+// server always has time to return an error before we abort.
+const ASK_TIMEOUT_MS = 90_000;
+
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
   const question = interaction.options.getString("question", true).trim();
 
@@ -95,17 +99,16 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     return;
   }
 
-  // Show "Thinking..." immediately, then edit when answer arrives
-  const thinkingMsg = await interaction.reply({
-    content: "🤔 Thinking...",
-    fetchReply: true,
-  });
+  // Defer immediately — shows Discord's native loading state and gives us the
+  // full 15-minute interaction window instead of a 3-second hard timeout.
+  await interaction.deferReply();
 
   try {
     const result = await apiPostPublic<AskResponse>(
       "/api/ask-public",
       { question },
-      process.env.OPS_DASHBOARD_URL
+      process.env.OPS_DASHBOARD_URL,
+      ASK_TIMEOUT_MS,
     );
 
     const answer = formatForDiscord(result.answer);
@@ -118,7 +121,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       fullMessage = answer.slice(0, MAX_MESSAGE_LENGTH - 30) + "\n\n*(truncated)*";
     }
 
-    await thinkingMsg.edit(fullMessage);
+    await interaction.editReply(fullMessage);
   } catch (error) {
     // Use the bot's standard error handling pattern
     const { replyWithError } = await import("../utils/helpers.js");
