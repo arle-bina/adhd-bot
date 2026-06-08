@@ -6,7 +6,6 @@ const required = [
   "GAME_API_URL",
   "GAME_API_KEY",
   "OPS_DASHBOARD_URL",
-  "ASK_API_SECRET",
   "WELCOME_CHANNEL_ID",
   "RULES_CHANNEL_ID",
   "MEMBER_ROLE_ID",
