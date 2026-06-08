@@ -118,7 +118,8 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     const result = await apiPostPublic<AskResponse>(
       "/api/ask-public",
       { question },
-      process.env.OPS_DASHBOARD_URL
+      process.env.OPS_DASHBOARD_URL,
+      process.env.ASK_API_SECRET
     );
 
     const { parts } = formatForDiscord(result.answer);

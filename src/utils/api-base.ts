@@ -121,14 +121,17 @@ export async function apiPost<T>(pathname: string, body: unknown): Promise<T> {
 }
 
 /** Rate-limited POST request without auth (public endpoints). */
-export async function apiPostPublic<T>(pathname: string, body: unknown, baseUrl?: string): Promise<T> {
+export async function apiPostPublic<T>(pathname: string, body: unknown, baseUrl?: string, secret?: string): Promise<T> {
   const url = new URL(pathname, baseUrl || process.env.GAME_API_URL);
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (secret) headers["X-Ask-Secret"] = secret;
 
   await acquire();
   try {
     const response = await fetch(url.toString(), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
