@@ -18,7 +18,7 @@ import {
   type BondsResponse,
   type FinancialsResponse,
 } from "../utils/api.js";
-import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { hexToInt, replyWithError, safeEmbedUrl } from "../utils/helpers.js";
 import { currencyFor, formatCurrency, formatSharePrice, formatCurrencySigned, padCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
 
 // ---------------------------------------------------------------------------
@@ -142,11 +142,12 @@ function buildOverviewEmbed(res: CorporationResponse, displayCurrency: string, r
 
   const embed = new EmbedBuilder()
     .setTitle(corp.name.slice(0, 256))
-    .setURL(corp.corpUrl)
+    .setURL(safeEmbedUrl(corp.corpUrl) ?? null)
     .setColor(hexToInt(corp.brandColor) || 0x3b82f6)
     .setFooter({ text: forexFooter(displayCurrency, nativeCc, rates) });
 
-  if (corp.logoUrl) embed.setThumbnail(corp.logoUrl);
+  const logoThumb = safeEmbedUrl(corp.logoUrl);
+  if (logoThumb) embed.setThumbnail(logoThumb);
   if (corp.description) embed.setDescription(corp.description.slice(0, 4096));
 
   const ceoValue = ceo
@@ -288,11 +289,12 @@ function buildFinancialsEmbed(res: FinancialsResponse, displayCurrency: string, 
 
   const embed = new EmbedBuilder()
     .setTitle(`Financial Statement — ${corp.name}`.slice(0, 256))
-    .setURL(corp.corpUrl)
+    .setURL(safeEmbedUrl(corp.corpUrl) ?? null)
     .setColor(hexToInt(corp.brandColor) || 0x3b82f6)
     .setFooter({ text: forexFooter(displayCurrency, nativeCc, rates, `${corp.typeLabel} · HQ: ${corp.headquartersStateName}`) });
 
-  if (corp.logoUrl) embed.setThumbnail(corp.logoUrl);
+  const logoThumb = safeEmbedUrl(corp.logoUrl);
+  if (logoThumb) embed.setThumbnail(logoThumb);
 
   const W = 14;
   const incomeBlock = [

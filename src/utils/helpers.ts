@@ -14,6 +14,7 @@ const ERRORS_PER_PAGE = 3;
 export const SITE_FOOTER = "ahousedividedgame.com";
 
 import { forexSuffix, type ForexData, fetchForexData } from "./currency.js";
+import { FETCH_TIMEOUT_MS } from "./api-base.js";
 
 export function standardFooter(extra?: string): { text: string } {
   return { text: extra ? `${extra} · ${SITE_FOOTER}` : SITE_FOOTER };
@@ -46,6 +47,24 @@ export function hexToInt(hex: string | null | undefined): number {
   if (!hex) return DEFAULT_EMBED_COLOR;
   const parsed = parseInt(hex.replace("#", ""), 16);
   return Number.isNaN(parsed) ? DEFAULT_EMBED_COLOR : parsed;
+}
+
+/**
+ * Return `url` only when it is an absolute http(s) URL that Discord's embed
+ * builder will accept; otherwise `undefined`. Guards `setURL`/`setThumbnail`/
+ * `setImage` against relative or malformed values — e.g. a locally-stored
+ * `/api/uploads/avatars/…` avatar path — which otherwise throw a validation
+ * error that aborts the entire command. Pass the result straight to the embed
+ * setter (which accepts `null`/`undefined` to mean "no URL").
+ */
+export function safeEmbedUrl(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? url : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -214,13 +233,24 @@ function describeAggregateNetwork(err: AggregateError): string | null {
     return `Could not reach the game server — ${labels.join(", ")}. Try again shortly.`;
   }
 
-  // Generic undici AggregateError with unhelpful "Received one or more errors" message
+  // Generic undici AggregateError with an unhelpful wrapper message. Only treat
+  // this as a connection failure when the sub-errors carry NO useful message —
+  // a genuine undici network aggregate. Validation aggregates (e.g. discord.js'
+  // "@sapphire/shapeshift" combined error from setURL/setThumbnail on a bad URL)
+  // ALSO use the "Received one or more errors" wrapper but carry real sub-error
+  // messages like "Invalid URL"; surface those instead of mislabeling them as a
+  // network failure (return null so the caller reports the real sub-errors).
   if (
     err.message.includes("Received one or more errors") ||
     err.message === "" ||
     err.message === "0"
   ) {
-    return "Could not reach the game server — connection failed. Try again shortly.";
+    const subMsgs = (err.errors as unknown[])
+      .map((e) => (e instanceof Error ? e.message : String(e)))
+      .filter((m) => m && m !== "0" && m !== "undefined");
+    if (subMsgs.length === 0) {
+      return "Could not reach the game server — connection failed. Try again shortly.";
+    }
   }
 
   return null;
@@ -259,7 +289,7 @@ export function errorMessage(error: unknown): string {
 
   // --- Network / timeout errors ---
   if (error instanceof Error && error.name === "TimeoutError") {
-    return "The game server took too long to respond (10s timeout). Try again shortly.";
+    return `The game server took too long to respond (${FETCH_TIMEOUT_MS / 1000}s timeout). Try again shortly.`;
   }
 
   if (error instanceof TypeError && msg === "fetch failed") {
