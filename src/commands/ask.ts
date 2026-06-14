@@ -113,8 +113,26 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
     const answer = formatForDiscord(result.answer);
 
-    // Build the full message — no sources, no question repeat, no model metadata
+    // Build sources list from the files the backend used
+    const MAX_SOURCES = 8;
+    const sources = (result.files || [])
+      .slice(0, MAX_SOURCES)
+      .map((f) => `• \`${f}\``)
+      .join("\n");
+
+    // Build the full message — no question repeat, no model metadata
     let fullMessage = answer;
+    if (sources) {
+      const header = "\n\n**Sources**\n";
+      const proposed = fullMessage + header + sources;
+      fullMessage =
+        proposed.length > MAX_MESSAGE_LENGTH
+          ? fullMessage.slice(0, MAX_MESSAGE_LENGTH - (header.length + sources.length + 60)) +
+            "\n\n*(truncated)*" +
+            header +
+            sources
+          : proposed;
+    }
 
     // Discord message limit is 2000 chars
     if (fullMessage.length > MAX_MESSAGE_LENGTH) {
