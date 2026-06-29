@@ -49,7 +49,7 @@ export interface CreateTicketResponse {
   message?: string;
 }
 
-export type UpdateTicketAction = "append" | "status" | "close";
+export type UpdateTicketAction = "append" | "status" | "close" | "retriage";
 
 export interface UpdateTicketPayload {
   ticketNumber?: number;
