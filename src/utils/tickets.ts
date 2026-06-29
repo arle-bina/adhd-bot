@@ -35,12 +35,30 @@ import {
   getTickets,
   MAX_TICKETS_PER_CATEGORY,
 } from "./ticketStore.js";
+import {
+  createTicket as apiCreateTicket,
+  updateTicket as apiUpdateTicket,
+  type GameTicketCategory,
+} from "./ticketsApi.js";
 
 const CATEGORY_CONFIG: Record<TicketCategory, { label: string; emoji: string; color: number }> = {
   bug: { label: "Bug Report", emoji: "🐛", color: 0xed4245 },
   suggestion: { label: "Suggestion", emoji: "💡", color: 0x57f287 },
   moderation: { label: "Moderation Issue", emoji: "🛡️", color: 0xfee75c },
 };
+
+/** Map the bot's ticket categories onto the game backend enum (defaults to "other"). */
+function toGameCategory(category: TicketCategory): GameTicketCategory {
+  switch (category) {
+    case "bug":
+      return "bug";
+    case "moderation":
+      return "moderation";
+    default:
+      // "suggestion" (and any future categories) have no backend equivalent
+      return "other";
+  }
+}
 
 export const PANEL_EMOJI_MAP: Record<string, TicketCategory> = {
   "🐛": "bug",
@@ -128,6 +146,11 @@ function buildTicketCloseModal(channelId: string): ModalBuilder {
     .setCustomId(`${TICKET_CLOSE_MODAL_PREFIX}${channelId}`)
     .setTitle("Close ticket")
     .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(resolutionInput));
+}
+
+/** Best-effort server display name for the opener; falls back to the username. */
+function sanitizeDisplayName(guild: Guild, userId: string, username: string): string {
+  return guild.members.cache.get(userId)?.displayName ?? username;
 }
 
 function sanitizeUsername(username: string): string {
@@ -312,7 +335,7 @@ export async function createTicket(
       await channel.send(`<@&${pingRoleId}>`).catch(() => {});
     }
 
-    addTicket(guild.id, {
+    const ticketRecord = {
       userId,
       category,
       channelId: channel.id,
@@ -321,7 +344,35 @@ export async function createTicket(
       subject: details?.subject,
       description: details?.description,
       embedMessageId: embedMessage.id,
-    });
+    };
+    addTicket(guild.id, ticketRecord);
+
+    // Best-effort mirror into the game backend (MongoDB). Non-fatal: the local
+    // tickets.json store above is the source of truth for the Discord UX.
+    const openerName = sanitizeDisplayName(guild, userId, username);
+    const title = (details?.subject?.trim() || `${config.label}`).slice(0, 200);
+    const description = (
+      details?.description?.trim() ||
+      details?.subject?.trim() ||
+      "No description provided."
+    ).slice(0, 5000);
+    apiCreateTicket({
+      category: toGameCategory(category),
+      title,
+      description,
+      discordChannelId: channel.id,
+      discordUserId: userId,
+      discordUsername: username,
+      discordDisplayName: openerName,
+    })
+      .then((res) => {
+        if (res?.ticketNumber != null) {
+          addTicket(guild.id, { ...ticketRecord, apiTicketNumber: res.ticketNumber });
+        }
+      })
+      .catch(() => {
+        /* createTicket already swallows/logs — guard against unexpected throws */
+      });
 
     return { success: true, channelId: channel.id };
   } finally {
@@ -491,6 +542,13 @@ async function finalizeTicketClose(
       console.warn(`Merged-ticket close DM to ${mergedUserId} failed:`, err);
     }
   }
+
+  // Best-effort mirror of the close onto the backend ticket (non-fatal).
+  void apiUpdateTicket({
+    discordChannelId: channel.id,
+    action: "close",
+    closedBy: closer.id,
+  });
 
   removeTicket(guild.id, channel.id);
   await channel.delete(`Ticket #${paddedNum} closed by ${closer.user.tag}`).catch(() => {});

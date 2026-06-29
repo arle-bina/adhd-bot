@@ -25,6 +25,8 @@ export interface Ticket {
   claimedAt?: string;
   /** Message ID of the initial ticket embed (used to update it on claim) */
   embedMessageId?: string;
+  /** Ticket number assigned by the game backend (MongoDB sync), if mirrored */
+  apiTicketNumber?: number;
 }
 
 interface TicketData {

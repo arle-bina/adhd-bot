@@ -120,6 +120,25 @@ export async function apiPost<T>(pathname: string, body: unknown): Promise<T> {
   }
 }
 
+/** Rate-limited PATCH request to the game API. */
+export async function apiPatch<T>(pathname: string, body: unknown): Promise<T> {
+  const url = new URL(pathname, process.env.GAME_API_URL);
+
+  await acquire();
+  try {
+    const response = await fetch(url.toString(), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!response.ok) await throwApiError(response, pathname);
+    return response.json() as Promise<T>;
+  } finally {
+    release();
+  }
+}
+
 /** Rate-limited POST request without auth (public endpoints). */
 export async function apiPostPublic<T>(pathname: string, body: unknown, baseUrl?: string, timeoutMs?: number): Promise<T> {
   const url = new URL(pathname, baseUrl || process.env.GAME_API_URL);
