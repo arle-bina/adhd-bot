@@ -4,7 +4,7 @@
 // helper here swallows errors and returns undefined on failure so the Discord
 // ticket UX never breaks when the game API is slow or down.
 
-import { apiPost, apiPatch } from "./api-base.js";
+import { apiFetch, apiPost, apiPatch } from "./api-base.js";
 
 const TICKETS_ENDPOINT = "/api/discord-bot/tickets";
 
@@ -49,7 +49,7 @@ export interface CreateTicketResponse {
   message?: string;
 }
 
-export type UpdateTicketAction = "append" | "status" | "close" | "retriage";
+export type UpdateTicketAction = "append" | "status" | "close" | "retriage" | "resolution-delivered";
 
 export interface UpdateTicketPayload {
   ticketNumber?: number;
@@ -76,6 +76,34 @@ export async function createTicket(payload: CreateTicketPayload): Promise<Create
   } catch (err) {
     console.error("[ticketsApi] createTicket sync failed:", err);
     return undefined;
+  }
+}
+
+/** A ticket closed in the ops dashboard with an admin resolution message awaiting delivery. */
+export interface PendingResolution {
+  ticketNumber: number;
+  discordUserId: string;
+  discordChannelId?: string;
+  message: string;
+}
+
+interface PendingResolutionsResponse {
+  tickets: PendingResolution[];
+}
+
+/**
+ * Fetch tickets closed in the ops dashboard whose admin resolution message has
+ * not yet been delivered to the opener.
+ * Non-fatal: logs and returns [] on any failure (including missing config).
+ */
+export async function getPendingResolutions(): Promise<PendingResolution[]> {
+  if (!apiConfigured()) return [];
+  try {
+    const res = await apiFetch<PendingResolutionsResponse>(`${TICKETS_ENDPOINT}/pending-resolutions`);
+    return res.tickets ?? [];
+  } catch (err) {
+    console.error("[ticketsApi] getPendingResolutions failed:", err);
+    return [];
   }
 }
 

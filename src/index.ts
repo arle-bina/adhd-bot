@@ -26,7 +26,7 @@ import { getChannelConfig, postWebhookReaction } from "./utils/api-game.js";
 import { getBulkSyncRoles, type SyncRolesBulkUser } from "./utils/api.js";
 import { syncMemberRoles } from "./utils/roles.js";
 import { getTicketByChannel, getTicketByNumber } from "./utils/ticketStore.js";
-import { updateTicket as apiUpdateTicket } from "./utils/ticketsApi.js";
+import { updateTicket as apiUpdateTicket, getPendingResolutions } from "./utils/ticketsApi.js";
 import { checkMessage } from "./utils/filter.js";
 import { isBotEnabled } from "./utils/botState.js";
 import { isChannelBanned } from "./utils/channelBans.js";
@@ -247,6 +247,69 @@ client.once("ready", () => {
     }
   };
   setInterval(autoSyncRoles, 6 * 60 * 60 * 1000);
+
+  // Deliver ticket resolution messages set by admins in the ops dashboard.
+  // Polls the game backend for closed tickets whose resolution hasn't been
+  // delivered, then DMs the opener (falling back to the ticket channel if their
+  // DMs are closed). Runs ~30s after ready, then every ~3 minutes.
+  const deliverResolutions = async () => {
+    try {
+      const pending = await getPendingResolutions();
+      if (pending.length === 0) return;
+
+      for (const ticket of pending) {
+        try {
+          const embed = new EmbedBuilder()
+            .setTitle(`Your ticket #${ticket.ticketNumber} has been resolved`)
+            .setDescription(ticket.message || "Your ticket has been resolved.")
+            .setColor(0x57f287)
+            .setFooter({ text: "Reply by opening a new ticket if you need further help." })
+            .setTimestamp();
+
+          let delivered = false;
+
+          // Preferred: DM the opener.
+          try {
+            const user = await client.users.fetch(ticket.discordUserId);
+            await user.send({ embeds: [embed] });
+            delivered = true;
+          } catch {
+            // DMs closed / user unfetchable — fall back to the ticket channel.
+          }
+
+          // Fallback: post in the ticket channel if it still exists.
+          if (!delivered && ticket.discordChannelId) {
+            try {
+              const channel = await client.channels.fetch(ticket.discordChannelId).catch(() => null);
+              if (channel?.isTextBased() && "send" in channel) {
+                await (channel as TextChannel).send({
+                  content: `<@${ticket.discordUserId}>`,
+                  embeds: [embed],
+                  allowedMentions: { users: [ticket.discordUserId] },
+                });
+                delivered = true;
+              }
+            } catch {
+              // channel gone or no permission — leave undelivered, retry next sweep.
+            }
+          }
+
+          if (delivered) {
+            await apiUpdateTicket({ ticketNumber: ticket.ticketNumber, action: "resolution-delivered" });
+          }
+        } catch (err) {
+          console.error(`Resolution delivery error for ticket #${ticket.ticketNumber}:`, err);
+        }
+
+        // Small delay between sends to respect Discord rate limits.
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+    } catch (err) {
+      console.error("Resolution delivery sweep error:", err);
+    }
+  };
+  setTimeout(deliverResolutions, 30 * 1000);
+  setInterval(deliverResolutions, 3 * 60 * 1000);
 });
 
 // Track messages for server stats + content filter
