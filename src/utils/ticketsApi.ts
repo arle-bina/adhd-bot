@@ -30,6 +30,16 @@ export interface CreateTicketPayload {
   discordDisplayName?: string;
   imageUrls?: string[];
   message?: TicketApiMessage;
+  /**
+   * Original ticket number to preserve when backfilling existing tickets.
+   * The backend is idempotent on this (or discordChannelId): if a ticket with
+   * this number already exists it is returned without creating a duplicate.
+   */
+  ticketNumber?: number;
+  /** Original creation timestamp (ISO) — used when backfilling historical tickets. */
+  createdAt?: string;
+  /** Ticket status, e.g. "open" / "closed". */
+  status?: string;
 }
 
 export interface CreateTicketResponse {
