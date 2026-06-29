@@ -48,7 +48,7 @@ const CATEGORY_CONFIG: Record<TicketCategory, { label: string; emoji: string; co
 };
 
 /** Map the bot's ticket categories onto the game backend enum (defaults to "other"). */
-function toGameCategory(category: TicketCategory): GameTicketCategory {
+export function toGameCategory(category: TicketCategory): GameTicketCategory {
   switch (category) {
     case "bug":
       return "bug";
