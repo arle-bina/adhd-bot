@@ -26,6 +26,7 @@ import { getChannelConfig, postWebhookReaction } from "./utils/api-game.js";
 import { getBulkSyncRoles, type SyncRolesBulkUser } from "./utils/api.js";
 import { syncMemberRoles } from "./utils/roles.js";
 import { getTicketByChannel, getTicketByNumber } from "./utils/ticketStore.js";
+import { updateTicket as apiUpdateTicket } from "./utils/ticketsApi.js";
 import { checkMessage } from "./utils/filter.js";
 import { isBotEnabled } from "./utils/botState.js";
 import { isChannelBanned } from "./utils/channelBans.js";
@@ -305,6 +306,27 @@ client.on("messageCreate", async (message) => {
       }
     } catch (error) {
       console.error("Content filter error:", error);
+    }
+  }
+
+  // Mirror ticket follow-up messages into the game backend (non-fatal, additive).
+  // Skip filtered messages — those get deleted above and shouldn't be persisted.
+  if (!matchedTerm) {
+    const ticket = getTicketByChannel(message.guild.id, message.channelId);
+    if (ticket) {
+      const imageUrls = [...message.attachments.values()].map((a) => a.url);
+      void apiUpdateTicket({
+        discordChannelId: message.channelId,
+        action: "append",
+        message: {
+          discordMessageId: message.id,
+          authorId: message.author.id,
+          authorName: message.author.username,
+          content: message.content || undefined,
+          imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+          createdAt: message.createdAt.toISOString(),
+        },
+      });
     }
   }
 });
