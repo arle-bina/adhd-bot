@@ -389,27 +389,25 @@ export async function createTicket(
       discordUserId: userId,
       discordUsername: username,
       discordDisplayName: openerName,
+      // This channel's number is the source of truth: send it so the backend
+      // (ops dashboard / support MCP) stores the exact number shown in Discord
+      // instead of minting its own and drifting apart from the channel name.
+      ticketNumber,
     })
       .then(async (res) => {
         if (res?.ticketNumber != null) {
           addTicket(guild.id, { ...ticketRecord, apiTicketNumber: res.ticketNumber });
 
-          // Rename to the backend's ticket number so the Discord channel and the
-          // ops-dashboard/support-MCP number always agree — the local bot counter
-          // and the backend counter otherwise drift apart and the same number ends
-          // up meaning two different tickets depending on which system you read it from.
-          const backendPadded = String(res.ticketNumber).padStart(4, "0");
-          const backendChannelName = `ticket-${category}-${sanitizeUsername(username)}-${backendPadded}`;
-          await channel.setName(backendChannelName, "Sync backend ticket number").catch((err) => {
-            console.error(`Failed to rename ticket channel to backend number ${backendPadded}:`, err);
-          });
-
-          const currentEmbed = embedMessage.embeds[0];
-          if (currentEmbed) {
-            const updated = EmbedBuilder.from(currentEmbed).setTitle(
-              `${config.emoji} ${config.label} — #${backendPadded}`,
+          // The backend persists the number we sent, so res.ticketNumber should
+          // equal `ticketNumber` and the channel/embed already show it — no rename.
+          // A mismatch means the backend already had that number for a different
+          // channel (a genuine collision): surface it rather than silently renaming
+          // the channel to match, which would defeat Discord being the source of truth.
+          if (res.ticketNumber !== ticketNumber) {
+            console.error(
+              `Ticket #${paddedNum} sync mismatch: backend returned #${res.ticketNumber} for channel ${channel.id}`,
             );
-            await embedMessage.edit({ embeds: [updated] }).catch(() => {});
+            await alertSyncFailure(guild, channel.id, ticketNumber, category, username);
           }
         } else {
           // apiCreateTicket already retried internally; a final undefined here means
