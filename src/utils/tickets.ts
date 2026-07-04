@@ -192,6 +192,31 @@ export interface TicketDetails {
   description?: string;
 }
 
+/**
+ * Post a visible alert when a ticket's backend mirror never lands — otherwise
+ * it silently never shows up in the support MCP/ops dashboard and nobody knows
+ * to go find it in Discord instead.
+ */
+async function alertSyncFailure(
+  guild: Guild,
+  channelId: string,
+  localTicketNumber: number,
+  category: TicketCategory,
+  username: string,
+): Promise<void> {
+  const logChannelId = process.env.TICKET_LOG_CHANNEL_ID ?? "1483974417628270593";
+  const logChannel = guild.channels.cache.get(logChannelId) as TextChannel | undefined;
+  const paddedNum = String(localTicketNumber).padStart(4, "0");
+  const modRoleId = moderatorRoleId();
+  const ping = modRoleId ? `<@&${modRoleId}> ` : "";
+  await logChannel
+    ?.send(
+      `${ping}⚠️ Backend sync failed for ${category} ticket #${paddedNum} (${username}, <#${channelId}>) — ` +
+        `it will NOT appear in the support MCP/ops dashboard. Please triage from Discord directly or re-run the sync.`,
+    )
+    .catch((err) => console.error("Failed to post ticket sync-failure alert:", err));
+}
+
 export async function createTicket(
   guild: Guild,
   userId: string,
@@ -365,13 +390,37 @@ export async function createTicket(
       discordUsername: username,
       discordDisplayName: openerName,
     })
-      .then((res) => {
+      .then(async (res) => {
         if (res?.ticketNumber != null) {
           addTicket(guild.id, { ...ticketRecord, apiTicketNumber: res.ticketNumber });
+
+          // Rename to the backend's ticket number so the Discord channel and the
+          // ops-dashboard/support-MCP number always agree — the local bot counter
+          // and the backend counter otherwise drift apart and the same number ends
+          // up meaning two different tickets depending on which system you read it from.
+          const backendPadded = String(res.ticketNumber).padStart(4, "0");
+          const backendChannelName = `ticket-${category}-${sanitizeUsername(username)}-${backendPadded}`;
+          await channel.setName(backendChannelName, "Sync backend ticket number").catch((err) => {
+            console.error(`Failed to rename ticket channel to backend number ${backendPadded}:`, err);
+          });
+
+          const currentEmbed = embedMessage.embeds[0];
+          if (currentEmbed) {
+            const updated = EmbedBuilder.from(currentEmbed).setTitle(
+              `${config.emoji} ${config.label} — #${backendPadded}`,
+            );
+            await embedMessage.edit({ embeds: [updated] }).catch(() => {});
+          }
+        } else {
+          // apiCreateTicket already retried internally; a final undefined here means
+          // this ticket never made it into the backend and won't show up in the
+          // support MCP/ops dashboard at all unless someone notices and re-syncs it.
+          await alertSyncFailure(guild, channel.id, ticketNumber, category, username);
         }
       })
-      .catch(() => {
-        /* createTicket already swallows/logs — guard against unexpected throws */
+      .catch(async (err) => {
+        console.error("Unexpected error mirroring ticket to backend:", err);
+        await alertSyncFailure(guild, channel.id, ticketNumber, category, username);
       });
 
     return { success: true, channelId: channel.id };

@@ -65,18 +65,33 @@ function apiConfigured(): boolean {
   return Boolean(process.env.GAME_API_URL && process.env.GAME_API_KEY);
 }
 
+const CREATE_TICKET_RETRIES = 3;
+const CREATE_TICKET_RETRY_DELAY_MS = 1500;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Mirror a newly opened ticket into the game backend.
- * Non-fatal: logs and returns undefined on any failure (including missing config).
+ * Retries a few times (transient network/API blips are common); only gives up
+ * and returns undefined after all attempts fail. Callers should treat a final
+ * undefined as a real sync failure worth surfacing to staff, not a routine no-op.
  */
 export async function createTicket(payload: CreateTicketPayload): Promise<CreateTicketResponse | undefined> {
   if (!apiConfigured()) return undefined;
-  try {
-    return await apiPost<CreateTicketResponse>(TICKETS_ENDPOINT, payload);
-  } catch (err) {
-    console.error("[ticketsApi] createTicket sync failed:", err);
-    return undefined;
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= CREATE_TICKET_RETRIES; attempt++) {
+    try {
+      return await apiPost<CreateTicketResponse>(TICKETS_ENDPOINT, payload);
+    } catch (err) {
+      lastErr = err;
+      console.error(`[ticketsApi] createTicket sync failed (attempt ${attempt}/${CREATE_TICKET_RETRIES}):`, err);
+      if (attempt < CREATE_TICKET_RETRIES) await sleep(CREATE_TICKET_RETRY_DELAY_MS * attempt);
+    }
   }
+  console.error("[ticketsApi] createTicket sync exhausted retries, giving up:", lastErr);
+  return undefined;
 }
 
 /** A ticket closed in the ops dashboard with an admin resolution message awaiting delivery. */
