@@ -64,6 +64,19 @@ const client = new Client({
   partials: [Partials.Message, Partials.Reaction],
 });
 
+// Process-level safety net. Without these, an unhandled rejection (e.g. a
+// synchronous disk write in an async event handler throwing on ENOSPC/EACCES)
+// terminates the process; under pm2's autorestart that becomes a crash loop on
+// every incoming message. Log and continue instead — a single failed side
+// effect must not take the bot down. Truly fatal conditions still surface here
+// and in the logs for an operator to act on.
+process.on("unhandledRejection", (reason) => {
+  console.error("[unhandledRejection]", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[uncaughtException]", err);
+});
+
 const commands = new Collection<string, Command>();
 
 // Channel IDs for news/suggestions webhook reaction tracking — loaded from game config on ready
@@ -1023,4 +1036,9 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-client.login(process.env.DISCORD_BOT_TOKEN);
+client.login(process.env.DISCORD_BOT_TOKEN).catch((err) => {
+  // An invalid/revoked token rejects here; without a catch this is an unhandled
+  // rejection that (pre-safety-net) crash-looped against Discord's auth.
+  console.error("[login] Failed to log in to Discord:", err);
+  process.exit(1);
+});

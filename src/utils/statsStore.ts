@@ -42,8 +42,16 @@ function loadStats(): StatsData {
 }
 
 function saveStats(data: StatsData): void {
-  ensureDataDir();
-  writeFileSync(STATS_FILE, JSON.stringify(data, null, 2), "utf-8");
+  // recordMessage() runs saveStats on every message inside the async
+  // messageCreate handler; a disk error here must not reject that handler and
+  // (pre-safety-net) crash-loop the bot. Stats are best-effort telemetry, so
+  // log and drop the write rather than throw.
+  try {
+    ensureDataDir();
+    writeFileSync(STATS_FILE, JSON.stringify(data, null, 2), "utf-8");
+  } catch (err) {
+    console.error("[statsStore] Failed to persist stats:", err);
+  }
 }
 
 function todayKey(): string {
