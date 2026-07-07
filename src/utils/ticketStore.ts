@@ -1,6 +1,6 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { readJsonSafe, writeJsonAtomic } from "./atomicJson.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -36,28 +36,19 @@ interface TicketData {
   counters: Record<string, number>;
 }
 
-function ensureDataDir(): void {
-  if (!existsSync(DATA_DIR)) {
-    mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
-
 function loadData(): TicketData {
-  ensureDataDir();
-  if (!existsSync(TICKET_FILE)) {
-    return { tickets: {}, panels: {}, categoryIds: {}, counters: {} };
-  }
-  try {
-    const raw = readFileSync(TICKET_FILE, "utf-8");
-    return JSON.parse(raw) as TicketData;
-  } catch {
-    return { tickets: {}, panels: {}, categoryIds: {}, counters: {} };
-  }
+  // onCorrupt: "throw" — the counters map is the source of truth for ticket
+  // numbering, so a corrupt file must never silently reset it to {} (that would
+  // re-hand-out #1 and double-allocate the historical range). readJsonSafe
+  // recovers from the `.bak` snapshot if present, otherwise fails loudly.
+  return readJsonSafe<TicketData>(TICKET_FILE, {
+    fallback: { tickets: {}, panels: {}, categoryIds: {}, counters: {} },
+    onCorrupt: "throw",
+  });
 }
 
 function saveData(data: TicketData): void {
-  ensureDataDir();
-  writeFileSync(TICKET_FILE, JSON.stringify(data, null, 2), "utf-8");
+  writeJsonAtomic(TICKET_FILE, data);
 }
 
 export function getTickets(guildId: string): Record<string, Ticket> {
