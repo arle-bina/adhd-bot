@@ -21,6 +21,10 @@ import { checkCooldown } from "./utils/cooldown.js";
 import { errorMessage, replyWithError } from "./utils/helpers.js";
 import { recordMessage, recordMemberCount } from "./utils/statsStore.js";
 import { handleStarboardReaction } from "./utils/starboard.js";
+import {
+  getBinding as getReactionRoleBinding,
+  emojiMatches as reactionRoleEmojiMatches,
+} from "./utils/reactionRoleStore.js";
 import { handleLockReaction, TICKET_CLOSE_MODAL_PREFIX, handleTicketCloseModalSubmit, TICKET_MERGE_MODAL_PREFIX, mergeTickets, TICKET_CLAIM_BUTTON_ID, handleClaimTicket } from "./utils/tickets.js";
 import { getChannelConfig, postWebhookReaction } from "./utils/api-game.js";
 import { getTicketByChannel, getTicketByNumber } from "./utils/ticketStore.js";
@@ -284,6 +288,20 @@ client.on("messageReactionAdd", async (reaction, user) => {
     // Starboard
     await handleStarboardReaction(fullReaction, fullReaction.message.guild);
 
+    // Reaction roles: grant the bound role when a user reacts to a
+    // reaction-role message (see /android-tester).
+    {
+      const binding = getReactionRoleBinding(fullReaction.message.id);
+      if (binding && reactionRoleEmojiMatches(binding, fullReaction.emoji)) {
+        const member = await fullReaction.message.guild.members.fetch(fullUser.id).catch(() => null);
+        if (member && !member.roles.cache.has(binding.roleId)) {
+          await member.roles.add(binding.roleId, "Reaction role opt-in").catch((e) =>
+            console.error("reaction-role add failed:", e?.message ?? e),
+          );
+        }
+      }
+    }
+
     // In-game reaction tracking for news/suggestions webhook posts
     const emoji = fullReaction.emoji.name;
     if (emoji === "👍" || emoji === "👎") {
@@ -313,6 +331,18 @@ client.on("messageReactionRemove", async (reaction, user) => {
     if (fullReaction.message.partial) await fullReaction.message.fetch();
     if (!fullReaction.message.guild) return;
     await handleStarboardReaction(fullReaction, fullReaction.message.guild);
+
+    // Reaction roles: only remove the role if the binding opts into it.
+    const binding = getReactionRoleBinding(fullReaction.message.id);
+    if (binding && binding.removeOnUnreact && reactionRoleEmojiMatches(binding, fullReaction.emoji)) {
+      const fullUser = user.partial ? await user.fetch() : user;
+      const member = await fullReaction.message.guild.members.fetch(fullUser.id).catch(() => null);
+      if (member && member.roles.cache.has(binding.roleId)) {
+        await member.roles.remove(binding.roleId, "Reaction role opt-out").catch((e) =>
+          console.error("reaction-role remove failed:", e?.message ?? e),
+        );
+      }
+    }
   } catch (error) {
     console.error("Starboard reactionRemove error:", error);
   }
