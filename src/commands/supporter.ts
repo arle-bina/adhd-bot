@@ -109,14 +109,14 @@ async function resolveTarget(
   return null;
 }
 
-async function getSupporterRoleIds(guildId: string): Promise<{ regular?: string; plus?: string }> {
+export async function getSupporterRoleIds(guildId: string): Promise<{ regular?: string; plus?: string }> {
   return {
     regular: process.env.SUPPORTER_ROLE_ID || undefined,
     plus: process.env.SUPPORTER_PLUS_ROLE_ID || undefined,
   };
 }
 
-async function syncSupporterRole(
+export async function syncSupporterRole(
   member: GuildMember,
   tier: "regular" | "plus" | null,
 ): Promise<{ added: string[]; removed: string[] }> {
