@@ -1,6 +1,7 @@
 import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
+  AutocompleteInteraction,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
@@ -9,6 +10,7 @@ import {
 } from "discord.js";
 import { getLeaderboard, LeaderboardCharacter, LeaderboardMetric } from "../utils/api.js";
 import { replyWithError } from "../utils/helpers.js";
+import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
 
 // Explicit conditional avoids TypeScript's TS7053 "any" error from dynamic key indexing (char[metric]).
@@ -48,16 +50,7 @@ export const data = new SlashCommandBuilder()
       .setName("country")
       .setDescription("Filter by country")
       .setRequired(false)
-      .addChoices(
-        { name: "United States", value: "US" },
-        { name: "United Kingdom", value: "UK" },
-        { name: "Germany", value: "DE" },
-        { name: "Japan", value: "JP" },
-        { name: "Ireland", value: "IE" },
-        { name: "Brazil", value: "BR" },
-        { name: "China", value: "CN" },
-        { name: "Nigeria", value: "NG" }
-      )
+      .setAutocomplete(true)
   )
   .addIntegerOption((option) =>
     option
@@ -74,6 +67,10 @@ export const data = new SlashCommandBuilder()
       .setRequired(false)
       .addChoices(...CURRENCY_CHOICES)
   );
+
+export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  await respondCountryAutocomplete(interaction);
+}
 
 const metricLabels: Record<LeaderboardMetric, string> = {
   politicalInfluence: "Political Influence",
@@ -147,6 +144,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const country = interaction.options.getString("country") ?? undefined;
   const limit = interaction.options.getInteger("limit") ?? 10;
   const explicitCurrency = interaction.options.getString("currency") ?? undefined;
+
+  // Autocomplete does not constrain submitted values the way choices did.
+  const check = await validateCountry(country ?? null);
+  if (!check.ok) {
+    await interaction.reply({ content: check.message, ephemeral: true });
+    return;
+  }
 
   await interaction.deferReply();
 

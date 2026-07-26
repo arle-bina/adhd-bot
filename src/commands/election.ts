@@ -17,6 +17,7 @@ import {
 import { formatElectionType, RACE_EMOJI } from "../utils/formatting.js";
 import { replyWithError, positionBar } from "../utils/helpers.js";
 import { currencyFor, formatCurrency } from "../utils/currency.js";
+import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 
 export const cooldown = 5;
 
@@ -28,16 +29,7 @@ export const data = new SlashCommandBuilder()
       .setName("country")
       .setDescription("Country")
       .setRequired(true)
-      .addChoices(
-        { name: "United States", value: "US" },
-        { name: "United Kingdom", value: "UK" },
-        { name: "Germany", value: "DE" },
-        { name: "Japan", value: "JP" },
-        { name: "Ireland", value: "IE" },
-        { name: "Brazil", value: "BR" },
-        { name: "China", value: "CN" },
-        { name: "Nigeria", value: "NG" }
-      )
+      .setAutocomplete(true)
   )
   .addStringOption((o) =>
     o.setName("state").setDescription("State or constituency code (e.g. CA, SCO)").setRequired(false).setAutocomplete(true)
@@ -65,9 +57,16 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
-  const focused = interaction.options.getFocused();
+  // getFocused(true) returns the option object, so this can branch on which
+  // option is being typed — without it, the country field would be answered
+  // with state suggestions.
+  const focused = interaction.options.getFocused(true);
+  if (focused.name === "country") {
+    await respondCountryAutocomplete(interaction);
+    return;
+  }
   try {
-    const res = await getAutocomplete({ type: "states", q: focused, limit: 25 });
+    const res = await getAutocomplete({ type: "states", q: focused.value, limit: 25 });
     await interaction.respond(
       res.results.map((r) => ({ name: r.name, value: r.id }))
     );
@@ -301,6 +300,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const country = interaction.options.getString("country", true);
   const state = interaction.options.getString("state") ?? undefined;
   const race = interaction.options.getString("race") ?? undefined;
+
+  // Autocomplete does not constrain submitted values the way choices did.
+  const check = await validateCountry(country);
+  if (!check.ok) {
+    await interaction.reply({ content: check.message, ephemeral: true });
+    return;
+  }
 
   await interaction.deferReply();
 

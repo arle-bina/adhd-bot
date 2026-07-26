@@ -1,10 +1,12 @@
 import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
+  AutocompleteInteraction,
   EmbedBuilder,
 } from "discord.js";
 import { getElections, getTurnStatus } from "../utils/api.js";
 import { formatElectionType, RACE_EMOJI } from "../utils/formatting.js";
+import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 import { replyWithError } from "../utils/helpers.js";
 
 export const cooldown = 5;
@@ -19,20 +21,22 @@ export const data = new SlashCommandBuilder()
       .setName("country")
       .setDescription("Filter by country")
       .setRequired(false)
-      .addChoices(
-        { name: "United States", value: "US" },
-        { name: "United Kingdom", value: "UK" },
-        { name: "Germany", value: "DE" },
-        { name: "Japan", value: "JP" },
-        { name: "Ireland", value: "IE" },
-        { name: "Brazil", value: "BR" },
-        { name: "China", value: "CN" },
-        { name: "Nigeria", value: "NG" }
-      )
+      .setAutocomplete(true)
   );
+
+export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  await respondCountryAutocomplete(interaction);
+}
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
   const country = interaction.options.getString("country") ?? undefined;
+
+  // Autocomplete does not constrain submitted values the way choices did.
+  const check = await validateCountry(country ?? null);
+  if (!check.ok) {
+    await interaction.reply({ content: check.message, ephemeral: true });
+    return;
+  }
 
   await interaction.deferReply();
 
