@@ -55,16 +55,21 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   const id2 = interaction.options.getString("party2", true);
   const country2 = interaction.options.getString("country2", true);
 
-  // Autocomplete does not constrain submitted values the way choices did.
+  await interaction.deferReply();
+
+  /*
+   * Autocomplete does not constrain submitted values the way choices did, so
+   * re-check here. Runs AFTER deferReply: a cold country cache makes an HTTP
+   * call (60s client timeout) and Discord kills an un-acknowledged interaction
+   * after 3s.
+   */
   for (const code of [country1, country2]) {
     const check = await validateCountry(code);
     if (!check.ok) {
-      await interaction.reply({ content: check.message, ephemeral: true });
+      await interaction.editReply({ content: check.message });
       return;
     }
   }
-
-  await interaction.deferReply();
 
   try {
     const [res1, res2] = await Promise.all([
