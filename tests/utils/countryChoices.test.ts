@@ -79,4 +79,24 @@ describe("validateCountry", () => {
     getAutocomplete.mockRejectedValue(new Error("boom"));
     expect(await validateCountry("ZZ")).toEqual({ ok: true });
   });
+
+  /*
+   * The API caps its response at Discord's 25-result ceiling, so a full page
+   * may be truncated. Rejecting on absence would start failing legitimate
+   * countries once the enabled roster grows past 25.
+   */
+  it("fails open when the country list is at the truncation cap", async () => {
+    getAutocomplete.mockResolvedValue({
+      results: Array.from({ length: 25 }, (_, i) => ({ id: `C${i}`, name: `Country ${i}` })),
+    });
+    expect(await validateCountry("ZZ")).toEqual({ ok: true });
+  });
+
+  it("still rejects when the list is short enough to be complete", async () => {
+    getAutocomplete.mockResolvedValue({
+      results: Array.from({ length: 24 }, (_, i) => ({ id: `C${i}`, name: `Country ${i}` })),
+    });
+    const r = await validateCountry("ZZ");
+    expect(r.ok).toBe(false);
+  });
 });

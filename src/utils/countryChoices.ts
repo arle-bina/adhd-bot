@@ -14,6 +14,13 @@ export interface CountryChoice {
 const CACHE_TTL_MS = 5 * 60 * 1000;
 let cache: { at: number; countries: CountryChoice[] } | null = null;
 
+/**
+ * Discord's autocomplete ceiling, which the API also applies to its response.
+ * A result set of exactly this size may have been truncated, so it cannot be
+ * treated as the complete list of enabled countries.
+ */
+const DISCORD_CHOICE_LIMIT = 25;
+
 /** Test seam — drops the memoized country list. */
 export function __resetCountryCache(): void {
   cache = null;
@@ -63,6 +70,12 @@ export async function validateCountry(
   const countries = await fetchLiveCountries("");
   if (countries.length === 0) return { ok: true };
   if (countries.some((c) => c.id === code)) return { ok: true };
+  /*
+   * A full page may have been truncated by the API's 25-result cap, so absence
+   * from it is not proof the country is disabled. Fail open rather than reject
+   * a legitimate country once the roster grows past the cap.
+   */
+  if (countries.length >= DISCORD_CHOICE_LIMIT) return { ok: true };
   return {
     ok: false,
     message: `**${code}** is not part of this game. Pick a country from the suggestions.`,
