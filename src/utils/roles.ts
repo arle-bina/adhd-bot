@@ -35,7 +35,7 @@ export function fixedRoleIdsForTokens(roles: string[]): string[] {
 }
 
 /** Convert a role string from the API into a Discord role name and color. */
-function resolveRole(
+export function resolveRole(
   role: string,
   details: SyncRolesDetails,
 ): { name: string; color: number } | null {
@@ -137,6 +137,19 @@ export async function syncMemberRoles(
     "Regional Councillor",
     "Premier",
     "Minister-President",
+    // RU (Soviet Union) — verbatim from COUNTRY_CONFIGS.RU officeTypes labels.
+    // "Premier" is RU's executive too, already listed above via CN.
+    "Chairman of the Presidium",
+    "Supreme Soviet Deputy",
+    "Nationalities Deputy",
+    "Republic Deputy",
+    "Republic First Secretary",
+    "Chairman of Gosbank",
+    // DD (East Germany) — verbatim from COUNTRY_CONFIGS.DD officeTypes labels.
+    "General Secretary",
+    "Deputy",
+    "Land First Secretary",
+    "President of the Staatsbank",
   ]);
 
   // Protected role IDs that should never be removed
