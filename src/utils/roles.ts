@@ -146,8 +146,12 @@ export async function syncMemberRoles(
     "Republic First Secretary",
     "Chairman of Gosbank",
     // DD (East Germany) — verbatim from COUNTRY_CONFIGS.DD officeTypes labels.
+    // DD's Volkskammer seat label is the bare word "Deputy", deliberately NOT
+    // listed here: this set drives role REMOVAL, and an exact-name match would
+    // strip an unrelated server role of that name. Bot-created office roles
+    // carry OFFICE_COLOR, so the `role.color !== 0` check below already tracks
+    // them for cleanup.
     "General Secretary",
-    "Deputy",
     "Land First Secretary",
     "President of the Staatsbank",
   ]);
