@@ -98,20 +98,28 @@ describe("constant maps", () => {
 
   it("COUNTRY_NAMES covers every supported country", () => {
     expect(Object.keys(COUNTRY_NAMES).sort()).toEqual([
-      "BR", "CN", "DE", "IE", "JP", "NG", "UK", "US",
+      "BR", "CN", "DD", "DE", "IE", "JP", "NG", "RU", "UK", "US",
     ]);
   });
 
   it("COUNTRY_FLAG covers every supported country", () => {
     expect(Object.keys(COUNTRY_FLAG).sort()).toEqual([
-      "BR", "CN", "DE", "IE", "JP", "NG", "UK", "US",
+      "BR", "CN", "DD", "DE", "IE", "JP", "NG", "RU", "UK", "US",
     ]);
   });
 
   it("COUNTRY_COLORS covers every supported country", () => {
     expect(Object.keys(COUNTRY_COLORS).sort()).toEqual([
-      "BR", "CN", "DE", "IE", "JP", "NG", "UK", "US",
+      "BR", "CN", "DD", "DE", "IE", "JP", "NG", "RU", "UK", "US",
     ]);
+  });
+
+  // These strings must match the Discord role names character-for-character:
+  // getOrCreateRole looks roles up by name and CREATES one when nothing
+  // matches, so a mismatch silently spawns an empty duplicate role.
+  it("names RU and DD to match their Discord roles", () => {
+    expect(COUNTRY_NAMES.RU).toBe("Soviet Union");
+    expect(COUNTRY_NAMES.DD).toBe("East Germany");
   });
 
   it("EXCHANGE_LABELS covers all exchanges", () => {

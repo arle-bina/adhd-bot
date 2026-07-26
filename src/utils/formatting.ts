@@ -109,6 +109,9 @@ export const COUNTRY_NAMES: Record<string, string> = {
   BR: "Brazil",
   CN: "China",
   NG: "Nigeria",
+  // Must match the Discord role names exactly — roles are resolved by name.
+  RU: "Soviet Union",
+  DD: "East Germany",
 };
 
 export const COUNTRY_FLAG: Record<string, string> = {
@@ -120,6 +123,8 @@ export const COUNTRY_FLAG: Record<string, string> = {
   BR: "🇧🇷",
   CN: "🇨🇳",
   NG: "🇳🇬",
+  RU: "🚩",
+  DD: "🏴",
 };
 
 export const COUNTRY_COLORS: Record<string, number> = {
@@ -131,6 +136,8 @@ export const COUNTRY_COLORS: Record<string, number> = {
   BR: 0x009c3b,
   CN: 0xde2910,
   NG: 0x008751,
+  RU: 0xcc0000,
+  DD: 0xffce00,
 };
 
 export const EXCHANGE_LABELS: Record<string, string> = {
