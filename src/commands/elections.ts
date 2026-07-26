@@ -11,6 +11,7 @@ import {
 import { getElections, getAutocomplete, type Election } from "../utils/api.js";
 import { replyWithError, standardFooter } from "../utils/helpers.js";
 import { formatElectionType } from "../utils/formatting.js";
+import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 
 export { formatElectionType };
 
@@ -26,16 +27,7 @@ export const data = new SlashCommandBuilder()
       .setName("country")
       .setDescription("Filter by country")
       .setRequired(false)
-      .addChoices(
-        { name: "United States", value: "US" },
-        { name: "United Kingdom", value: "UK" },
-        { name: "Germany", value: "DE" },
-        { name: "Japan", value: "JP" },
-        { name: "Ireland", value: "IE" },
-        { name: "Brazil", value: "BR" },
-        { name: "China", value: "CN" },
-        { name: "Nigeria", value: "NG" }
-      )
+      .setAutocomplete(true)
   )
   .addStringOption((option) =>
     option
@@ -46,9 +38,16 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
-  const focused = interaction.options.getFocused();
+  // getFocused(true) returns the option object, so this can branch on which
+  // option is being typed — without it, the country field would be answered
+  // with state suggestions.
+  const focused = interaction.options.getFocused(true);
+  if (focused.name === "country") {
+    await respondCountryAutocomplete(interaction);
+    return;
+  }
   try {
-    const res = await getAutocomplete({ type: "states", q: focused, limit: 25 });
+    const res = await getAutocomplete({ type: "states", q: focused.value, limit: 25 });
     await interaction.respond(
       res.results.map((r) => ({ name: r.name, value: r.id }))
     );
@@ -111,6 +110,18 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const state = interaction.options.getString("state") ?? undefined;
 
   await interaction.deferReply();
+
+  /*
+   * Autocomplete does not constrain submitted values the way choices did, so
+   * re-check here. Runs AFTER deferReply: a cold country cache makes an HTTP
+   * call (60s client timeout) and Discord kills an un-acknowledged interaction
+   * after 3s.
+   */
+  const check = await validateCountry(country ?? null);
+  if (!check.ok) {
+    await interaction.editReply({ content: check.message });
+    return;
+  }
 
   try {
     const result = await getElections({ country, state });

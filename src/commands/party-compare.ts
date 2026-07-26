@@ -1,11 +1,13 @@
 import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
+  AutocompleteInteraction,
   EmbedBuilder,
 } from "discord.js";
 import { getParty } from "../utils/api.js";
 import { hexToInt, replyWithError, positionBar } from "../utils/helpers.js";
 import { currencyFor, formatCurrency } from "../utils/currency.js";
+import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 
 export const cooldown = 5;
 
@@ -16,34 +18,27 @@ export const data = new SlashCommandBuilder()
     o.setName("party1").setDescription("First party ID number (e.g. 1, 2, 3)").setRequired(true)
   )
   .addStringOption((o) =>
-    o.setName("country1").setDescription("Country for the first party").setRequired(true)
-      .addChoices(
-        { name: "United States", value: "US" },
-        { name: "United Kingdom", value: "UK" },
-        { name: "Germany", value: "DE" },
-        { name: "Japan", value: "JP" },
-        { name: "Ireland", value: "IE" },
-        { name: "Brazil", value: "BR" },
-        { name: "China", value: "CN" },
-        { name: "Nigeria", value: "NG" }
-      )
+    o
+      .setName("country1")
+      .setDescription("Country for the first party")
+      .setRequired(true)
+      .setAutocomplete(true)
   )
   .addStringOption((o) =>
     o.setName("party2").setDescription("Second party ID number (e.g. 1, 2, 3)").setRequired(true)
   )
   .addStringOption((o) =>
-    o.setName("country2").setDescription("Country for the second party").setRequired(true)
-      .addChoices(
-        { name: "United States", value: "US" },
-        { name: "United Kingdom", value: "UK" },
-        { name: "Germany", value: "DE" },
-        { name: "Japan", value: "JP" },
-        { name: "Ireland", value: "IE" },
-        { name: "Brazil", value: "BR" },
-        { name: "China", value: "CN" },
-        { name: "Nigeria", value: "NG" }
-      )
+    o
+      .setName("country2")
+      .setDescription("Country for the second party")
+      .setRequired(true)
+      .setAutocomplete(true)
   );
+
+// Both country options want the same suggestions, so no per-option branching.
+export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  await respondCountryAutocomplete(interaction);
+}
 
 function ideologyLabel(economic: number, social: number): string {
   const econ = economic < -1 ? "Left" : economic > 1 ? "Right" : "Center";
@@ -61,6 +56,20 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   const country2 = interaction.options.getString("country2", true);
 
   await interaction.deferReply();
+
+  /*
+   * Autocomplete does not constrain submitted values the way choices did, so
+   * re-check here. Runs AFTER deferReply: a cold country cache makes an HTTP
+   * call (60s client timeout) and Discord kills an un-acknowledged interaction
+   * after 3s.
+   */
+  for (const code of [country1, country2]) {
+    const check = await validateCountry(code);
+    if (!check.ok) {
+      await interaction.editReply({ content: check.message });
+      return;
+    }
+  }
 
   try {
     const [res1, res2] = await Promise.all([

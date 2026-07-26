@@ -1,10 +1,12 @@
 import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
+  AutocompleteInteraction,
   EmbedBuilder,
 } from "discord.js";
 import { getParty } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
 
 export function ideologyLabel(economic: number, social: number): string {
@@ -32,16 +34,7 @@ export const data = new SlashCommandBuilder()
       .setName("country")
       .setDescription("Country code (e.g. US, UK, JP)")
       .setRequired(true)
-      .addChoices(
-        { name: "United States", value: "US" },
-        { name: "United Kingdom", value: "UK" },
-        { name: "Germany", value: "DE" },
-        { name: "Japan", value: "JP" },
-        { name: "Ireland", value: "IE" },
-        { name: "Brazil", value: "BR" },
-        { name: "China", value: "CN" },
-        { name: "Nigeria", value: "NG" },
-      )
+      .setAutocomplete(true)
   )
   .addStringOption((option) =>
     option
@@ -51,12 +44,28 @@ export const data = new SlashCommandBuilder()
       .addChoices(...CURRENCY_CHOICES)
   );
 
+export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  await respondCountryAutocomplete(interaction);
+}
+
 export async function execute(interaction: ChatInputCommandInteraction) {
   const id = interaction.options.getString("id", true);
   const country = interaction.options.getString("country", true);
   const explicitCurrency = interaction.options.getString("currency");
 
   await interaction.deferReply();
+
+  /*
+   * Autocomplete does not constrain submitted values the way choices did, so
+   * re-check here. Runs AFTER deferReply: a cold country cache makes an HTTP
+   * call (60s client timeout) and Discord kills an un-acknowledged interaction
+   * after 3s.
+   */
+  const check = await validateCountry(country);
+  if (!check.ok) {
+    await interaction.editReply({ content: check.message });
+    return;
+  }
 
   try {
     const [result, rates] = await Promise.all([

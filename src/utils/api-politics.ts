@@ -37,6 +37,12 @@ export interface CharacterResult {
   activeElection: {
     electionId: string;
     electionType: string;
+    /**
+     * Config-resolved office label from the game API. Absent for race types
+     * with no office config (snap elections), so callers keep the local
+     * formatOfficeType map as a fallback.
+     */
+    electionLabel?: string;
     electionState: string;
     enteredAt: string;
   } | null;
@@ -166,6 +172,12 @@ export interface Election {
   id: string;
   seatId: string | null;
   electionType: string;
+  /**
+   * Country the race belongs to. Disambiguates office keys shared across
+   * countries (CN and RU both use `premier`) when picking an emoji. Optional
+   * so an older API build degrades to the race-keyed map.
+   */
+  countryId?: string;
   state: string;
   status: "upcoming" | "active";
   startTime: string | null;

@@ -65,6 +65,14 @@ export function formatOfficeType(type: string): string {
     snap_dail: "TD",
     localCouncil: "Councillor",
     chamber: "Federal Deputy",
+    // RU (Soviet Union) and DD (East Germany). Fallbacks only — the game API
+    // supplies the authoritative label where it has one.
+    supremeSovietDeputy: "Supreme Soviet Deputy",
+    nationalitiesDeputy: "Nationalities Deputy",
+    chairmanOfPresidium: "Chairman of the Presidium",
+    republicSupremeSoviet: "Republic Deputy",
+    generalSecretary: "General Secretary",
+    volkskammerDeputy: "Deputy",
   };
   return map[type] ?? type;
 }
@@ -109,6 +117,9 @@ export const COUNTRY_NAMES: Record<string, string> = {
   BR: "Brazil",
   CN: "China",
   NG: "Nigeria",
+  // Must match the Discord role names exactly — roles are resolved by name.
+  RU: "Soviet Union",
+  DD: "East Germany",
 };
 
 export const COUNTRY_FLAG: Record<string, string> = {
@@ -120,7 +131,21 @@ export const COUNTRY_FLAG: Record<string, string> = {
   BR: "🇧🇷",
   CN: "🇨🇳",
   NG: "🇳🇬",
+  RU: "🚩",
+  DD: "🏴",
 };
+
+/**
+ * Emoji for a race. Several office keys are shared across countries — `premier`
+ * belongs to both CN and RU — so a country id, when known, wins over the
+ * race-keyed map. Falls back to the map, then to a generic ballot box.
+ *
+ * Declared after COUNTRY_FLAG so the reference is initialised at module load.
+ */
+export function raceEmoji(electionType: string, countryId?: string): string {
+  if (countryId && COUNTRY_FLAG[countryId]) return COUNTRY_FLAG[countryId];
+  return RACE_EMOJI[electionType] ?? "🗳️";
+}
 
 export const COUNTRY_COLORS: Record<string, number> = {
   US: 0x3c5a9a,
@@ -131,6 +156,8 @@ export const COUNTRY_COLORS: Record<string, number> = {
   BR: 0x009c3b,
   CN: 0xde2910,
   NG: 0x008751,
+  RU: 0xcc0000,
+  DD: 0xffce00,
 };
 
 export const EXCHANGE_LABELS: Record<string, string> = {

@@ -1,6 +1,7 @@
 import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
+  AutocompleteInteraction,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
@@ -9,6 +10,7 @@ import {
 } from "discord.js";
 import { getMarketShare, SectorType, MarketShareResponse } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 import {
   currencyFor,
   formatCurrency,
@@ -62,16 +64,7 @@ export const data = new SlashCommandBuilder()
       .setName("country")
       .setDescription("Filter by country")
       .setRequired(false)
-      .addChoices(
-        { name: "United States", value: "US" },
-        { name: "United Kingdom", value: "UK" },
-        { name: "Germany", value: "DE" },
-        { name: "Japan", value: "JP" },
-        { name: "Ireland", value: "IE" },
-        { name: "Brazil", value: "BR" },
-        { name: "China", value: "CN" },
-        { name: "Nigeria", value: "NG" },
-      )
+      .setAutocomplete(true)
   )
   .addStringOption((option) =>
     option
@@ -93,6 +86,10 @@ export const data = new SlashCommandBuilder()
       .setRequired(false)
       .addChoices(...CURRENCY_CHOICES)
   );
+
+export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  await respondCountryAutocomplete(interaction);
+}
 
 function buildScopeLabel(result: MarketShareResponse): string {
   if (result.scope.stateName) return result.scope.stateName;
@@ -257,6 +254,18 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const explicitCurrency = interaction.options.getString("currency");
 
   await interaction.deferReply();
+
+  /*
+   * Autocomplete does not constrain submitted values the way choices did, so
+   * re-check here. Runs AFTER deferReply: a cold country cache makes an HTTP
+   * call (60s client timeout) and Discord kills an un-acknowledged interaction
+   * after 3s.
+   */
+  const check = await validateCountry(country ?? null);
+  if (!check.ok) {
+    await interaction.editReply({ content: check.message });
+    return;
+  }
 
   try {
     let result = await getMarketShare({ type, country, state, page, discordId: interaction.user.id });

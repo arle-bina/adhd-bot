@@ -1,10 +1,12 @@
 import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
+  AutocompleteInteraction,
   EmbedBuilder,
 } from "discord.js";
 import { getPrediction, PredictionPartyEntry, ApiError } from "../utils/api.js";
 import { replyWithError } from "../utils/helpers.js";
+import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 
 export const cooldown = 5;
 
@@ -16,16 +18,7 @@ export const data = new SlashCommandBuilder()
       .setName("country")
       .setDescription("Country to predict")
       .setRequired(true)
-      .addChoices(
-        { name: "United States", value: "US" },
-        { name: "United Kingdom", value: "UK" },
-        { name: "Germany", value: "DE" },
-        { name: "Japan", value: "JP" },
-        { name: "Ireland", value: "IE" },
-        { name: "Brazil", value: "BR" },
-        { name: "China", value: "CN" },
-        { name: "Nigeria", value: "NG" },
-      )
+      .setAutocomplete(true)
   )
   .addStringOption((option) =>
     option
@@ -45,8 +38,17 @@ export const data = new SlashCommandBuilder()
         { name: "Dáil (IE)", value: "dail" },
         { name: "Chamber (BR)", value: "chamber" },
         { name: "NPC (CN)", value: "npcDelegate" },
+        // RU is bicameral with a contested upper chamber; DD is unicameral.
+        // Values are officeType keys, matching validRaces() on the server.
+        { name: "Soviet of the Union (USSR)", value: "supremeSovietDeputy" },
+        { name: "Soviet of Nationalities (USSR)", value: "nationalitiesDeputy" },
+        { name: "Volkskammer (East Germany)", value: "volkskammerDeputy" },
       )
   );
+
+export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  await respondCountryAutocomplete(interaction);
+}
 
 const FALLBACK_PALETTE = [
   "#e6194b", "#3cb44b", "#4363d8", "#f58231", "#911eb4",
@@ -153,6 +155,18 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const race = interaction.options.getString("race", true);
 
   await interaction.deferReply();
+
+  /*
+   * Autocomplete does not constrain submitted values the way choices did, so
+   * re-check here. Runs AFTER deferReply: a cold country cache makes an HTTP
+   * call (60s client timeout) and Discord kills an un-acknowledged interaction
+   * after 3s.
+   */
+  const check = await validateCountry(country);
+  if (!check.ok) {
+    await interaction.editReply({ content: check.message });
+    return;
+  }
 
   try {
     const result = await getPrediction({ country, race });

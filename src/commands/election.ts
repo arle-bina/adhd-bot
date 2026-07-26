@@ -14,9 +14,10 @@ import {
   getAutocomplete,
   type RaceDetailResponse,
 } from "../utils/api.js";
-import { formatElectionType, RACE_EMOJI } from "../utils/formatting.js";
+import { formatElectionType, raceEmoji } from "../utils/formatting.js";
 import { replyWithError, positionBar } from "../utils/helpers.js";
 import { currencyFor, formatCurrency } from "../utils/currency.js";
+import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 
 export const cooldown = 5;
 
@@ -28,16 +29,7 @@ export const data = new SlashCommandBuilder()
       .setName("country")
       .setDescription("Country")
       .setRequired(true)
-      .addChoices(
-        { name: "United States", value: "US" },
-        { name: "United Kingdom", value: "UK" },
-        { name: "Germany", value: "DE" },
-        { name: "Japan", value: "JP" },
-        { name: "Ireland", value: "IE" },
-        { name: "Brazil", value: "BR" },
-        { name: "China", value: "CN" },
-        { name: "Nigeria", value: "NG" }
-      )
+      .setAutocomplete(true)
   )
   .addStringOption((o) =>
     o.setName("state").setDescription("State or constituency code (e.g. CA, SCO)").setRequired(false).setAutocomplete(true)
@@ -65,9 +57,16 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
-  const focused = interaction.options.getFocused();
+  // getFocused(true) returns the option object, so this can branch on which
+  // option is being typed — without it, the country field would be answered
+  // with state suggestions.
+  const focused = interaction.options.getFocused(true);
+  if (focused.name === "country") {
+    await respondCountryAutocomplete(interaction);
+    return;
+  }
   try {
-    const res = await getAutocomplete({ type: "states", q: focused, limit: 25 });
+    const res = await getAutocomplete({ type: "states", q: focused.value, limit: 25 });
     await interaction.respond(
       res.results.map((r) => ({ name: r.name, value: r.id }))
     );
@@ -101,7 +100,7 @@ interface ListElection {
 function buildListEmbed(elections: ListElection[], country: string, state?: string): EmbedBuilder {
   const subtitle = state ? ` · ${state}` : "";
   const lines = elections.slice(0, 25).map((e) => {
-    const emoji = RACE_EMOJI[e.electionType] ?? "🗳️";
+    const emoji = raceEmoji(e.electionType, country);
     const type = formatElectionType(e.electionType);
     const timeStr = e.endTime ? ` · ends <t:${ts(e.endTime)}:R>` : "";
     return `${emoji} **${type} — ${e.stateName ?? e.state}** (${e.status})${timeStr}`;
@@ -168,7 +167,7 @@ function leadingColor(detail: RaceDetailResponse): number {
 function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
   const { election, phase, incumbent, candidates } = detail;
   const votes = detail.votes ?? ({} as typeof detail.votes);
-  const emoji = RACE_EMOJI[election.electionType] ?? "🗳️";
+  const emoji = raceEmoji(election.electionType, election.countryId);
   const type = formatElectionType(election.electionType);
 
   let phaseStr: string;
@@ -303,6 +302,18 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const race = interaction.options.getString("race") ?? undefined;
 
   await interaction.deferReply();
+
+  /*
+   * Autocomplete does not constrain submitted values the way choices did, so
+   * re-check here. Runs AFTER deferReply: a cold country cache makes an HTTP
+   * call (60s client timeout) and Discord kills an un-acknowledged interaction
+   * after 3s.
+   */
+  const check = await validateCountry(country);
+  if (!check.ok) {
+    await interaction.editReply({ content: check.message });
+    return;
+  }
 
   try {
     let listCache: ListElection[] | null = null;

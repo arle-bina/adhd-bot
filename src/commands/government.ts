@@ -1,11 +1,13 @@
 import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
+  AutocompleteInteraction,
   EmbedBuilder,
 } from "discord.js";
 import { getGovernment, type GovernmentOfficial, type GovernmentFormationData } from "../utils/api.js";
 import { hexToInt, replyWithError, standardFooter } from "../utils/helpers.js";
 import { COUNTRY_FLAG } from "../utils/formatting.js";
+import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 
 export const cooldown = 5;
 
@@ -37,22 +39,29 @@ export const data = new SlashCommandBuilder()
       .setName("country")
       .setDescription("Country")
       .setRequired(false)
-      .addChoices(
-        { name: "United States", value: "US" },
-        { name: "United Kingdom", value: "UK" },
-        { name: "Germany", value: "DE" },
-        { name: "Japan", value: "JP" },
-        { name: "Ireland", value: "IE" },
-        { name: "Brazil", value: "BR" },
-        { name: "China", value: "CN" },
-        { name: "Nigeria", value: "NG" },
-      )
+      .setAutocomplete(true)
   );
+
+export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  await respondCountryAutocomplete(interaction);
+}
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
   const country = interaction.options.getString("country") ?? undefined;
 
   await interaction.deferReply();
+
+  /*
+   * Autocomplete does not constrain submitted values the way choices did, so
+   * re-check here. Runs AFTER deferReply: a cold country cache makes an HTTP
+   * call (60s client timeout) and Discord kills an un-acknowledged interaction
+   * after 3s.
+   */
+  const check = await validateCountry(country ?? null);
+  if (!check.ok) {
+    await interaction.editReply({ content: check.message });
+    return;
+  }
 
   try {
     const result = await getGovernment(country);
