@@ -65,6 +65,14 @@ export function formatOfficeType(type: string): string {
     snap_dail: "TD",
     localCouncil: "Councillor",
     chamber: "Federal Deputy",
+    // RU (Soviet Union) and DD (East Germany). Fallbacks only — the game API
+    // supplies the authoritative label where it has one.
+    supremeSovietDeputy: "Supreme Soviet Deputy",
+    nationalitiesDeputy: "Nationalities Deputy",
+    chairmanOfPresidium: "Chairman of the Presidium",
+    republicSupremeSoviet: "Republic Deputy",
+    generalSecretary: "General Secretary",
+    volkskammerDeputy: "Deputy",
   };
   return map[type] ?? type;
 }
@@ -126,6 +134,18 @@ export const COUNTRY_FLAG: Record<string, string> = {
   RU: "🚩",
   DD: "🏴",
 };
+
+/**
+ * Emoji for a race. Several office keys are shared across countries — `premier`
+ * belongs to both CN and RU — so a country id, when known, wins over the
+ * race-keyed map. Falls back to the map, then to a generic ballot box.
+ *
+ * Declared after COUNTRY_FLAG so the reference is initialised at module load.
+ */
+export function raceEmoji(electionType: string, countryId?: string): string {
+  if (countryId && COUNTRY_FLAG[countryId]) return COUNTRY_FLAG[countryId];
+  return RACE_EMOJI[electionType] ?? "🗳️";
+}
 
 export const COUNTRY_COLORS: Record<string, number> = {
   US: 0x3c5a9a,

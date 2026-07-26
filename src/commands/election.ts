@@ -14,7 +14,7 @@ import {
   getAutocomplete,
   type RaceDetailResponse,
 } from "../utils/api.js";
-import { formatElectionType, RACE_EMOJI } from "../utils/formatting.js";
+import { formatElectionType, raceEmoji } from "../utils/formatting.js";
 import { replyWithError, positionBar } from "../utils/helpers.js";
 import { currencyFor, formatCurrency } from "../utils/currency.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
@@ -100,7 +100,7 @@ interface ListElection {
 function buildListEmbed(elections: ListElection[], country: string, state?: string): EmbedBuilder {
   const subtitle = state ? ` · ${state}` : "";
   const lines = elections.slice(0, 25).map((e) => {
-    const emoji = RACE_EMOJI[e.electionType] ?? "🗳️";
+    const emoji = raceEmoji(e.electionType, country);
     const type = formatElectionType(e.electionType);
     const timeStr = e.endTime ? ` · ends <t:${ts(e.endTime)}:R>` : "";
     return `${emoji} **${type} — ${e.stateName ?? e.state}** (${e.status})${timeStr}`;
@@ -167,7 +167,7 @@ function leadingColor(detail: RaceDetailResponse): number {
 function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
   const { election, phase, incumbent, candidates } = detail;
   const votes = detail.votes ?? ({} as typeof detail.votes);
-  const emoji = RACE_EMOJI[election.electionType] ?? "🗳️";
+  const emoji = raceEmoji(election.electionType, election.countryId);
   const type = formatElectionType(election.electionType);
 
   let phaseStr: string;

@@ -3,6 +3,7 @@ import {
   formatElectionType,
   formatOfficeType,
   RACE_EMOJI,
+  raceEmoji,
   COUNTRY_NAMES,
   COUNTRY_FLAG,
   COUNTRY_COLORS,
@@ -120,6 +121,44 @@ describe("constant maps", () => {
   it("names RU and DD to match their Discord roles", () => {
     expect(COUNTRY_NAMES.RU).toBe("Soviet Union");
     expect(COUNTRY_NAMES.DD).toBe("East Germany");
+  });
+});
+
+describe("raceEmoji", () => {
+  // `premier` is an office key in BOTH CN and RU, so the race-keyed map alone
+  // cannot disambiguate — a Soviet Premier race rendered a Chinese flag.
+  it("keeps the Chinese flag for a CN premier race", () => {
+    expect(raceEmoji("premier", "CN")).toBe("🇨🇳");
+  });
+
+  it("uses the Soviet flag for an RU premier race", () => {
+    expect(raceEmoji("premier", "RU")).toBe("🚩");
+  });
+
+  it("falls back to the race map when no country is supplied", () => {
+    expect(raceEmoji("senate")).toBe("🏛️");
+  });
+
+  it("falls back to the race map for an unknown country", () => {
+    expect(raceEmoji("senate", "ZZ")).toBe("🏛️");
+  });
+
+  it("falls back to a ballot box for an unknown race", () => {
+    expect(raceEmoji("totallyMadeUp")).toBe("🗳️");
+  });
+});
+
+describe("formatOfficeType — RU/DD fallbacks", () => {
+  it("names Soviet offices", () => {
+    expect(formatOfficeType("supremeSovietDeputy")).toBe("Supreme Soviet Deputy");
+    expect(formatOfficeType("nationalitiesDeputy")).toBe("Nationalities Deputy");
+    expect(formatOfficeType("chairmanOfPresidium")).toBe("Chairman of the Presidium");
+    expect(formatOfficeType("republicSupremeSoviet")).toBe("Republic Deputy");
+  });
+
+  it("names East German offices", () => {
+    expect(formatOfficeType("generalSecretary")).toBe("General Secretary");
+    expect(formatOfficeType("volkskammerDeputy")).toBe("Deputy");
   });
 
   it("EXCHANGE_LABELS covers all exchanges", () => {

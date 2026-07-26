@@ -139,7 +139,10 @@ function buildProfileEmbed(char: CharacterResult, displayCurrency: string, rates
   }
 
   if (char.activeElection?.electionType) {
-    const electionType = formatOfficeType(char.activeElection.electionType);
+    // Prefer the game's config-resolved label; it is absent for race types with
+    // no office config (snap elections), where the local map still wins.
+    const electionType =
+      char.activeElection.electionLabel ?? formatOfficeType(char.activeElection.electionType);
     const electionState = char.activeElection.electionState ?? "Unknown";
     embed.addFields({ name: "Active Election", value: `${electionType} (${electionState})`, inline: false });
   }
