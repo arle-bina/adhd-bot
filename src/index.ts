@@ -26,7 +26,7 @@ import {
   emojiMatches as reactionRoleEmojiMatches,
 } from "./utils/reactionRoleStore.js";
 import { handleLockReaction, TICKET_CLOSE_MODAL_PREFIX, handleTicketCloseModalSubmit, TICKET_MERGE_MODAL_PREFIX, mergeTickets, TICKET_CLAIM_BUTTON_ID, handleClaimTicket } from "./utils/tickets.js";
-import { getChannelConfig, postWebhookReaction } from "./utils/api-game.js";
+import { getChannelConfig, postWebhookReaction, getPendingPasswordResets, ackPasswordResets } from "./utils/api-game.js";
 import { getBulkSyncRoles, type SyncRolesBulkUser } from "./utils/api.js";
 import { syncMemberRoles } from "./utils/roles.js";
 import { getTicketByChannel, getTicketByNumber } from "./utils/ticketStore.js";
@@ -327,6 +327,52 @@ client.once("ready", () => {
   };
   setTimeout(deliverResolutions, 30 * 1000);
   setInterval(deliverResolutions, 3 * 60 * 1000);
+
+  // Deliver password reset links requested on the website by players with a
+  // linked Discord account. Polls the game backend for queued resets and DMs
+  // the link. No channel fallback: reset links are secrets, DM or nothing.
+  const deliverPasswordResets = async () => {
+    try {
+      const pending = await getPendingPasswordResets();
+      if (pending.length === 0) return;
+
+      const delivered: string[] = [];
+      for (const reset of pending) {
+        try {
+          const expiresUnix = Math.floor(new Date(reset.expiresAt).getTime() / 1000);
+          const embed = new EmbedBuilder()
+            .setTitle("Password reset requested")
+            .setDescription(
+              `A password reset was requested for your A House Divided account.\n\n` +
+              `[Reset your password](${reset.url})\n\n` +
+              `The link expires <t:${expiresUnix}:R>. If you did not request this, you can ignore this message; your password is unchanged.`
+            )
+            .setColor(0x5865f2)
+            .setFooter({ text: "ahousedividedgame.com" })
+            .setTimestamp();
+
+          const user = await client.users.fetch(reset.discordId);
+          await user.send({ embeds: [embed] });
+          delivered.push(reset.id);
+        } catch {
+          // DMs closed or user unfetchable. Do not fall back anywhere public.
+          // Still ack so we never retry-spam; email or a fresh request covers them.
+          delivered.push(reset.id);
+        }
+
+        // Small delay between sends to respect Discord rate limits.
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+
+      if (delivered.length > 0) {
+        await ackPasswordResets(delivered);
+      }
+    } catch (err) {
+      console.error("Password reset delivery sweep error:", err);
+    }
+  };
+  setTimeout(deliverPasswordResets, 45 * 1000);
+  setInterval(deliverPasswordResets, 60 * 1000);
 });
 
 // Track messages for server stats + content filter
