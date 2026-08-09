@@ -26,7 +26,7 @@ import {
   emojiMatches as reactionRoleEmojiMatches,
 } from "./utils/reactionRoleStore.js";
 import { handleLockReaction, TICKET_CLOSE_MODAL_PREFIX, handleTicketCloseModalSubmit, TICKET_MERGE_MODAL_PREFIX, mergeTickets, TICKET_CLAIM_BUTTON_ID, handleClaimTicket } from "./utils/tickets.js";
-import { getChannelConfig, postWebhookReaction, getPendingPasswordResets, ackPasswordResets } from "./utils/api-game.js";
+import { getChannelConfig, postWebhookReaction, getPendingPasswordResets, ackPasswordResets, getPendingBroadcastDms, ackBroadcastDms } from "./utils/api-game.js";
 import { getBulkSyncRoles, type SyncRolesBulkUser } from "./utils/api.js";
 import { syncMemberRoles } from "./utils/roles.js";
 import { getTicketByChannel, getTicketByNumber } from "./utils/ticketStore.js";
@@ -373,6 +373,49 @@ client.once("ready", () => {
   };
   setTimeout(deliverPasswordResets, 45 * 1000);
   setInterval(deliverPasswordResets, 60 * 1000);
+
+  // Deliver announcement DMs queued by the ops mass-communication tool for
+  // players without a real email on file. DM only; closed DMs are marked
+  // failed and never retried or posted anywhere public.
+  const deliverBroadcastDms = async () => {
+    try {
+      const pending = await getPendingBroadcastDms();
+      if (pending.length === 0) return;
+
+      const delivered: string[] = [];
+      const failed: string[] = [];
+      for (const dm of pending) {
+        try {
+          const embed = new EmbedBuilder()
+            .setTitle(dm.title.slice(0, 256))
+            .setDescription(dm.body.slice(0, 4096))
+            .setColor(0xdc2626)
+            .setFooter({ text: "ahousedividedgame.com" })
+            .setTimestamp();
+          if (dm.imageUrl) embed.setImage(dm.imageUrl);
+          if (dm.url) embed.setURL(dm.url);
+
+          const user = await client.users.fetch(dm.discordId);
+          await user.send({ embeds: [embed] });
+          delivered.push(dm.id);
+        } catch {
+          failed.push(dm.id);
+        }
+
+        // Small delay between sends to respect Discord rate limits.
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+
+      await ackBroadcastDms(delivered, failed);
+      if (delivered.length > 0 || failed.length > 0) {
+        console.log(`Broadcast DMs: ${delivered.length} delivered, ${failed.length} failed`);
+      }
+    } catch (err) {
+      console.error("Broadcast DM delivery sweep error:", err);
+    }
+  };
+  setTimeout(deliverBroadcastDms, 60 * 1000);
+  setInterval(deliverBroadcastDms, 3 * 60 * 1000);
 });
 
 // Track messages for server stats + content filter

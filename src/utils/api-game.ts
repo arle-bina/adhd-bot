@@ -188,3 +188,35 @@ export async function getPendingPasswordResets(): Promise<PendingPasswordReset[]
 export async function ackPasswordResets(ids: string[]): Promise<void> {
   await apiPost<{ ok: boolean }>("/api/discord-bot/password-resets", { ids });
 }
+
+// ---------------------------------------------------------------------------
+// Broadcast DM delivery (announcements to players without a real email)
+// ---------------------------------------------------------------------------
+
+export interface PendingBroadcastDm {
+  id: string;
+  discordId: string;
+  title: string;
+  body: string;
+  imageUrl?: string | null;
+  url?: string | null;
+}
+
+interface PendingBroadcastDmsResponse {
+  dms: PendingBroadcastDm[];
+}
+
+export async function getPendingBroadcastDms(): Promise<PendingBroadcastDm[]> {
+  try {
+    const res = await apiFetch<PendingBroadcastDmsResponse>("/api/discord-bot/broadcast-dms");
+    return res.dms ?? [];
+  } catch (err) {
+    console.error("[api-game] getPendingBroadcastDms failed:", err);
+    return [];
+  }
+}
+
+export async function ackBroadcastDms(delivered: string[], failed: string[]): Promise<void> {
+  if (delivered.length === 0 && failed.length === 0) return;
+  await apiPost<{ marked: number }>("/api/discord-bot/broadcast-dms", { delivered, failed });
+}
