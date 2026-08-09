@@ -159,3 +159,32 @@ export interface SubmitSuggestionResponse {
 export async function postDiscordSuggestion(body: SubmitSuggestionRequest): Promise<SubmitSuggestionResponse> {
   return apiPost<SubmitSuggestionResponse>("/api/discord-bot/suggestions", body);
 }
+
+// ---------------------------------------------------------------------------
+// Password reset DM delivery
+// ---------------------------------------------------------------------------
+
+export interface PendingPasswordReset {
+  id: string;
+  discordId: string;
+  url: string;
+  expiresAt: string;
+}
+
+interface PendingPasswordResetsResponse {
+  resets: PendingPasswordReset[];
+}
+
+export async function getPendingPasswordResets(): Promise<PendingPasswordReset[]> {
+  try {
+    const res = await apiFetch<PendingPasswordResetsResponse>("/api/discord-bot/password-resets");
+    return res.resets ?? [];
+  } catch (err) {
+    console.error("[api-game] getPendingPasswordResets failed:", err);
+    return [];
+  }
+}
+
+export async function ackPasswordResets(ids: string[]): Promise<void> {
+  await apiPost<{ ok: boolean }>("/api/discord-bot/password-resets", { ids });
+}
