@@ -1016,7 +1016,7 @@ client.on("interactionCreate", async (interaction) => {
         interaction.guild!,
         interaction.user.id,
         interaction.user.username,
-        category as "bug" | "suggestion" | "moderation",
+        category as "bug" | "suggestion" | "moderation" | "mechanics",
         { subject, description },
       );
 

@@ -28,6 +28,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     .addFields(
       { name: "🐛 Bug Report", value: "Report a bug or issue", inline: true },
       { name: "🛡️ Moderation", value: "Report a moderation concern", inline: true },
+      { name: "🧩 Mechanics Help", value: "Ask a question about how a game mechanic works", inline: true },
       { name: "💡 Suggestions", value: "Use `/suggest` to submit ideas — they're posted on the site for the team to review.", inline: false },
     )
     .setColor(0x5865f2)
@@ -44,6 +45,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .setLabel("Moderation")
       .setEmoji("🛡️")
       .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId("ticket_panel_mechanics")
+      .setLabel("Mechanics Help")
+      .setEmoji("🧩")
+      .setStyle(ButtonStyle.Secondary),
   );
 
   await (interaction.channel as TextChannel).send({ embeds: [embed], components: [buttonRow] });
