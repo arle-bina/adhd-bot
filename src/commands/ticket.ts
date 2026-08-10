@@ -30,6 +30,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .addOptions(
         { label: "Bug Report", value: "bug", emoji: "🐛", description: "Report a bug or issue" },
         { label: "Moderation Issue", value: "moderation", emoji: "🛡️", description: "Report a moderation concern" },
+        { label: "Mechanics Help", value: "mechanics", emoji: "🧩", description: "Ask a question about how a game mechanic works" },
       ),
   );
 

@@ -45,6 +45,7 @@ const CATEGORY_CONFIG: Record<TicketCategory, { label: string; emoji: string; co
   bug: { label: "Bug Report", emoji: "🐛", color: 0xed4245 },
   suggestion: { label: "Suggestion", emoji: "💡", color: 0x57f287 },
   moderation: { label: "Moderation Issue", emoji: "🛡️", color: 0xfee75c },
+  mechanics: { label: "Mechanics Help", emoji: "🧩", color: 0x5865f2 },
 };
 
 /** Map the bot's ticket categories onto the game backend enum (defaults to "other"). */
@@ -54,6 +55,8 @@ export function toGameCategory(category: TicketCategory): GameTicketCategory {
       return "bug";
     case "moderation":
       return "moderation";
+    case "mechanics":
+      return "gameplay";
     default:
       // "suggestion" (and any future categories) have no backend equivalent
       return "other";
@@ -64,6 +67,7 @@ export const PANEL_EMOJI_MAP: Record<string, TicketCategory> = {
   "🐛": "bug",
   "💡": "suggestion",
   "🛡️": "moderation",
+  "🧩": "mechanics",
 };
 
 // In-memory lock to prevent race conditions on double-click
@@ -355,7 +359,11 @@ export async function createTicket(
 
     const embedMessage = await channel.send({ embeds: [embed], components: [buildTicketActionRow(false)] });
 
-    const pingRoleId = category === "moderation" ? modRoleId : devTeamRoleId;
+    // Moderation pings mods, bug reports ping the dev team. Mechanics-help
+    // tickets ping nobody — staff still have channel access via the overwrites
+    // above, so they can answer, but the opener just gets a space to ask.
+    const pingRoleId =
+      category === "moderation" ? modRoleId : category === "bug" ? devTeamRoleId : undefined;
     if (pingRoleId) {
       await channel.send(`<@&${pingRoleId}>`).catch(() => {});
     }

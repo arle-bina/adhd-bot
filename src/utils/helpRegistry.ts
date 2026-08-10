@@ -225,7 +225,7 @@ export const categories: Category[] = [
         name: "/ticket",
         usage: "/ticket",
         description:
-          "Open a support ticket — choose Bug Report, Suggestion, or Moderation Issue. A private channel will be created for the conversation.",
+          "Open a support ticket — choose Bug Report, Moderation Issue, or Mechanics Help. A private channel will be created for the conversation.",
         examples: ["/ticket"],
       },
       {
