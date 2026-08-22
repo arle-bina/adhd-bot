@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { _testing, ApiError } from "../../src/utils/api-base.js";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { _testing, ApiError, apiPostPublicStream } from "../../src/utils/api-base.js";
 
 const { acquire, release, getActive, getWaitingCount } = _testing;
 
@@ -62,5 +62,44 @@ describe("semaphore", () => {
     release();
     release();
     expect(getActive()).toBe(0);
+  });
+});
+
+describe("apiPostPublicStream", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("reports progress and returns the final SSE result", async () => {
+    const fetchMock = vi.fn(async () => new Response(
+      [
+        'event: status\ndata: {"stage":"thinking"}',
+        'event: status\ndata: {"stage":"live_data"}',
+        'event: result\ndata: {"answer":"Turn 900"}',
+        "",
+      ].join("\n\n"),
+      { status: 200, headers: { "Content-Type": "text/event-stream" } },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+    const stages: string[] = [];
+
+    const result = await apiPostPublicStream<{ answer: string }>(
+      "/api/ask-public",
+      { question: "What turn is it?" },
+      ({ event, data }) => {
+        if (event === "status") stages.push((data as { stage: string }).stage);
+      },
+      "https://ops.example.com",
+    );
+
+    expect(result).toEqual({ answer: "Turn 900" });
+    expect(stages).toEqual(["thinking", "live_data"]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://ops.example.com/api/ask-public",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Accept: "text/event-stream" }),
+      }),
+    );
   });
 });

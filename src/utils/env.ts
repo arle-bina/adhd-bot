@@ -26,4 +26,9 @@ export function validateEnv() {
     missing.forEach((key) => console.error(`  - ${key}`));
     process.exit(1);
   }
+
+  // Not fatal, but /ask cannot authenticate without the shared secret.
+  if (!process.env.ASK_SECRET && !process.env.ASK_API_SECRET) {
+    console.warn("[env] ASK_SECRET is unset; /ask will fail until it matches ops-dash ASK_API_SECRET");
+  }
 }
