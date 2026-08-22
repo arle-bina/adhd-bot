@@ -144,7 +144,10 @@ export async function apiPostPublic<T>(pathname: string, body: unknown, baseUrl?
   const url = new URL(pathname, baseUrl || process.env.GAME_API_URL);
 
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (process.env.ASK_SECRET) headers["X-Ask-Secret"] = process.env.ASK_SECRET;
+  // ops-dash names this ASK_API_SECRET; accept either so a copy of the server's
+  // own var name still authenticates instead of silently sending no header.
+  const askSecret = process.env.ASK_SECRET || process.env.ASK_API_SECRET;
+  if (askSecret) headers["X-Ask-Secret"] = askSecret;
 
   await acquire();
   try {
@@ -156,6 +159,81 @@ export async function apiPostPublic<T>(pathname: string, body: unknown, baseUrl?
     });
     if (!response.ok) await throwApiError(response, pathname);
     return response.json() as Promise<T>;
+  } finally {
+    release();
+  }
+}
+
+export interface PublicStreamEvent {
+  event: string;
+  data: unknown;
+}
+
+/** Public POST request that consumes SSE progress and returns its final result. */
+export async function apiPostPublicStream<T>(
+  pathname: string,
+  body: unknown,
+  onEvent: (event: PublicStreamEvent) => void | Promise<void>,
+  baseUrl?: string,
+  timeoutMs?: number,
+): Promise<T> {
+  const url = new URL(pathname, baseUrl || process.env.GAME_API_URL);
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "text/event-stream",
+  };
+  const askSecret = process.env.ASK_SECRET || process.env.ASK_API_SECRET;
+  if (askSecret) headers["X-Ask-Secret"] = askSecret;
+
+  await acquire();
+  try {
+    const response = await fetch(url.toString(), {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs ?? FETCH_TIMEOUT_MS),
+    });
+    if (!response.ok) await throwApiError(response, pathname);
+    if (!response.headers.get("content-type")?.includes("text/event-stream")) {
+      return response.json() as Promise<T>;
+    }
+    if (!response.body) throw new Error("Ask stream ended without a response body");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let result: T | undefined;
+
+    const consumeFrame = async (frame: string): Promise<void> => {
+      let event = "message";
+      const dataLines: string[] = [];
+      for (const line of frame.split(/\r?\n/)) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+      }
+      if (!dataLines.length) return;
+      const data = JSON.parse(dataLines.join("\n")) as unknown;
+      if (event === "result") result = data as T;
+      if (event === "error") {
+        const message = typeof data === "object" && data && "error" in data
+          ? String((data as { error: unknown }).error)
+          : "Ask request failed";
+        throw new Error(message);
+      }
+      await onEvent({ event, data });
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const frames = buffer.split(/\r?\n\r?\n/);
+      buffer = frames.pop() ?? "";
+      for (const frame of frames) await consumeFrame(frame);
+      if (done) break;
+    }
+    if (buffer.trim()) await consumeFrame(buffer);
+    if (result === undefined) throw new Error("Ask stream ended before returning an answer");
+    return result;
   } finally {
     release();
   }

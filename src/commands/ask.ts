@@ -2,13 +2,20 @@ import {
   SlashCommandBuilder,
   type ChatInputCommandInteraction,
 } from "discord.js";
-import { apiPostPublic } from "../utils/api-base.js";
+import { apiPostPublicStream } from "../utils/api-base.js";
+import { lookupByDiscordId } from "../utils/api-politics.js";
+import { splitDiscordContent } from "../utils/discord-content.js";
 
-const MAX_MESSAGE_LENGTH = 2000;
+interface AskSource {
+  kind: "knowledge" | "state";
+  label: string;
+}
 
 interface AskResponse {
   answer: string;
   files: string[];
+  sources?: AskSource[];
+  liveDataUsed?: boolean;
   model: string;
   usage: { input: number; output: number };
 }
@@ -65,21 +72,44 @@ function formatForDiscord(answer: string): string {
 
 export const data = new SlashCommandBuilder()
   .setName("ask")
-  .setDescription("Ask a question about the AHD codebase")
+  .setDescription("Ask about AHD mechanics or live game data")
   .addStringOption((opt) =>
     opt
       .setName("question")
       .setDescription("What do you want to know?")
       .setRequired(true)
       .setMaxLength(2000)
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("response_length")
+      .setDescription("How much detail? Defaults to concise")
+      .addChoices(
+        { name: "Concise", value: "concise" },
+        { name: "Standard", value: "standard" },
+        { name: "Detailed", value: "detailed" },
+      )
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("thinking")
+      .setDescription("How deeply should it reason? Defaults to normal")
+      .addChoices(
+        { name: "Quick", value: "quick" },
+        { name: "Normal", value: "normal" },
+        { name: "Deep", value: "deep" },
+      )
   );
 
-// LLM calls can take up to 75s on the server side; give ourselves 90s so the
-// server always has time to return an error before we abort.
-const ASK_TIMEOUT_MS = 90_000;
+// A live-data answer may need one model call to choose a read-only tool and a
+// second to answer from its result. Discord keeps deferred interactions alive
+// for 15 minutes, so leave enough room for deep mode without cutting it off.
+const ASK_TIMEOUT_MS = 8 * 60_000;
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
   const question = interaction.options.getString("question", true).trim();
+  const responseLength = interaction.options.getString("response_length") ?? "concise";
+  const thinking = interaction.options.getString("thinking") ?? "normal";
 
   // Role gate: only developers and server moderators may use /ask
   const allowedIds = [
@@ -99,47 +129,66 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     return;
   }
 
-  // Defer immediately — shows Discord's native loading state and gives us the
-  // full 15-minute interaction window instead of a 3-second hard timeout.
+  // Defer immediately to get the full interaction window, then replace the
+  // native spinner with a message that survives on every Discord client.
   await interaction.deferReply();
+  await interaction.editReply("Thinking…");
 
   try {
-    const result = await apiPostPublic<AskResponse>(
+    const linked = await lookupByDiscordId(interaction.user.id).catch(() => null);
+    const character = linked?.characters[0];
+    const requester = character
+      ? {
+          characterName: character.name,
+          country: character.countryId,
+          corporationName: character.ceoOf,
+        }
+      : undefined;
+
+    let liveStatusShown = false;
+    const result = await apiPostPublicStream<AskResponse>(
       "/api/ask-public",
-      { question },
+      { question, responseLength, thinking, requester },
+      async ({ event, data }) => {
+        if (event !== "status" || liveStatusShown || typeof data !== "object" || !data) return;
+        if ((data as { stage?: string }).stage !== "live_data") return;
+        liveStatusShown = true;
+        await interaction.editReply("Checking live game data…");
+      },
       process.env.OPS_DASHBOARD_URL,
       ASK_TIMEOUT_MS,
     );
 
     const answer = formatForDiscord(result.answer);
 
-    // Build sources list from the files the backend used
+    // Build source lists from code retrieval and any read-only live lookups.
     const MAX_SOURCES = 8;
-    const sources = (result.files || [])
+    const REPO_BLOB = "https://github.com/Egg3901/AHDGame/blob/main";
+    const fileSources = (result.files || [])
       .slice(0, MAX_SOURCES)
-      .map((f) => `• \`${f}\``)
+      .map((f) => {
+        const rel = f.replace(/^\/+/, "");
+        return /^(src|scripts|docs)\//.test(rel)
+          ? `• [\`${rel}\`](${REPO_BLOB}/${rel})`
+          : `• \`${rel}\``;
+      })
+      .join("\n");
+    const liveSources = (result.sources || [])
+      .slice(0, 6)
+      .map((source) => `• ${source.label}`)
       .join("\n");
 
-    // Build the full message — no question repeat, no model metadata
+    // Build the complete answer. splitDiscordContent balances code fences and
+    // sends every chunk, so detailed answers are never silently truncated.
     let fullMessage = answer;
-    if (sources) {
-      const header = "\n\n**Sources**\n";
-      const proposed = fullMessage + header + sources;
-      fullMessage =
-        proposed.length > MAX_MESSAGE_LENGTH
-          ? fullMessage.slice(0, MAX_MESSAGE_LENGTH - (header.length + sources.length + 60)) +
-            "\n\n*(truncated)*" +
-            header +
-            sources
-          : proposed;
-    }
+    if (fileSources) fullMessage += `\n\n**Code sources**\n${fileSources}`;
+    if (liveSources) fullMessage += `\n\n**Live sources**\n${liveSources}`;
 
-    // Discord message limit is 2000 chars
-    if (fullMessage.length > MAX_MESSAGE_LENGTH) {
-      fullMessage = answer.slice(0, MAX_MESSAGE_LENGTH - 30) + "\n\n*(truncated)*";
+    const chunks = splitDiscordContent(fullMessage);
+    await interaction.editReply(chunks[0] || "I couldn't produce an answer for that one.");
+    for (const chunk of chunks.slice(1)) {
+      await interaction.followUp({ content: chunk });
     }
-
-    await interaction.editReply(fullMessage);
   } catch (error) {
     // Use the bot's standard error handling pattern
     const { replyWithError } = await import("../utils/helpers.js");
