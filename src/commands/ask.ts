@@ -1,10 +1,12 @@
 import {
   SlashCommandBuilder,
+  AttachmentBuilder,
   type ChatInputCommandInteraction,
 } from "discord.js";
 import { apiPostPublicStream } from "../utils/api-base.js";
 import { lookupByDiscordId } from "../utils/api-politics.js";
 import { splitDiscordContent } from "../utils/discord-content.js";
+import { extractAskVisualizations, renderMermaidPng } from "../utils/ask-visualizations.js";
 
 interface AskSource {
   kind: "knowledge" | "state";
@@ -18,14 +20,6 @@ interface AskResponse {
   liveDataUsed?: boolean;
   model: string;
   usage: { input: number; output: number };
-}
-
-/** Strip mermaid blocks (Discord can't render them). Replace with a note. */
-function stripMermaid(text: string): string {
-  return text.replace(
-    /```mermaid[\s\S]*?```/g,
-    "*(Mermaid diagram omitted — view in ops dashboard for full rendering)*"
-  );
 }
 
 /** Strip meta-commentary preamble lines ("I'll examine...", "Let me check...", etc.). */
@@ -63,7 +57,7 @@ function truncateLongCodeBlocks(text: string, maxLines = 30): string {
 
 /** Format the LLM answer for Discord. */
 function formatForDiscord(answer: string): string {
-  let cleaned = stripMermaid(answer);
+  let cleaned = answer;
   cleaned = stripPreamble(cleaned);
   cleaned = stripToolCalls(cleaned);
   cleaned = truncateLongCodeBlocks(cleaned, 30);
@@ -159,7 +153,20 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       ASK_TIMEOUT_MS,
     );
 
-    const answer = formatForDiscord(result.answer);
+    const formatted = formatForDiscord(result.answer);
+    const extracted = extractAskVisualizations(formatted);
+    const attachments: AttachmentBuilder[] = [];
+    for (const visualization of extracted.visualizations) {
+      try {
+        const image = await renderMermaidPng(visualization.source);
+        attachments.push(new AttachmentBuilder(image, {
+          name: `ask-visualization-${visualization.index}.png`,
+          description: "Visualization generated for this Ask response",
+        }));
+      } catch {
+        extracted.text += "\n\n*(The requested visualization could not be rendered.)*";
+      }
+    }
 
     // Build source lists from code retrieval and any read-only live lookups.
     const MAX_SOURCES = 8;
@@ -180,12 +187,15 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
     // Build the complete answer. splitDiscordContent balances code fences and
     // sends every chunk, so detailed answers are never silently truncated.
-    let fullMessage = answer;
+    let fullMessage = extracted.text;
     if (fileSources) fullMessage += `\n\n**Code sources**\n${fileSources}`;
     if (liveSources) fullMessage += `\n\n**Live sources**\n${liveSources}`;
 
     const chunks = splitDiscordContent(fullMessage);
-    await interaction.editReply(chunks[0] || "I couldn't produce an answer for that one.");
+    await interaction.editReply({
+      content: chunks[0] || "I couldn't produce an answer for that one.",
+      files: attachments,
+    });
     for (const chunk of chunks.slice(1)) {
       await interaction.followUp({ content: chunk });
     }
