@@ -13,7 +13,7 @@ import {
 import { apiPostAskSite, apiPostPublicStream } from "../utils/api-base.js";
 import { resolveAskIdentity } from "../utils/ask-context.js";
 import { splitDiscordContent } from "../utils/discord-content.js";
-import { extractAskVisualizations, renderAskMapPng, renderMermaidPng } from "../utils/ask-visualizations.js";
+import { extractAskVisualizations, renderAskMapPng, renderMermaidPng, truncateDiscordCodeBlocks } from "../utils/ask-visualizations.js";
 import { asksForSources, compactSources } from "../utils/ask-presentation.js";
 
 interface AskSource {
@@ -55,12 +55,7 @@ function stripToolCalls(text: string): string {
 
 /** Truncate code blocks that are too long for Discord. */
 function truncateLongCodeBlocks(text: string, maxLines = 30): string {
-  return text.replace(/```(\w+)?\n([\s\S]*?)```/g, (_match, lang, code) => {
-    const lines = code.split("\n");
-    if (lines.length <= maxLines) return _match;
-    const kept = lines.slice(0, maxLines).join("\n");
-    return `\`\`\`${lang || ""}\n${kept}\n... (${lines.length - maxLines} more lines — see ops dashboard)\n\`\`\``;
-  });
+  return truncateDiscordCodeBlocks(text, maxLines);
 }
 
 /** Format the LLM answer for Discord. */

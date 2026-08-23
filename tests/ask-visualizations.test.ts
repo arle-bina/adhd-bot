@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { extractAskVisualizations, renderAskMapPng, renderMermaidPng } from "../src/utils/ask-visualizations.js";
+import { extractAskVisualizations, renderAskMapPng, renderMermaidPng, truncateDiscordCodeBlocks } from "../src/utils/ask-visualizations.js";
 
 describe("Ask visualizations", () => {
   it("extracts one Mermaid block and keeps the surrounding answer", () => {
@@ -19,6 +19,21 @@ describe("Ask visualizations", () => {
     const result = extractAskVisualizations("```mermaid\nA-->B\n```\n```mermaid\nC-->D\n```");
     expect(result.visualizations).toHaveLength(1);
     expect(result.text).toContain("C-->D");
+  });
+
+  it("preserves a multiline canonical map for extraction instead of truncating its JSON", () => {
+    const source = JSON.stringify({
+      scope: "country", country: "US", metric: "candidate_roster",
+      regions: Array.from({ length: 12 }, (_unused, index) => ({ id: `S${index}`, value: 1 })),
+    }, null, 2);
+    const answer = `Before\n\n\`\`\`ahd-map\n${source}\n\`\`\`\n\nAfter`;
+
+    const formatted = truncateDiscordCodeBlocks(answer, 30);
+    const result = extractAskVisualizations(formatted);
+
+    expect(formatted).toContain(source);
+    expect(JSON.parse(result.visualizations[0].source)).toMatchObject({ metric: "candidate_roster" });
+    expect(result.text).toBe("Before\n\nAfter");
   });
 
   it("downloads a rendered PNG from the bounded Mermaid image request", async () => {
