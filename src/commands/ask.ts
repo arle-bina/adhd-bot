@@ -1,12 +1,20 @@
 import {
+  ActionRowBuilder,
   SlashCommandBuilder,
   AttachmentBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
   type ChatInputCommandInteraction,
 } from "discord.js";
-import { apiPostPublicStream } from "../utils/api-base.js";
+import { apiPostAskSite, apiPostPublicStream } from "../utils/api-base.js";
 import { resolveAskIdentity } from "../utils/ask-context.js";
 import { splitDiscordContent } from "../utils/discord-content.js";
 import { extractAskVisualizations, renderAskMapPng, renderMermaidPng } from "../utils/ask-visualizations.js";
+import { asksForSources, compactSources } from "../utils/ask-presentation.js";
 
 interface AskSource {
   kind: "knowledge" | "state";
@@ -106,6 +114,23 @@ export const data = new SlashCommandBuilder()
 // for 15 minutes, so leave enough room for deep mode without cutting it off.
 const ASK_TIMEOUT_MS = 8 * 60_000;
 
+function askFooter(result: AskResponse): EmbedBuilder {
+  const label = result.liveDataUsed ? "Live game data used" : "Grounded in game rules and documentation";
+  return new EmbedBuilder().setColor(result.liveDataUsed ? 0x22c55e : 0x64748b).setFooter({ text: label });
+}
+
+function askActions(id: string): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`ask-good:${id}`).setLabel("Helpful").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`ask-report:${id}`).setLabel("Report issue").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`ask-sources:${id}`).setLabel("Sources").setStyle(ButtonStyle.Secondary),
+  );
+}
+
+async function submitFeedback(input: Record<string, unknown>): Promise<void> {
+  try { await apiPostAskSite("/api/discord-feedback", input); } catch { /* feedback must not disrupt a player interaction */ }
+}
+
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
   const question = interaction.options.getString("question", true).trim();
   const selectedUser = interaction.options.getUser("user");
@@ -177,37 +202,56 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       }
     }
 
-    // Build source lists from code retrieval and any read-only live lookups.
-    const MAX_SOURCES = 8;
-    const REPO_BLOB = "https://github.com/Egg3901/AHDGame/blob/main";
-    const fileSources = (result.files || [])
-      .slice(0, MAX_SOURCES)
-      .map((f) => {
-        const rel = f.replace(/^\/+/, "");
-        return /^(src|scripts|docs)\//.test(rel)
-          ? `• [\`${rel}\`](${REPO_BLOB}/${rel})`
-          : `• \`${rel}\``;
-      })
-      .join("\n");
-    const liveSources = (result.sources || [])
-      .slice(0, 6)
-      .map((source) => `• ${source.label}`)
-      .join("\n");
-
-    // Build the complete answer. splitDiscordContent balances code fences and
-    // sends every chunk, so detailed answers are never silently truncated.
+    // Keep the channel answer-first. Source detail is still available through
+    // the button, or inline when the player explicitly asks for it.
     let fullMessage = extracted.text;
-    if (fileSources) fullMessage += `\n\n**Code sources**\n${fileSources}`;
-    if (liveSources) fullMessage += `\n\n**Live sources**\n${liveSources}`;
+    if (asksForSources(question)) {
+      const sources = compactSources(result);
+      if (sources) fullMessage += `\n\n**Sources**\n${sources}`;
+    }
 
     const chunks = splitDiscordContent(fullMessage);
-    await interaction.editReply({
+    const reply = await interaction.editReply({
       content: chunks[0] || "I couldn't produce an answer for that one.",
       files: attachments,
+      embeds: [askFooter(result)],
+      components: [askActions(interaction.id)],
     });
     for (const chunk of chunks.slice(1)) {
       await interaction.followUp({ content: chunk });
     }
+    const collector = reply.createMessageComponentCollector({ time: 15 * 60_000, max: 3 });
+    collector.on("collect", async button => {
+      if (button.user.id !== interaction.user.id) {
+        await button.reply({ content: "Only the person who asked can use these controls.", ephemeral: true });
+        return;
+      }
+      const kind = button.customId.split(":")[0];
+      if (kind === "ask-sources") {
+        await button.reply({ content: `**Sources**\n${compactSources(result) || "No compact source list was returned."}`, ephemeral: true });
+        return;
+      }
+      if (kind === "ask-good") {
+        await submitFeedback({ discordId: interaction.user.id, username: interaction.user.username, question,
+          answer: result.answer, rating: "up", usedMcp: Boolean(result.liveDataUsed) });
+        await button.reply({ content: "Thanks, recorded as helpful.", ephemeral: true });
+        return;
+      }
+      if (kind !== "ask-report") return;
+      const modal = new ModalBuilder().setCustomId(`ask-report-modal:${interaction.id}`).setTitle("Report an Ask answer");
+      const reason = new TextInputBuilder().setCustomId("reason").setLabel("What was wrong?")
+        .setStyle(TextInputStyle.Paragraph).setPlaceholder("Wrong data, irrelevant, missing context, etc.")
+        .setRequired(false).setMaxLength(500);
+      modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(reason));
+      await button.showModal(modal);
+      try {
+        const submission = await button.awaitModalSubmit({ time: 5 * 60_000,
+          filter: value => value.customId === `ask-report-modal:${interaction.id}` && value.user.id === interaction.user.id });
+        await submitFeedback({ discordId: interaction.user.id, username: interaction.user.username, question,
+          answer: result.answer, rating: "down", reason: submission.fields.getTextInputValue("reason"), usedMcp: Boolean(result.liveDataUsed) });
+        await submission.reply({ content: "Thanks, the issue is in the Ask review queue.", ephemeral: true });
+      } catch { /* modal expiry needs no player-facing error */ }
+    });
   } catch (error) {
     // Use the bot's standard error handling pattern
     const { replyWithError } = await import("../utils/helpers.js");

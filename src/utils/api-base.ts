@@ -164,6 +164,26 @@ export async function apiPostPublic<T>(pathname: string, body: unknown, baseUrl?
   }
 }
 
+/** Authenticated request to the Ask site itself, used for bot answer feedback. */
+export async function apiPostAskSite<T>(pathname: string, body: unknown, timeoutMs = 15_000): Promise<T> {
+  const baseUrl = process.env.ASK_SITE_URL || "https://ask.lakesidegames.net";
+  const secret = process.env.ASK_SECRET || process.env.ASK_API_SECRET;
+  if (!secret) throw new Error("ASK_SECRET is required for Ask-site feedback");
+  const url = new URL(pathname, baseUrl);
+  await acquire();
+  try {
+    const response = await fetch(url.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${secret}` },
+      body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) await throwApiError(response, pathname);
+    return response.json() as Promise<T>;
+  } finally {
+    release();
+  }
+}
+
 export interface PublicStreamEvent {
   event: string;
   data: unknown;
