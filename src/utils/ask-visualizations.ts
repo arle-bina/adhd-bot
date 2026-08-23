@@ -11,6 +11,21 @@ export interface ExtractedAskVisualizations {
 
 const VISUALIZATION_BLOCK = /```(mermaid|mmd|ahd-map)\s*\n([\s\S]*?)```/gi;
 
+/**
+ * Discord answers cap ordinary code snippets, but an AHD map fence is a
+ * machine-readable attachment payload. Truncating it before extraction turns
+ * otherwise valid live-map JSON into an invalid map specification.
+ */
+export function truncateDiscordCodeBlocks(text: string, maxLines = 30): string {
+  return text.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, language: string | undefined, code: string) => {
+    if (language?.toLowerCase() === "ahd-map") return match;
+    const lines = code.split("\n");
+    if (lines.length <= maxLines) return match;
+    const kept = lines.slice(0, maxLines).join("\n");
+    return `\`\`\`${language || ""}\n${kept}\n... (${lines.length - maxLines} more lines, see ops dashboard)\n\`\`\``;
+  });
+}
+
 export function extractAskVisualizations(answer: string, limit = 1): ExtractedAskVisualizations {
   const visualizations: AskVisualization[] = [];
   const text = answer.replace(VISUALIZATION_BLOCK, (block, language: string, source: string) => {
