@@ -6,7 +6,7 @@ import {
 import { apiPostPublicStream } from "../utils/api-base.js";
 import { resolveAskIdentity } from "../utils/ask-context.js";
 import { splitDiscordContent } from "../utils/discord-content.js";
-import { extractAskVisualizations, renderMermaidPng } from "../utils/ask-visualizations.js";
+import { extractAskVisualizations, renderAskMapPng, renderMermaidPng } from "../utils/ask-visualizations.js";
 
 interface AskSource {
   kind: "knowledge" | "state";
@@ -163,10 +163,14 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     const attachments: AttachmentBuilder[] = [];
     for (const visualization of extracted.visualizations) {
       try {
-        const image = await renderMermaidPng(visualization.source);
+        const image = visualization.kind === "map"
+          ? await renderAskMapPng(visualization.source)
+          : await renderMermaidPng(visualization.source);
         attachments.push(new AttachmentBuilder(image, {
-          name: `ask-visualization-${visualization.index}.png`,
-          description: "Visualization generated for this Ask response",
+          name: `ask-${visualization.kind}-${visualization.index}.png`,
+          description: visualization.kind === "map"
+            ? "Live A House Divided game map generated for this Ask response"
+            : "Visualization generated for this Ask response",
         }));
       } catch {
         extracted.text += "\n\n*(The requested visualization could not be rendered.)*";
