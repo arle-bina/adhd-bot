@@ -4,7 +4,7 @@ import {
   type ChatInputCommandInteraction,
 } from "discord.js";
 import { apiPostPublicStream } from "../utils/api-base.js";
-import { lookupByDiscordId } from "../utils/api-politics.js";
+import { resolveAskIdentity } from "../utils/ask-context.js";
 import { splitDiscordContent } from "../utils/discord-content.js";
 import { extractAskVisualizations, renderMermaidPng } from "../utils/ask-visualizations.js";
 
@@ -74,6 +74,12 @@ export const data = new SlashCommandBuilder()
       .setRequired(true)
       .setMaxLength(2000)
   )
+  .addUserOption((opt) =>
+    opt
+      .setName("user")
+      .setDescription("Discord user whose linked game profile the question is about")
+      .setRequired(false)
+  )
   .addStringOption((opt) =>
     opt
       .setName("response_length")
@@ -102,6 +108,7 @@ const ASK_TIMEOUT_MS = 8 * 60_000;
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
   const question = interaction.options.getString("question", true).trim();
+  const selectedUser = interaction.options.getUser("user");
   const responseLength = interaction.options.getString("response_length") ?? "concise";
   const thinking = interaction.options.getString("thinking") ?? "normal";
 
@@ -129,20 +136,18 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   await interaction.editReply("Thinking…");
 
   try {
-    const linked = await lookupByDiscordId(interaction.user.id).catch(() => null);
-    const character = linked?.characters[0];
-    const requester = character
-      ? {
-          characterName: character.name,
-          country: character.countryId,
-          corporationName: character.ceoOf,
-        }
-      : undefined;
+    const requesterPromise = resolveAskIdentity(interaction.user);
+    const subjectPromise = selectedUser
+      ? selectedUser.id === interaction.user.id
+        ? requesterPromise
+        : resolveAskIdentity(selectedUser)
+      : Promise.resolve(undefined);
+    const [requester, subject] = await Promise.all([requesterPromise, subjectPromise]);
 
     let liveStatusShown = false;
     const result = await apiPostPublicStream<AskResponse>(
       "/api/ask-public",
-      { question, responseLength, thinking, requester },
+      { question, responseLength, thinking, requester, subject },
       async ({ event, data }) => {
         if (event !== "status" || liveStatusShown || typeof data !== "object" || !data) return;
         if ((data as { stage?: string }).stage !== "live_data") return;
