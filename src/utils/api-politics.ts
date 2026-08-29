@@ -606,3 +606,27 @@ export async function deleteSupporter(body: {
 }): Promise<SupporterResponse> {
   return apiPost<SupporterResponse>("/api/discord-bot/supporter/remove", body);
 }
+
+export type SupporterFeedTier = "supporter" | "supporter-plus";
+
+export interface SupporterFeedEntry {
+  discordId: string;
+  tier: SupporterFeedTier;
+}
+
+export interface SupportersResponse {
+  // Every linked Discord user who is currently an active supporter, with tier.
+  supporters: SupporterFeedEntry[];
+  // Every Discord ID mapped to an AHD account (active supporter or not), so the
+  // caller can tell a lapsed supporter (known account) from an unmanaged manual
+  // Discord grant (no account) and never strip a role from the latter.
+  linkedDiscordIds: string[];
+}
+
+/**
+ * Bulk feed for the supporter-role sync — every active supporter (with tier)
+ * plus the full set of Discord IDs linked to a game account.
+ */
+export async function getSupporters(): Promise<SupportersResponse> {
+  return apiFetch<SupportersResponse>("/api/discord-bot/supporters");
+}
