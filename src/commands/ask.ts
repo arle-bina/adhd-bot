@@ -10,8 +10,9 @@ import {
   TextInputStyle,
   type ChatInputCommandInteraction,
 } from "discord.js";
-import { apiPostAskSite, apiPostPublicStream } from "../utils/api-base.js";
+import { apiPostAskSite, apiPostAskSiteStream } from "../utils/api-base.js";
 import { resolveAskIdentity } from "../utils/ask-context.js";
+import { AskProgressReporter, DiscordConversationTracker } from "../utils/ask-progress.js";
 import { splitDiscordContent } from "../utils/discord-content.js";
 import { extractAskVisualizations, renderAskMapPng, renderMermaidPng, truncateDiscordCodeBlocks } from "../utils/ask-visualizations.js";
 import { asksForSources, compactSources } from "../utils/ask-presentation.js";
@@ -23,10 +24,16 @@ interface AskSource {
 
 interface AskResponse {
   answer: string;
-  files: string[];
+  answerId?: number;
+  files?: string[];
   sources?: AskSource[];
+  citations?: Array<string | { path?: string; label?: string }>;
+  liveSources?: Array<string | { label?: string }>;
   liveDataUsed?: boolean;
+  usedMcp?: boolean;
   model: string;
+  modelName?: string;
+  providerName?: string;
   usage: { input: number; output: number };
 }
 
@@ -92,16 +99,6 @@ export const data = new SlashCommandBuilder()
         { name: "Standard", value: "standard" },
         { name: "Detailed", value: "detailed" },
       )
-  )
-  .addStringOption((opt) =>
-    opt
-      .setName("thinking")
-      .setDescription("How deeply should it reason? Defaults to normal")
-      .addChoices(
-        { name: "Quick", value: "quick" },
-        { name: "Normal", value: "normal" },
-        { name: "Deep", value: "deep" },
-      )
   );
 
 // A live-data answer may need one model call to choose a read-only tool and a
@@ -109,9 +106,14 @@ export const data = new SlashCommandBuilder()
 // for 15 minutes, so leave enough room for deep mode without cutting it off.
 const ASK_TIMEOUT_MS = 8 * 60_000;
 
+const conversations = new DiscordConversationTracker();
+
 function askFooter(result: AskResponse): EmbedBuilder {
-  const label = result.liveDataUsed ? "Live game data used" : "Grounded in game rules and documentation";
-  return new EmbedBuilder().setColor(result.liveDataUsed ? 0x22c55e : 0x64748b).setFooter({ text: label });
+  const usedLive = result.usedMcp ?? result.liveDataUsed ?? false;
+  const grounding = usedLive ? "Live game data used" : "Grounded in game rules and documentation";
+  const model = result.modelName || result.model;
+  const label = [grounding, model && result.providerName ? `${model} via ${result.providerName}` : model].filter(Boolean).join(" · ");
+  return new EmbedBuilder().setColor(usedLive ? 0x22c55e : 0x64748b).setFooter({ text: label });
 }
 
 function askActions(id: string): ActionRowBuilder<ButtonBuilder> {
@@ -130,30 +132,12 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   const question = interaction.options.getString("question", true).trim();
   const selectedUser = interaction.options.getUser("user");
   const responseLength = interaction.options.getString("response_length") ?? "concise";
-  const thinking = interaction.options.getString("thinking") ?? "normal";
-
-  // Role gate: only developers and server moderators may use /ask
-  const allowedIds = [
-    process.env.DEVELOPER_ROLE_ID!,
-    process.env.SERVER_MODERATOR_ID!,
-  ].filter(Boolean);
-  const memberRoles = interaction.member?.roles;
-  const hasAllowedRole = memberRoles && "cache" in memberRoles
-    ? allowedIds.some((id) => memberRoles.cache.has(id))
-    : false;
-
-  if (!hasAllowedRole) {
-    await interaction.reply({
-      content: "You don't have permission to use this command.",
-      ephemeral: true,
-    });
-    return;
-  }
 
   // Defer immediately to get the full interaction window, then replace the
   // native spinner with a message that survives on every Discord client.
   await interaction.deferReply();
   await interaction.editReply("Thinking…");
+  const progress = new AskProgressReporter(content => interaction.editReply(content));
 
   try {
     const requesterPromise = resolveAskIdentity(interaction.user);
@@ -164,19 +148,23 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       : Promise.resolve(undefined);
     const [requester, subject] = await Promise.all([requesterPromise, subjectPromise]);
 
-    let liveStatusShown = false;
-    const result = await apiPostPublicStream<AskResponse>(
-      "/api/ask-public",
-      { question, responseLength, thinking, requester, subject },
-      async ({ event, data }) => {
-        if (event !== "status" || liveStatusShown || typeof data !== "object" || !data) return;
-        if ((data as { stage?: string }).stage !== "live_data") return;
-        liveStatusShown = true;
-        await interaction.editReply("Checking live game data…");
+    const result = await apiPostAskSiteStream<AskResponse>(
+      "/api/discord-ask/answer",
+      {
+        question, responseLength, requester, subject,
+        discordId: interaction.user.id,
+        discordUsername: interaction.user.username,
+        convId: conversations.idFor(interaction.channelId, interaction.user.id),
       },
-      process.env.OPS_DASHBOARD_URL,
+      ({ event, data }) => {
+        if (typeof data !== "object" || !data) return;
+        const label = String((data as { label?: unknown }).label || "");
+        if (event === "status" && label) progress.status(label);
+        if (event === "action" && label) progress.action(label);
+      },
       ASK_TIMEOUT_MS,
     );
+    await progress.stop();
 
     const formatted = formatForDiscord(result.answer);
     const extracted = extractAskVisualizations(formatted);
@@ -228,7 +216,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       }
       if (kind === "ask-good") {
         await submitFeedback({ discordId: interaction.user.id, username: interaction.user.username, question,
-          answer: result.answer, rating: "up", usedMcp: Boolean(result.liveDataUsed) });
+          answer: result.answer, answerId: result.answerId, rating: "up", usedMcp: Boolean(result.usedMcp ?? result.liveDataUsed) });
         await button.reply({ content: "Thanks, recorded as helpful.", ephemeral: true });
         return;
       }
@@ -243,11 +231,12 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         const submission = await button.awaitModalSubmit({ time: 5 * 60_000,
           filter: value => value.customId === `ask-report-modal:${interaction.id}` && value.user.id === interaction.user.id });
         await submitFeedback({ discordId: interaction.user.id, username: interaction.user.username, question,
-          answer: result.answer, rating: "down", reason: submission.fields.getTextInputValue("reason"), usedMcp: Boolean(result.liveDataUsed) });
+          answer: result.answer, answerId: result.answerId, rating: "down", reason: submission.fields.getTextInputValue("reason"), usedMcp: Boolean(result.usedMcp ?? result.liveDataUsed) });
         await submission.reply({ content: "Thanks, the issue is in the Ask review queue.", ephemeral: true });
       } catch { /* modal expiry needs no player-facing error */ }
     });
   } catch (error) {
+    await progress.stop();
     // Use the bot's standard error handling pattern
     const { replyWithError } = await import("../utils/helpers.js");
     await replyWithError(interaction, "ask", error);

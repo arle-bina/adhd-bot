@@ -4,8 +4,10 @@ export interface AskPresentationSource {
 }
 
 export interface AskPresentationResponse {
-  files: string[];
+  files?: string[];
   sources?: AskPresentationSource[];
+  citations?: Array<string | { path?: string; label?: string }>;
+  liveSources?: Array<string | { label?: string }>;
 }
 
 export function asksForSources(question: string): boolean {
@@ -15,10 +17,13 @@ export function asksForSources(question: string): boolean {
 // Discord needs a way to inspect grounding without turning every answer into
 // a developer transcript or triggering a wall of GitHub previews.
 export function compactSources(result: AskPresentationResponse): string {
-  const labels = (result.sources || []).slice(0, 2)
-    .map(source => source.label.replace(/\s*\([^)]*\)/g, "").trim())
+  const live = result.liveSources || result.sources || [];
+  const labels = live.slice(0, 2)
+    .map(source => (typeof source === "string" ? source : source.label || "").replace(/\s*\([^)]*\)/g, "").trim())
     .filter(Boolean);
   if (labels.length) return labels.map(label => `• ${label}`).join("\n");
-  return (result.files || []).slice(0, 2)
+  const cited = (result.citations || []).map(citation =>
+    typeof citation === "string" ? citation : citation.path || citation.label || "").filter(Boolean);
+  return (cited.length ? cited : result.files || []).slice(0, 2)
     .map(file => `• \`${file.replace(/^\/+/, "")}\``).join("\n");
 }
