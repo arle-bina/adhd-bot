@@ -189,27 +189,21 @@ export interface PublicStreamEvent {
   data: unknown;
 }
 
-/** Public POST request that consumes SSE progress and returns its final result. */
-export async function apiPostPublicStream<T>(
+async function postPublicStream<T>(
   pathname: string,
   body: unknown,
   onEvent: (event: PublicStreamEvent) => void | Promise<void>,
-  baseUrl?: string,
+  baseUrl: string,
+  headers: Record<string, string>,
   timeoutMs?: number,
 ): Promise<T> {
-  const url = new URL(pathname, baseUrl || process.env.GAME_API_URL);
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "text/event-stream",
-  };
-  const askSecret = process.env.ASK_SECRET || process.env.ASK_API_SECRET;
-  if (askSecret) headers["X-Ask-Secret"] = askSecret;
+  const url = new URL(pathname, baseUrl);
 
   await acquire();
   try {
     const response = await fetch(url.toString(), {
       method: "POST",
-      headers,
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream", ...headers },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs ?? FETCH_TIMEOUT_MS),
     });
@@ -233,7 +227,7 @@ export async function apiPostPublicStream<T>(
       }
       if (!dataLines.length) return;
       const data = JSON.parse(dataLines.join("\n")) as unknown;
-      if (event === "result") result = data as T;
+      if (event === "result" || event === "done") result = data as T;
       if (event === "error") {
         const message = typeof data === "object" && data && "error" in data
           ? String((data as { error: unknown }).error)
@@ -257,6 +251,33 @@ export async function apiPostPublicStream<T>(
   } finally {
     release();
   }
+}
+
+/** Public POST request that consumes SSE progress and returns its final result. */
+export async function apiPostPublicStream<T>(
+  pathname: string,
+  body: unknown,
+  onEvent: (event: PublicStreamEvent) => void | Promise<void>,
+  baseUrl?: string,
+  timeoutMs?: number,
+): Promise<T> {
+  const askSecret = process.env.ASK_SECRET || process.env.ASK_API_SECRET;
+  return postPublicStream(pathname, body, onEvent, baseUrl || process.env.GAME_API_URL!,
+    askSecret ? { "X-Ask-Secret": askSecret } : {}, timeoutMs);
+}
+
+/** Full Ask-site pipeline for Discord: bearer-authenticated and SSE streamed. */
+export async function apiPostAskSiteStream<T>(
+  pathname: string,
+  body: unknown,
+  onEvent: (event: PublicStreamEvent) => void | Promise<void>,
+  timeoutMs?: number,
+): Promise<T> {
+  const secret = process.env.ASK_SECRET || process.env.ASK_API_SECRET;
+  if (!secret) throw new Error("ASK_SECRET is required for Ask-site answers");
+  return postPublicStream(pathname, body, onEvent,
+    process.env.ASK_SITE_URL || "https://ask.lakesidegames.net",
+    { Authorization: `Bearer ${secret}` }, timeoutMs);
 }
 
 // Expose for testing only

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { _testing, ApiError, apiPostPublicStream } from "../../src/utils/api-base.js";
+import { _testing, ApiError, apiPostAskSiteStream, apiPostPublicStream } from "../../src/utils/api-base.js";
 
 const { acquire, release, getActive, getWaitingCount } = _testing;
 
@@ -99,6 +99,35 @@ describe("apiPostPublicStream", () => {
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({ Accept: "text/event-stream" }),
+      }),
+    );
+  });
+
+  it("calls the Ask-site engine with bearer auth and accepts its done event", async () => {
+    process.env.ASK_SITE_URL = "https://ask.example.com";
+    process.env.ASK_SECRET = "shared-secret";
+    const fetchMock = vi.fn(async () => new Response(
+      [
+        'event: status\ndata: {"label":"Searching code and docs…"}',
+        'event: action\ndata: {"label":"corporation_rankings(US)"}',
+        'event: done\ndata: {"answer":"Acme ranks first","answerId":77}',
+        "",
+      ].join("\n\n"),
+      { status: 200, headers: { "Content-Type": "text/event-stream" } },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await apiPostAskSiteStream<{ answer: string; answerId: number }>(
+      "/api/discord-ask/answer",
+      { question: "How is Acme doing?" },
+      () => {},
+    );
+
+    expect(result).toEqual({ answer: "Acme ranks first", answerId: 77 });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://ask.example.com/api/discord-ask/answer",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer shared-secret" }),
       }),
     );
   });
