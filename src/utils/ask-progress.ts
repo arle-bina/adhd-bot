@@ -15,9 +15,27 @@ function cleanLabel(value: string): string {
     .slice(0, 120);
 }
 
+/** Make a partial answer safe and readable as a live Discord preview. */
+export function previewFrom(answer: string): string {
+  let text = String(answer || "")
+    // Machine markers (follow-up and conflict contracts) arrive inline near
+    // the end of the stream; they are stripped from the final answer later,
+    // so never flash them at the player.
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, "")
+    // Visualization sources render as attachments after completion; raw
+    // mermaid or map text is noise mid-stream.
+    .replace(/```(?:mermaid|ahd-map)[\s\S]*?(?:```|$)/g, "*[visualization rendering…]*");
+  // A half-streamed code fence would swallow the rest of the message.
+  if ((text.match(/```/g) || []).length % 2 === 1) text += "\n```";
+  text = text.trimEnd();
+  if (text.length > 1700) text = `${text.slice(0, 1700)}…`;
+  return `${text} ▍`;
+}
+
 export class AskProgressState {
   private readonly maxItems: number;
   private items: ProgressItem[] = [];
+  private answer = "";
 
   constructor(maxItems = 6) {
     this.maxItems = Math.max(2, maxItems);
@@ -25,6 +43,8 @@ export class AskProgressState {
 
   status(label: string): void { this.push("status", label); }
   action(label: string): void { this.push("action", label); }
+  /** Accumulate streamed answer text; once any arrives, it takes the stage. */
+  delta(piece: string): void { this.answer += String(piece || ""); }
 
   private push(kind: ProgressKind, label: string): void {
     const clean = cleanLabel(label);
@@ -34,6 +54,7 @@ export class AskProgressState {
   }
 
   render(): string {
+    if (this.answer.trim()) return previewFrom(this.answer);
     if (!this.items.length) return "Working on it…";
     return ["Working on it…", ...this.items.map((item, index) =>
       `${index === this.items.length - 1 ? "•" : "✓"} ${item.label}${index === this.items.length - 1 ? "…" : ""}`,
@@ -85,6 +106,7 @@ export class AskProgressReporter {
 
   status(label: string): void { this.state.status(label); this.queue(); }
   action(label: string): void { this.state.action(label); this.queue(); }
+  delta(piece: string): void { this.state.delta(piece); this.queue(); }
 
   private queue(): void {
     if (this.stopped || this.timer) return;

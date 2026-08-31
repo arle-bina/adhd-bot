@@ -29,7 +29,7 @@ import { handleLockReaction, TICKET_CLOSE_MODAL_PREFIX, handleTicketCloseModalSu
 import { getChannelConfig, postWebhookReaction, getPendingPasswordResets, ackPasswordResets, getPendingBroadcastDms, ackBroadcastDms } from "./utils/api-game.js";
 import { getBulkSyncRoles, type SyncRolesBulkUser } from "./utils/api.js";
 import { syncMemberRoles } from "./utils/roles.js";
-import { getTicketByChannel, getTicketByNumber } from "./utils/ticketStore.js";
+import { getTicketByChannel } from "./utils/ticketStore.js";
 import { updateTicket as apiUpdateTicket, getPendingResolutions } from "./utils/ticketsApi.js";
 import { checkMessage } from "./utils/filter.js";
 import { isBotEnabled } from "./utils/botState.js";
@@ -47,6 +47,7 @@ validateEnv();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+import { handleAskContinuation } from "./utils/ask-continuation.js";
 import type { AutocompleteInteraction } from "discord.js";
 
 interface Command {
@@ -420,6 +421,8 @@ client.once("ready", () => {
 
 // Track messages for server stats + content filter
 client.on("messageCreate", async (message) => {
+  // Replying to an Ask answer continues that conversation (fail-quiet).
+  void handleAskContinuation(message);
   // Add 👍/👎 to webhook posts in the configured news/suggestions channels
   if (message.webhookId && message.guild) {
     if ((newsChannelId && message.channelId === newsChannelId) ||
