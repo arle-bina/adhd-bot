@@ -29,7 +29,7 @@ describe("/ask feedback controls", () => {
   });
 
   it("keeps the collector honest: no click cap, scoped filter, disabled on end, truthful failure copy", async () => {
-    const source = await import("node:fs").then(fs => fs.readFileSync("src/commands/ask.ts", "utf8"));
+    const source = await import("node:fs").then(fs => fs.readFileSync("src/utils/ask-runtime.ts", "utf8"));
     expect(source).not.toMatch(/max:\s*3/);
     expect(source).toMatch(/filter: button => button\.customId\.endsWith/);
     expect(source).toMatch(/collector\.on\("end"/);
