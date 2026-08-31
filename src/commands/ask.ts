@@ -2,8 +2,6 @@ import {
   ActionRowBuilder,
   SlashCommandBuilder,
   AttachmentBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   EmbedBuilder,
   ModalBuilder,
   TextInputBuilder,
@@ -15,7 +13,7 @@ import { resolveAskIdentity } from "../utils/ask-context.js";
 import { AskProgressReporter, DiscordConversationTracker } from "../utils/ask-progress.js";
 import { splitDiscordContent } from "../utils/discord-content.js";
 import { extractAskVisualizations, renderAskMapPng, renderMermaidPng, truncateDiscordCodeBlocks } from "../utils/ask-visualizations.js";
-import { asksForSources, compactSources } from "../utils/ask-presentation.js";
+import { askActions, asksForSources, compactSources, FEEDBACK_FAILED } from "../utils/ask-presentation.js";
 
 interface AskSource {
   kind: "knowledge" | "state";
@@ -116,16 +114,21 @@ function askFooter(result: AskResponse): EmbedBuilder {
   return new EmbedBuilder().setColor(usedLive ? 0x22c55e : 0x64748b).setFooter({ text: label });
 }
 
-function askActions(id: string): ActionRowBuilder<ButtonBuilder> {
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`ask-good:${id}`).setLabel("Helpful").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`ask-report:${id}`).setLabel("Report issue").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`ask-sources:${id}`).setLabel("Sources").setStyle(ButtonStyle.Secondary),
-  );
+interface FeedbackResult {
+  ok: boolean;
+  queued?: boolean;
 }
 
-async function submitFeedback(input: Record<string, unknown>): Promise<void> {
-  try { await apiPostAskSite("/api/discord-feedback", input); } catch { /* feedback must not disrupt a player interaction */ }
+// Returns whether ask-site actually accepted the feedback. The old version
+// swallowed every failure and the player was thanked for feedback that a 401
+// or an outage had just discarded. A confirmation must not lie.
+async function submitFeedback(input: Record<string, unknown>): Promise<FeedbackResult | null> {
+  try {
+    return await apiPostAskSite<FeedbackResult>("/api/discord-feedback", input);
+  } catch (error) {
+    console.error("[ask] feedback submit failed:", error instanceof Error ? error.message : String(error));
+    return null;
+  }
 }
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -203,7 +206,26 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     for (const chunk of chunks.slice(1)) {
       await interaction.followUp({ content: chunk });
     }
-    const collector = reply.createMessageComponentCollector({ time: 15 * 60_000, max: 3 });
+    // No `max`: the old collector counted EVERY component click, Sources
+    // presses and even other users' rejected clicks, toward a cap of 3, after
+    // which the asker's own Report button silently died. One rating per answer
+    // is enforced explicitly instead, and the button row is updated so the
+    // state is visible rather than a mystery.
+    const collector = reply.createMessageComponentCollector({
+      time: 14 * 60_000,
+      filter: button => button.customId.endsWith(`:${interaction.id}`),
+    });
+    let rated: "up" | "down" | null = null;
+    const feedbackBody = (rating: "up" | "down", reason?: string): Record<string, unknown> => ({
+      discordId: interaction.user.id, username: interaction.user.username, question,
+      answer: result.answer, answerId: result.answerId, rating,
+      ...(reason ? { reason } : {}),
+      usedMcp: Boolean(result.usedMcp ?? result.liveDataUsed),
+    });
+    const showRated = async (kind: "up" | "down") => {
+      rated = kind;
+      try { await interaction.editReply({ components: [askActions(interaction.id, { ratingDisabled: true, ratedLabel: kind })] }); } catch { /* cosmetic */ }
+    };
     collector.on("collect", async button => {
       if (button.user.id !== interaction.user.id) {
         await button.reply({ content: "Only the person who asked can use these controls.", ephemeral: true });
@@ -214,10 +236,18 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         await button.reply({ content: `**Sources**\n${compactSources(result) || "No compact source list was returned."}`, ephemeral: true });
         return;
       }
+      if (rated) {
+        await button.reply({ content: "Feedback for this answer is already recorded.", ephemeral: true });
+        return;
+      }
       if (kind === "ask-good") {
-        await submitFeedback({ discordId: interaction.user.id, username: interaction.user.username, question,
-          answer: result.answer, answerId: result.answerId, rating: "up", usedMcp: Boolean(result.usedMcp ?? result.liveDataUsed) });
-        await button.reply({ content: "Thanks, recorded as helpful.", ephemeral: true });
+        const sent = await submitFeedback(feedbackBody("up"));
+        if (sent?.ok) {
+          await showRated("up");
+          await button.reply({ content: "Thanks, recorded as helpful.", ephemeral: true });
+        } else {
+          await button.reply({ content: FEEDBACK_FAILED, ephemeral: true });
+        }
         return;
       }
       if (kind !== "ask-report") return;
@@ -230,10 +260,21 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       try {
         const submission = await button.awaitModalSubmit({ time: 5 * 60_000,
           filter: value => value.customId === `ask-report-modal:${interaction.id}` && value.user.id === interaction.user.id });
-        await submitFeedback({ discordId: interaction.user.id, username: interaction.user.username, question,
-          answer: result.answer, answerId: result.answerId, rating: "down", reason: submission.fields.getTextInputValue("reason"), usedMcp: Boolean(result.usedMcp ?? result.liveDataUsed) });
-        await submission.reply({ content: "Thanks, the issue is in the Ask review queue.", ephemeral: true });
+        const sent = await submitFeedback(feedbackBody("down", submission.fields.getTextInputValue("reason")));
+        if (sent?.ok) {
+          await showRated("down");
+          // Only claim the review queue when the server says the report was
+          // actually queued for staff review.
+          await submission.reply({ content: sent.queued ? "Thanks, the issue is in the Ask review queue." : "Thanks, the report is recorded.", ephemeral: true });
+        } else {
+          await submission.reply({ content: FEEDBACK_FAILED, ephemeral: true });
+        }
       } catch { /* modal expiry needs no player-facing error */ }
+    });
+    collector.on("end", async () => {
+      // Dead-looking-alive buttons read as errors ("This interaction failed").
+      // Disable the row while the interaction token is still valid.
+      try { await interaction.editReply({ components: [askActions(interaction.id, { allDisabled: true, ratedLabel: rated ?? undefined })] }); } catch { /* message may be gone */ }
     });
   } catch (error) {
     await progress.stop();
