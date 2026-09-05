@@ -220,7 +220,7 @@ write("candles.png", renderCandles({
   currencySymbol: "$",
 }));
 
-console.log(`\nWrote previews to ${out}/`);
+
 
 // ── /profile ────────────────────────────────────────────────────────────────
 console.log("profile:");
@@ -274,3 +274,71 @@ write("profile-minimal.png", renderProfileCardSync({
   ],
   footerLeft: "Turn 612 · Values GBP",
 }));
+
+// ── /leaderboard ────────────────────────────────────────────────────────────
+console.log("leaderboard:");
+const players: Array<[string, string, string, string, number]> = [
+  ["Eleanor Vance", "Senator", "VT", "#2a5fd6", 12480],
+  ["Marcus Thorne", "Governor", "TX", "#c62828", 11020],
+  ["Ada Okonkwo", "Representative", "NY", "#2a5fd6", 9640],
+  ["Hollis Barrow", "Representative", "OH", "#c62828", 8210],
+  ["Yuki Tanaka", "Senator", "CA", "#12a67c", 7455],
+  ["Petra Novak", "Mayor", "IL", "#2a5fd6", 6180],
+  ["Sam Whitfield", "Representative", "FL", "#c62828", 5240],
+  ["Iris Delgado", "Senator", "AZ", "#2a5fd6", 4870],
+  ["Noor Haddad", "Representative", "MI", "#faa61a", 3310],
+  ["Cassius Bell", "Representative", "GA", "#c62828", 2890],
+];
+write("leaderboard.png", renderBarChart({
+  title: "Political Influence — United States",
+  subtitle: "Top politicians · page 1 of 4",
+  labelFraction: 0.42,
+  rows: players.map(([name, office, st, color, pi], i) => ({
+    label: name,
+    value: pi,
+    color: brandColor(color, i),
+    primary: compactNumber(pi),
+    tag: `${office} · ${st}`,
+  })),
+}));
+
+// ── /sectors ────────────────────────────────────────────────────────────────
+console.log("sectors:");
+write("sectors.png", renderBarChart({
+  title: "Technology — top sectors by revenue",
+  subtitle: "84 sectors · page 1 of 9",
+  footerLeft: "Revenue · growth % · Values USD",
+  labelFraction: 0.38,
+  rows: [
+    ["Aeropagus Incorporated", "California", 412_000_000, 4.2],
+    ["Vermont Logistics", "Vermont", 288_400_000, 1.8],
+    ["Rgold", "Nevada", 190_100_000, -2.4],
+    ["Atlas Automotive", "Michigan", 142_700_000, 0.6],
+    ["Butxot-Freiburg", "Texas", 96_300_000, 7.1],
+    ["Lockheed Commerce", "Georgia", 61_500_000, -0.9],
+  ].map(([name, state, rev, growth], i) => ({
+    label: name as string,
+    value: rev as number,
+    color: SERIES[i % SERIES.length],
+    primary: compactMoney(rev as number, "$"),
+    secondary: `${(growth as number) >= 0 ? "+" : ""}${(growth as number).toFixed(1)}%`,
+    tag: state as string,
+  })),
+}));
+
+// ── /election ───────────────────────────────────────────────────────────────
+console.log("election:");
+write("race.png", renderBarChart({
+  title: "Senate — Vermont",
+  subtitle: "General election · 412.8K votes counted",
+  footerLeft: "Updates each turn",
+  labelFraction: 0.36,
+  rows: [
+    { label: "Eleanor Vance", value: 51.4, color: "#2a5fd6", primary: "51.4%", secondary: "212.2K votes", tag: "Democratic Party" },
+    { label: "Marcus Thorne", value: 44.1, color: "#c62828", primary: "44.1%", secondary: "182.0K votes", tag: "Republican Party" },
+    { label: "Noor Haddad", value: 3.2, color: "#12a67c", primary: "3.2%", secondary: "13.2K votes", tag: "Progressive · NPP" },
+    { label: "Cassius Bell", value: 1.3, color: "#faa61a", primary: "1.3%", secondary: "5.4K votes", tag: "Liberal Party" },
+  ],
+}));
+
+console.log(`\nWrote previews to ${out}/`);

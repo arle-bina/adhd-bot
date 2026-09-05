@@ -15,7 +15,10 @@ import {
   convertCurrency,
   currencyFor,
   CURRENCY_CHOICES,
+  symbolFor,
 } from "../utils/currency.js";
+import { renderBarChart, seriesColor, signedPercent, compactMoney, compactNumber, STATUS, OTHERS, type BarRow } from "../utils/viz/index.js";
+import { chartAttachment } from "../utils/viz/attach.js";
 
 export const cooldown = 10;
 
@@ -126,6 +129,79 @@ function buildUnownedEmbed(result: UnownedSectorsResponse, targetCurrency: strin
     });
 }
 
+/**
+ * Owned sectors ranked by revenue. Growth rides along as a signed secondary
+ * column — a second bar would need a second scale, and two scales in one frame
+ * is how unrelated series get made to look correlated.
+ */
+function buildOwnedChart(
+  result: OwnedSectorsResponse,
+  targetCurrency: string,
+  rates: Record<string, number>,
+): Buffer {
+  const sym = symbolFor(targetCurrency);
+  const rows: BarRow[] = result.sectors.map((sector, i) => {
+    const sourceCurrency = sector.liquidCurrencyCode ?? currencyFor(sector.countryId);
+    const rev = convertCurrency(sector.revenue, sourceCurrency, targetCurrency, rates);
+    const growth = sector.currentGrowthRate ?? sector.growthRate ?? 0;
+    return {
+      label: sector.corporationName,
+      value: Math.max(0, rev),
+      color: seriesColor(i % 8),
+      primary: compactMoney(rev, sym),
+      secondary: signedPercent(growth),
+      tag: sector.stateName,
+    };
+  });
+
+  return renderBarChart({
+    title: `${result.sectorLabel} — top sectors by revenue`,
+    subtitle:
+      result.totalPages > 1
+        ? `${result.totalItems} sectors · page ${result.page} of ${result.totalPages}`
+        : `${result.totalItems} sectors`,
+    footerLeft: `Revenue · growth % · Values ${targetCurrency}`,
+    startRank: (result.page - 1) * 10 + 1,
+    labelFraction: 0.38,
+    rows,
+  });
+}
+
+/** Unowned market by state — how much of this sector is still up for grabs. */
+function buildUnownedChart(
+  result: UnownedSectorsResponse,
+  targetCurrency: string,
+  rates: Record<string, number>,
+): Buffer {
+  const sym = symbolFor(targetCurrency);
+  const rows: BarRow[] = result.sectors.map((sector) => {
+    const unowned = convertCurrency(sector.unownedRevenue, "USD", targetCurrency, rates);
+    const total = convertCurrency(sector.totalMarket, "USD", targetCurrency, rates);
+    const share = total > 0 ? (unowned / total) * 100 : 0;
+    return {
+      label: sector.stateName,
+      value: Math.max(0, unowned),
+      // Unowned market is opportunity, not identity — one reserved status hue.
+      color: share >= 50 ? STATUS.good : OTHERS,
+      primary: compactMoney(unowned, sym),
+      secondary: `${share.toFixed(0)}% free`,
+      tag: undefined,
+    };
+  });
+
+  return renderBarChart({
+    title: `${result.sectorLabel} — unowned market`,
+    subtitle:
+      result.totalPages > 1
+        ? `${result.totalItems} states with room · page ${result.page} of ${result.totalPages}`
+        : `${result.totalItems} states with room`,
+    footerLeft: `Unowned revenue · share of state market · Values ${targetCurrency}`,
+    startRank: (result.page - 1) * 10 + 1,
+    labelFraction: 0.34,
+    rows,
+  });
+}
+
 function buildNavRow(page: number, totalPages: number): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
@@ -163,20 +239,33 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     const rates = await fetchForexRates();
 
-    const buildEmbed = () =>
-      result.mode === "unowned"
+    /**
+     * Chart plus embed. The description keeps its hyperlinks to the corporation
+     * and state pages on the main site — an image cannot be clicked — and is the
+     * text equivalent of the chart.
+     */
+    const buildReply = () => {
+      const unownedMode = result.mode === "unowned";
+      const embed = unownedMode
         ? buildUnownedEmbed(result as UnownedSectorsResponse, targetCurrency, rates)
         : buildOwnedEmbed(result as OwnedSectorsResponse, targetCurrency, rates);
+      const buffer = unownedMode
+        ? buildUnownedChart(result as UnownedSectorsResponse, targetCurrency, rates)
+        : buildOwnedChart(result as OwnedSectorsResponse, targetCurrency, rates);
+      const chart = chartAttachment(buffer, "sectors", `${result.mode}-${result.page}`);
+      embed.setImage(chart.url);
+      return { embeds: [embed], files: [chart.file] };
+    };
 
     const totalPages = result.totalPages;
 
     if (totalPages <= 1) {
-      await interaction.editReply({ embeds: [buildEmbed()] });
+      await interaction.editReply(buildReply());
       return;
     }
 
     const message = await interaction.editReply({
-      embeds: [buildEmbed()],
+      ...buildReply(),
       components: [buildNavRow(page, totalPages)],
     });
 
@@ -199,7 +288,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       try {
         result = await getSectors({ type, unowned, page });
         await btn.editReply({
-          embeds: [buildEmbed()],
+          ...buildReply(),
           components: [buildNavRow(page, totalPages)],
         });
       } catch (error) {
