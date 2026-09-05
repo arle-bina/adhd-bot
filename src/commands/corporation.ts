@@ -15,11 +15,17 @@ import {
   ApiError,
   type CorporationListItem,
   type CorporationResponse,
+  type CorporationData,
+  type CorporationCeo,
+  type CorporationFinancials,
   type BondsResponse,
   type FinancialsResponse,
 } from "../utils/api.js";
 import { hexToInt, replyWithError, safeEmbedUrl } from "../utils/helpers.js";
-import { currencyFor, formatCurrency, formatSharePrice, formatCurrencySigned, padCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
+import { AttachmentBuilder } from "discord.js";
+import { currencyFor, formatCurrency, formatSharePrice, formatCurrencySigned, padCurrency, convertCurrency, fetchForexRates, symbolFor, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
+import { renderEntityCard, compactMoney, compactNumber, signedPercent, seriesColor } from "../utils/viz/index.js";
+import { chartAttachment } from "../utils/viz/attach.js";
 
 // ---------------------------------------------------------------------------
 // Corporation list cache (5-minute TTL)
@@ -125,6 +131,95 @@ function forexFooter(displayCurrency: string, nativeCc: string, rates: Record<st
 // ---------------------------------------------------------------------------
 // Embed builders
 // ---------------------------------------------------------------------------
+
+/**
+ * The corporation as a card.
+ *
+ * Public float is the one figure here with a real 0-100 domain, so it is the
+ * only meter; market cap and share price have no ceiling the bot is told, and a
+ * bar for them would invent a denominator.
+ */
+function buildCorporationCard(
+  corp: CorporationData,
+  financials: CorporationFinancials,
+  ceo: CorporationCeo | null | undefined,
+  cc: string,
+  cvt: (n: number | null | undefined) => number | null | undefined,
+): Promise<Buffer> {
+  const sym = symbolFor(cc);
+  const money = (n: number | null | undefined) => compactMoney(Number(cvt(n) ?? 0), sym);
+  const revenue = Number(cvt(financials.totalRevenue) ?? 0);
+  const income = Number(cvt(financials.income) ?? 0);
+  const margin = financials.totalRevenue > 0 ? (financials.income / financials.totalRevenue) * 100 : 0;
+
+  const rows = [
+    { label: "Daily revenue", value: money(financials.totalRevenue) },
+    { label: "Daily costs", value: money(financials.totalCosts) },
+    { label: "Daily income", value: `${income >= 0 ? "" : "-"}${compactMoney(Math.abs(income), sym)}` },
+    { label: "Profit margin", value: signedPercent(margin) },
+  ];
+  if ((corp.dividendRate ?? 0) !== 0) {
+    rows.push({ label: "Dividend", value: `${corp.dividendRate}% · ${money(financials.dailyDividendPayout)}/day` });
+  }
+  if (corp.totalShares != null) {
+    rows.push({ label: "Shares", value: compactNumber(corp.totalShares) });
+  }
+
+  const floatPct = Math.max(0, Math.min(100, corp.publicFloatPct ?? 0));
+
+  return renderEntityCard({
+    name: corp.name,
+    position: [corp.typeLabel || corp.type, corp.headquartersStateName].filter(Boolean).join(" · "),
+    chip: ceo ? `CEO ${ceo.name}` : "CEO vacant",
+    accent: corp.brandColor,
+    avatarUrl: corp.logoUrl,
+    banner: corp.description ? corp.description.slice(0, 90) : null,
+    economic: null,
+    social: null,
+    headline: [
+      { label: "Market cap", value: money(corp.marketCapitalization) },
+      { label: "Share price", value: money(corp.sharePrice) },
+      { label: "Liquid capital", value: money(corp.liquidCapital) },
+    ],
+    meters: [
+      {
+        label: "Public float",
+        value: floatPct,
+        display: `${floatPct.toFixed(1)}%`,
+        color: seriesColor(0),
+      },
+    ],
+    rows,
+    footerLeft: `Revenue ${compactMoney(revenue, sym)}/day · Values ${cc}`,
+  });
+}
+
+/**
+ * Overview embed plus its card. Async because the card fetches the corporation
+ * logo; a failed fetch degrades to the monogram rather than dropping the card.
+ */
+async function buildOverviewReply(
+  res: CorporationResponse,
+  displayCurrency: string,
+  rates: Record<string, number>,
+): Promise<{ embeds: EmbedBuilder[]; files: AttachmentBuilder[] }> {
+  const embed = buildOverviewEmbed(res, displayCurrency, rates);
+  const corp = res.corporation;
+  const financials = res.financials;
+  if (!corp || !financials) return { embeds: [embed], files: [] };
+
+  const nativeCc = corp.liquidCurrencyCode || currencyFor(corp.countryId);
+  const cc = displayCurrency;
+  const cvt = (n: number | null | undefined): number | null | undefined =>
+    n != null ? Math.round(convertCurrency(n, nativeCc, cc, rates)) : n;
+
+  const buffer = await buildCorporationCard(corp, financials, res.ceo, cc, cvt).catch(() => null);
+  if (!buffer) return { embeds: [embed], files: [] };
+
+  const chart = chartAttachment(buffer, "corporation", corp.id);
+  embed.setImage(chart.url);
+  return { embeds: [embed], files: [chart.file] };
+}
 
 function buildOverviewEmbed(res: CorporationResponse, displayCurrency: string, rates: Record<string, number>): EmbedBuilder {
   const corp = res.corporation!;
@@ -417,7 +512,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     let currentTab: Tab = "overview";
 
     const message = await interaction.editReply({
-      embeds: [buildOverviewEmbed(overviewRes, displayCurrency, rates)],
+      ...(await buildOverviewReply(overviewRes, displayCurrency, rates)),
       components: [buildTabRow("overview")],
     });
 
@@ -441,11 +536,17 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
       try {
         let embed: EmbedBuilder;
+        // Only the overview carries a card; the other tabs must clear the
+        // message's files or the overview image lingers behind their embed.
+        let files: AttachmentBuilder[] = [];
 
         switch (tab) {
-          case "overview":
-            embed = buildOverviewEmbed(overviewRes, displayCurrency, rates);
+          case "overview": {
+            const reply = await buildOverviewReply(overviewRes, displayCurrency, rates);
+            embed = reply.embeds[0];
+            files = reply.files;
             break;
+          }
           case "bonds":
             if (!bondsRes) bondsRes = await getBonds({ corp: name });
             embed = buildBondsEmbed(bondsRes, name, overviewRes.corporation?.countryId, displayCurrency, rates, overviewRes.corporation?.liquidCurrencyCode ?? null);
@@ -466,6 +567,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
         currentTab = tab;
         await component.editReply({
+          files,
           embeds: [embed],
           components: [buildTabRow(tab)],
         });

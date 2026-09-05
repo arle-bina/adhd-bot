@@ -464,4 +464,35 @@ write("achievements.png", renderAchievements({
   ],
 }));
 
+
+
+// ── /corporation ────────────────────────────────────────────────────────────
+console.log("corporation:");
+write("corporation.png", renderEntityCardSync({
+  name: "Expeditors",
+  position: "Logistics · Washington",
+  chip: "CEO Marcus Thorne",
+  accent: "#7c3aed",
+  banner: "Freight forwarding and supply-chain management across 14 states.",
+  economic: null,
+  social: null,
+  headline: [
+    { label: "Market cap", value: compactMoney(1_940_000_000, "$") },
+    { label: "Share price", value: compactMoney(42.18, "$") },
+    { label: "Liquid capital", value: compactMoney(184_200_000, "$") },
+  ],
+  meters: [
+    { label: "Public float", value: 38.4, display: "38.4%", color: SERIES[0] },
+  ],
+  rows: [
+    { label: "Daily revenue", value: compactMoney(946_400, "$") },
+    { label: "Daily costs", value: compactMoney(712_800, "$") },
+    { label: "Daily income", value: compactMoney(233_600, "$") },
+    { label: "Profit margin", value: "+24.7%" },
+    { label: "Dividend", value: "2% · $18.9K/day" },
+    { label: "Shares", value: compactNumber(46_000_000) },
+  ],
+  footerLeft: "Revenue $946.4K/day · Values USD",
+}));
+
 console.log(`\nWrote previews to ${out}/`);
