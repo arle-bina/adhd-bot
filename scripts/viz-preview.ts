@@ -19,6 +19,7 @@ import { compactMoney, compactNumber } from "../src/utils/viz/format.js";
 import { renderEntityCardSync, approvalColor, infamyColor } from "../src/utils/viz/profile.js";
 import { partyAxisToCompass, seriesColor } from "../src/utils/viz/theme.js";
 import { renderComposition } from "../src/utils/viz/composition.js";
+import { renderVersus } from "../src/utils/viz/versus.js";
 
 await warmBrandAssets();
 
@@ -404,6 +405,27 @@ write("government-short.png", renderComposition({
   thresholdLabel: "Majority",
   unit: "seats",
   remainderLabel: "Not supporting",
+}));
+
+
+
+// ── /compare ────────────────────────────────────────────────────────────────
+console.log("compare:");
+write("compare.png", renderVersus({
+  title: "Eleanor Vance vs Marcus Thorne",
+  subtitle: "Each metric scaled to its own pair",
+  footerLeft: "Values USD",
+  left: { name: "Eleanor Vance", detail: "Senator · Democratic Party", color: "#2a5fd6" },
+  right: { name: "Marcus Thorne", detail: "Governor · Republican Party", color: "#c62828" },
+  metrics: [
+    { label: "Political influence", left: 12480, right: 11020, leftDisplay: "12.5K", rightDisplay: "11.0K" },
+    { label: "National influence", left: 3180, right: 4210, leftDisplay: "3.2K", rightDisplay: "4.2K" },
+    { label: "Approval", left: 62, right: 54, leftDisplay: "62%", rightDisplay: "54%" },
+    { label: "Infamy", left: 18, right: 47, leftDisplay: "18", rightDisplay: "47", lowerIsBetter: true },
+    { label: "Funds", left: 1204000, right: 2840000, leftDisplay: "$1.2M", rightDisplay: "$2.8M" },
+    { label: "Actions", left: 6, right: 4, leftDisplay: "6", rightDisplay: "4" },
+    { label: "Donor base", left: 4, right: 5, leftDisplay: "4", rightDisplay: "5" },
+  ],
 }));
 
 console.log(`\nWrote previews to ${out}/`);

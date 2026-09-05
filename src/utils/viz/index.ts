@@ -12,6 +12,13 @@ export { renderCard, roundRect, ellipsize, drawEmptyState, SITE, type CardSpec, 
 export { ensureFonts, font } from "./fonts.js";
 export { renderBarChart, barChartHeight, type BarRow, type BarChartOptions } from "./bars.js";
 export {
+  renderVersus,
+  versusHeight,
+  type VersusMetric,
+  type VersusSide,
+  type VersusOptions,
+} from "./versus.js";
+export {
   renderComposition,
   compositionHeight,
   type CompositionSegment,
