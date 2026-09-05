@@ -17,7 +17,7 @@ import {
   CURRENCY_CHOICES,
   symbolFor,
 } from "../utils/currency.js";
-import { renderBarChart, seriesColor, signedPercent, compactMoney, compactNumber, STATUS, OTHERS, type BarRow } from "../utils/viz/index.js";
+import { renderBarChart, seriesColor, signedPercent, compactMoney, STATUS, OTHERS, type BarRow } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
 
 export const cooldown = 10;

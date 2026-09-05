@@ -75,7 +75,7 @@ export async function autocomplete(interaction: AutocompleteInteraction): Promis
   }
 }
 
-import { renderBarChart, brandColor, compactNumber, OTHERS, type BarRow } from "../utils/viz/index.js";
+import { renderBarChart, brandColor, compactNumber, type BarRow } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
 
 function voteBar(pct: number, width = 12): string {
