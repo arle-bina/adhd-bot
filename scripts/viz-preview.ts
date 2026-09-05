@@ -17,7 +17,8 @@ import { renderTimeSeries, renderCandles } from "../src/utils/viz/timeseries.js"
 import { OTHERS, SERIES, UNOWNED, brandColor } from "../src/utils/viz/theme.js";
 import { compactMoney, compactNumber } from "../src/utils/viz/format.js";
 import { renderEntityCardSync, approvalColor, infamyColor } from "../src/utils/viz/profile.js";
-import { partyAxisToCompass } from "../src/utils/viz/theme.js";
+import { partyAxisToCompass, seriesColor } from "../src/utils/viz/theme.js";
+import { renderComposition } from "../src/utils/viz/composition.js";
 
 await warmBrandAssets();
 
@@ -368,6 +369,41 @@ write("party.png", renderEntityCardSync({
     { label: "Yuki Tanaka", value: "Senator" },
   ],
   footerLeft: "Values USD",
+}));
+
+
+
+// ── /government ─────────────────────────────────────────────────────────────
+console.log("government:");
+write("government.png", renderComposition({
+  title: "United Kingdom — government support",
+  subtitle: "Coalition · Formed · PM Eleanor Vance",
+  footerLeft: "329 of 625 seats supporting",
+  segments: [
+    { label: "Labour Party", value: 268, color: "#e4003b" },
+    { label: "Social Democratic Party", value: 45, color: "#2a4b9b" },
+    { label: "Plaid Cymru", value: 16, color: "#12a67c" },
+  ],
+  total: 625,
+  threshold: 313,
+  thresholdLabel: "Majority",
+  unit: "seats",
+  remainderLabel: "Not supporting",
+}));
+
+write("government-short.png", renderComposition({
+  title: "Germany — government support",
+  subtitle: "Minority · Pending",
+  footerLeft: "242 of 598 seats supporting",
+  segments: [
+    { label: "SPD", value: 168, color: "#e3000f" },
+    { label: "Grüne", value: 74, color: "#1aa037" },
+  ],
+  total: 598,
+  threshold: 300,
+  thresholdLabel: "Majority",
+  unit: "seats",
+  remainderLabel: "Not supporting",
 }));
 
 console.log(`\nWrote previews to ${out}/`);

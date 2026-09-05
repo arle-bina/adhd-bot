@@ -12,6 +12,12 @@ export { renderCard, roundRect, ellipsize, drawEmptyState, SITE, type CardSpec, 
 export { ensureFonts, font } from "./fonts.js";
 export { renderBarChart, barChartHeight, type BarRow, type BarChartOptions } from "./bars.js";
 export {
+  renderComposition,
+  compositionHeight,
+  type CompositionSegment,
+  type CompositionOptions,
+} from "./composition.js";
+export {
   renderChamber,
   chamberHeight,
   archLayout,
