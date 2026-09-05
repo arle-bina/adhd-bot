@@ -11,7 +11,10 @@ import {
 import { getLeaderboard, LeaderboardCharacter, LeaderboardMetric } from "../utils/api.js";
 import { replyWithError } from "../utils/helpers.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
-import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
+import { COUNTRY_NAMES } from "../utils/formatting.js";
+import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, symbolFor, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
+import { renderBarChart, brandColor, compactMoney, compactNumber, type BarRow } from "../utils/viz/index.js";
+import { chartAttachment } from "../utils/viz/attach.js";
 
 // Explicit conditional avoids TypeScript's TS7053 "any" error from dynamic key indexing (char[metric]).
 export function getMetricValue(
@@ -80,6 +83,53 @@ const metricLabels: Record<LeaderboardMetric, string> = {
   funds: "Funds",
 };
 
+/**
+ * A leaderboard is a ranking, which is what a bar chart is for. Bars carry the
+ * gaps between players — that the top name has three times the influence of
+ * the tenth is invisible in a numbered list.
+ */
+function buildLeaderboardChart(
+  characters: LeaderboardCharacter[],
+  metric: LeaderboardMetric,
+  page: number,
+  totalPages: number,
+  country: string | undefined,
+  displayCurrency: string,
+  rates: Record<string, number>,
+): Buffer {
+  const start = page * PAGE_SIZE;
+  const slice = characters.slice(start, start + PAGE_SIZE);
+  const sym = symbolFor(displayCurrency);
+  const sourceCc = country ? currencyFor(country) : "USD";
+
+  const rows: BarRow[] = slice.map((char, i) => {
+    const raw = getMetricValue(char, metric);
+    const value =
+      metric === "funds" ? convertCurrency(raw, sourceCc, displayCurrency, rates) : raw;
+    return {
+      label: char.name,
+      value: Math.max(0, value),
+      // Party colour is the player's identity here, not their rank.
+      color: brandColor(char.partyColor, i),
+      primary: metric === "funds" ? compactMoney(value, sym) : compactNumber(raw),
+      tag: [char.position, char.stateCode].filter(Boolean).join(" · ") || undefined,
+    };
+  });
+
+  const scope = country ? COUNTRY_NAMES[country] ?? country.toUpperCase() : "Global";
+  const footer = [`Values ${displayCurrency}`];
+  if (metric !== "funds") footer.shift();
+
+  return renderBarChart({
+    title: `${metricLabels[metric]} — ${scope}`,
+    subtitle: totalPages > 1 ? `Top politicians · page ${page + 1} of ${totalPages}` : "Top politicians",
+    footerLeft: footer.join(" · ") || undefined,
+    startRank: start + 1,
+    labelFraction: 0.42,
+    rows,
+  });
+}
+
 function buildLeaderboardEmbed(
   characters: LeaderboardCharacter[],
   metric: LeaderboardMetric,
@@ -122,6 +172,29 @@ function buildLeaderboardEmbed(
     .setColor(0x2b2d31)
     .setDescription(lines.join("\n"))
     .setFooter({ text: footerParts.join(" · ") });
+}
+
+/**
+ * Embed plus chart. The description keeps the profile hyperlinks — an image
+ * cannot be clicked — and doubles as the text equivalent of the chart.
+ */
+function buildLeaderboardReply(
+  characters: LeaderboardCharacter[],
+  metric: LeaderboardMetric,
+  page: number,
+  totalPages: number,
+  country: string | undefined,
+  displayCurrency: string,
+  rates: Record<string, number>,
+) {
+  const embed = buildLeaderboardEmbed(characters, metric, page, totalPages, country, displayCurrency, rates);
+  const chart = chartAttachment(
+    buildLeaderboardChart(characters, metric, page, totalPages, country, displayCurrency, rates),
+    "leaderboard",
+    `${metric}-${page}`,
+  );
+  embed.setImage(chart.url);
+  return { embeds: [embed], files: [chart.file] };
 }
 
 function buildNavRow(page: number, totalPages: number): ActionRowBuilder<ButtonBuilder> {
@@ -176,14 +249,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     let page = 0;
 
     if (totalPages <= 1) {
-      await interaction.editReply({
-        embeds: [buildLeaderboardEmbed(characters, result.metric, 0, 1, country, displayCurrency, rates)],
-      });
+      await interaction.editReply(
+        buildLeaderboardReply(characters, result.metric, 0, 1, country, displayCurrency, rates),
+      );
       return;
     }
 
     const message = await interaction.editReply({
-      embeds: [buildLeaderboardEmbed(characters, result.metric, page, totalPages, country, displayCurrency, rates)],
+      ...buildLeaderboardReply(characters, result.metric, page, totalPages, country, displayCurrency, rates),
       components: [buildNavRow(page, totalPages)],
     });
 
@@ -201,7 +274,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       if (btn.customId === "lb_prev") page = Math.max(0, page - 1);
       if (btn.customId === "lb_next") page = Math.min(totalPages - 1, page + 1);
       await btn.editReply({
-        embeds: [buildLeaderboardEmbed(characters, result.metric, page, totalPages, country, displayCurrency, rates)],
+        ...buildLeaderboardReply(characters, result.metric, page, totalPages, country, displayCurrency, rates),
         components: [buildNavRow(page, totalPages)],
       });
     });

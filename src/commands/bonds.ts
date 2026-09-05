@@ -6,7 +6,9 @@ import {
 } from "discord.js";
 import { getCorporationList, getBonds, ApiError, type CorporationListItem } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
-import { formatCurrency, formatSharePrice, convertCurrency, fetchForexRates, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
+import { formatCurrency, formatSharePrice, convertCurrency, fetchForexRates, symbolFor, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
+import { renderBarChart, brandColor, compactMoney, STATUS, type BarRow } from "../utils/viz/index.js";
+import { chartAttachment } from "../utils/viz/attach.js";
 
 // ---------------------------------------------------------------------------
 // Corporation list cache (5-minute TTL)
@@ -125,6 +127,48 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       .join("\n\n")
       .slice(0, 4096);
 
+    /*
+     * Bonds ranked by yield to maturity — the number a buyer is actually
+     * shopping on. Maturity rides along as the tag, so a high yield that is
+     * high because it is long-dated is visible rather than implied.
+     *
+     * Defaulted bonds take the reserved critical colour and keep the word
+     * DEFAULTED in their tag, so the state never rests on the colour alone.
+     */
+    const chartRows: BarRow[] = bonds.map((b, i) => {
+      const ytm = b.yieldToMaturity ?? 0;
+      return {
+        label: b.corporationName ?? "Unknown",
+        value: Math.max(0, ytm),
+        color: b.defaulted ? STATUS.critical : brandColor(b.brandColor, i),
+        primary: `${ytm.toFixed(1)}%`,
+        secondary: compactMoney(cvtFromBond(b.totalIssued, b.currencyCode), symbolFor(targetCurrency)),
+        tag: [
+          b.defaulted ? "DEFAULTED" : null,
+          b.maturityLabel ?? null,
+          `${(b.couponRate ?? 0).toFixed(1)}% cpn`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      };
+    });
+
+    const chart = chartAttachment(
+      renderBarChart({
+        title: filterCorp ? `${filterCorp} — bonds by yield` : "Bond market — by yield to maturity",
+        subtitle:
+          pagination.totalPages > 1
+            ? `${pagination.totalCount} active bonds · page ${pagination.page} of ${pagination.totalPages}`
+            : `${pagination.totalCount} active bond${pagination.totalCount === 1 ? "" : "s"}`,
+        footerLeft: `Yield to maturity · amount issued · Values ${targetCurrency}`,
+        startRank: (pagination.page - 1) * bonds.length + 1,
+        labelFraction: 0.4,
+        rows: chartRows,
+      }),
+      "bonds",
+      `${filterCorp ?? "all"}-${pagination.page}`,
+    );
+
     const color = bonds[0]?.brandColor
       ? hexToInt(bonds[0].brandColor)
       : 0x3b82f6;
@@ -156,7 +200,8 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       })
       .setFooter({ text: footerParts.join(" · ") });
 
-    await interaction.editReply({ embeds: [embed] });
+    embed.setImage(chart.url);
+    await interaction.editReply({ embeds: [embed], files: [chart.file] });
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       const msg = "Bot configuration error — contact an admin.";

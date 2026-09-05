@@ -75,6 +75,9 @@ export async function autocomplete(interaction: AutocompleteInteraction): Promis
   }
 }
 
+import { renderBarChart, brandColor, compactNumber, type BarRow } from "../utils/viz/index.js";
+import { chartAttachment } from "../utils/viz/attach.js";
+
 function voteBar(pct: number, width = 12): string {
   const filled = Math.max(0, Math.min(width, Math.round((pct / 100) * width)));
   return "▓".repeat(filled) + "░".repeat(width - filled);
@@ -162,6 +165,76 @@ function leadingColor(detail: RaceDetailResponse): number {
 
   const lead = topId ? detail.candidates.find((c) => c.id === topId) : detail.candidates[0];
   return parseColor(lead?.partyColor);
+}
+
+/**
+ * The race, as bars.
+ *
+ * A general election is a ranking with a shared denominator, so bars beat the
+ * ▓░ blocks the embed used to draw: the gap between first and second is a
+ * length rather than a count of shaded characters, and party colours carry
+ * identity. Primaries are grouped by party in the embed text, so the chart
+ * only draws when there is a single field to rank.
+ */
+function buildRaceChart(detail: RaceDetailResponse): Buffer | null {
+  const { election, phase, candidates } = detail;
+  if (candidates.length === 0) return null;
+
+  const snapshot = detail.votes?.latestSnapshot ?? null;
+  const sorted = [...candidates].sort((a, b) => (b.sharePct ?? 0) - (a.sharePct ?? 0));
+  const electoralVotes = detail.votes?.electoralVotes;
+
+  const rows: BarRow[] = sorted.map((c, i) => {
+    const pct = snapshot?.sharesPct[c.id] ?? c.sharePct ?? 0;
+    const count = snapshot?.cumulativeVotes[c.id];
+    const ev = electoralVotes?.[c.id];
+
+    const secondary =
+      ev != null ? `${ev} EV` : count != null ? `${compactNumber(count)} votes` : undefined;
+
+    return {
+      label: c.characterName,
+      value: Math.max(0, pct),
+      color: brandColor(c.partyColor, i),
+      primary: `${pct.toFixed(1)}%`,
+      secondary,
+      tag: c.isNPP ? `${c.party} · NPP` : c.party,
+    };
+  });
+
+  const type = formatElectionType(election.electionType);
+  const where = election.stateName ?? election.state ?? "";
+  const phaseLabel = phase.isUpcoming
+    ? "Upcoming"
+    : phase.inPrimary
+      ? "Primary"
+      : phase.inGeneral
+        ? "General election"
+        : "Final result";
+
+  const reporting = snapshot
+    ? `${phaseLabel} · ${compactNumber(
+        Object.values(snapshot.cumulativeVotes ?? {}).reduce((a, b) => a + b, 0),
+      )} votes counted`
+    : phaseLabel;
+
+  return renderBarChart({
+    title: [type, where].filter(Boolean).join(" — "),
+    subtitle: reporting,
+    footerLeft: phase.isEnded ? "Final" : "Updates each turn",
+    labelFraction: 0.36,
+    rows,
+  });
+}
+
+/** Detail embed plus its race chart, with the profile links kept in the text. */
+function buildDetailReply(detail: RaceDetailResponse) {
+  const embed = buildDetailEmbed(detail);
+  const buffer = buildRaceChart(detail);
+  if (!buffer) return { embeds: [embed], files: [] };
+  const chart = chartAttachment(buffer, "race", detail.election.id);
+  embed.setImage(chart.url);
+  return { embeds: [embed], files: [chart.file] };
 }
 
 function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
@@ -375,7 +448,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         return;
       }
       message = await interaction.editReply({
-        embeds: [buildDetailEmbed(currentDetail)],
+        ...buildDetailReply(currentDetail),
         components: [buildDetailRow(currentDetail.election.url)],
       });
     } else {
@@ -411,7 +484,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         currentDetail = detail;
         currentView = "detail";
         await component.editReply({
-          embeds: [buildDetailEmbed(detail)],
+          ...buildDetailReply(detail),
           components: [buildDetailRow(detail.election.url)],
         });
       } else if (component.isButton() && component.customId === "back_to_list") {
@@ -420,6 +493,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         currentView = "list";
         currentDetail = null;
         await component.editReply({
+          files: [],
           embeds: [buildListEmbed(elections, country, state)],
           components: menuRow ? [menuRow] : [],
         });

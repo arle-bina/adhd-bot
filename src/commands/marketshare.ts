@@ -1,5 +1,6 @@
 import {
   SlashCommandBuilder,
+  AttachmentBuilder,
   ChatInputCommandInteraction,
   AutocompleteInteraction,
   EmbedBuilder,
@@ -10,6 +11,8 @@ import {
 } from "discord.js";
 import { getMarketShare, SectorType, MarketShareResponse } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { renderBarChart, brandColor, OTHERS, UNOWNED, compactMoney, type BarRow } from "../utils/viz/index.js";
+import { chartAttachment } from "../utils/viz/attach.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 import {
   currencyFor,
@@ -17,19 +20,13 @@ import {
   fetchForexRates,
   convertCurrency,
   convertAnchorToCurrency,
+  symbolFor,
   CURRENCY_CHOICES,
 } from "../utils/currency.js";
 
 export const cooldown = 10;
 
 import { COUNTRY_NAMES } from "../utils/formatting.js";
-
-// Distinct palette for companies without a brand color
-const SLICE_PALETTE = [
-  "#e6194b", "#3cb44b", "#4363d8", "#f58231", "#911eb4",
-  "#42d4f4", "#f032e6", "#bfef45", "#fabed4", "#469990",
-  "#dcbeff", "#9A6324", "#fffac8", "#800000", "#aaffc3",
-];
 
 export const data = new SlashCommandBuilder()
   .setName("marketshare")
@@ -97,60 +94,64 @@ function buildScopeLabel(result: MarketShareResponse): string {
   return "Global";
 }
 
-function buildChartUrl(result: MarketShareResponse, showUnowned: boolean): string {
-  const labels: string[] = [];
-  const values: number[] = [];
-  const colors: string[] = [];
+/**
+ * Ranked bars, one row per corporation.
+ *
+ * This used to be a QuickChart doughnut URL. Two things were wrong with it:
+ * a ring cannot show a ranking past a handful of slices, and the config never
+ * arrived intact — `JSON.stringify` drops function values, so the datalabel
+ * formatter (which suppressed labels under 3%) was silently stripped, and
+ * `options.plugins.legend` is a Chart.js v4 path that QuickChart's default v2
+ * renderer ignores, so the legend rendered anyway and swallowed the canvas.
+ */
+function buildChart(
+  result: MarketShareResponse,
+  showUnowned: boolean,
+  targetCurrency: string,
+  rates: Record<string, number>,
+): Buffer {
+  const rows: BarRow[] = result.companies.map((c, i) => {
+    const sourceCurrency = c.liquidCurrencyCode || currencyFor(c.countryId);
+    const revenue = convertCurrency(c.revenue, sourceCurrency, targetCurrency, rates);
+    return {
+      label: c.corporationName,
+      value: c.marketSharePercent,
+      color: brandColor(c.brandColor, i),
+      primary: `${c.marketSharePercent.toFixed(2)}%`,
+      secondary: compactMoney(revenue, symbolFor(targetCurrency)),
+      tag: c.isNatcorp ? "NatCorp" : undefined,
+    };
+  });
 
-  for (let i = 0; i < result.companies.length; i++) {
-    const c = result.companies[i];
-    labels.push(c.corporationName);
-    values.push(c.marketSharePercent);
-    colors.push(c.brandColor ?? SLICE_PALETTE[i % SLICE_PALETTE.length]);
-  }
-
-  // "Others" slice: owned revenue not on this page
+  // "Others": owned revenue that isn't on this page.
   const pageOwnedPct = result.companies.reduce((s, c) => s + c.marketSharePercent, 0);
-  const totalOwnedPct = result.totalMarket > 0
-    ? (result.totalOwnedRevenue / result.totalMarket) * 100
-    : 0;
+  const totalOwnedPct = result.totalMarket > 0 ? (result.totalOwnedRevenue / result.totalMarket) * 100 : 0;
   const othersPct = Math.max(0, totalOwnedPct - pageOwnedPct);
   if (othersPct > 0.01) {
-    labels.push("Others");
-    values.push(Math.round(othersPct * 100) / 100);
-    colors.push("#555555");
+    rows.push({ label: "Others", value: othersPct, color: OTHERS, primary: `${othersPct.toFixed(2)}%` });
   }
 
   if (showUnowned && result.unownedPercent > 0.01) {
-    labels.push("Unowned");
-    values.push(result.unownedPercent);
-    colors.push("#808080");
+    rows.push({ label: "Unowned", value: result.unownedPercent, color: UNOWNED, primary: `${result.unownedPercent.toFixed(2)}%` });
   }
 
-  const config = {
-    type: "doughnut",
-    data: {
-      labels,
-      datasets: [{
-        data: values,
-        backgroundColor: colors,
-        borderWidth: 0,
-      }],
-    },
-    options: {
-      plugins: {
-        legend: { display: false },
-        datalabels: {
-          color: "#fff",
-          font: { size: 11, weight: "bold" },
-          formatter: (v: number) => v >= 3 ? `${v.toFixed(1)}%` : "",
-        },
-      },
-    },
-  };
+  const scopeLabel = buildScopeLabel(result);
+  const footerParts = [`Values ${targetCurrency}`];
+  if (result.totalMarket > 0) {
+    const tam = convertAnchorToCurrency(result.totalMarket, targetCurrency, rates);
+    footerParts.unshift(`TAM ${compactMoney(tam, symbolFor(targetCurrency))}`);
+  }
 
-  const encoded = encodeURIComponent(JSON.stringify(config));
-  return `https://quickchart.io/chart?c=${encoded}&w=400&h=400&bkg=%23232428`;
+  return renderBarChart({
+    title: `${result.sectorLabel} — ${scopeLabel}`,
+    subtitle:
+      result.totalPages > 1
+        ? `Market share by revenue · page ${result.page} of ${result.totalPages}`
+        : "Market share by revenue",
+    footerLeft: footerParts.join(" · "),
+    startRank: (result.page - 1) * result.pageSize + 1,
+    rows,
+  });
 }
 
 function gameSiteOrigin(): string {
@@ -161,7 +162,12 @@ function gameSiteOrigin(): string {
   }
 }
 
-function buildEmbed(result: MarketShareResponse, showUnowned: boolean, targetCurrency: string, rates: Record<string, number>): EmbedBuilder {
+interface MarketShareReply {
+  embeds: EmbedBuilder[];
+  files: AttachmentBuilder[];
+}
+
+function buildReply(result: MarketShareResponse, showUnowned: boolean, targetCurrency: string, rates: Record<string, number>): MarketShareReply {
   const scopeLabel = buildScopeLabel(result);
   const title = `${result.sectorLabel} — ${scopeLabel}`;
 
@@ -191,7 +197,6 @@ function buildEmbed(result: MarketShareResponse, showUnowned: boolean, targetCur
       return `${rank}. **${nameStr}** — ${c.marketSharePercent.toFixed(2)}% · ${formatCurrency(rev, targetCurrency)}${tag}`;
     });
     embed.setDescription(lines.join("\n").slice(0, 4096));
-    embed.setImage(buildChartUrl(result, showUnowned));
   }
 
   const footerParts: string[] = [];
@@ -214,7 +219,17 @@ function buildEmbed(result: MarketShareResponse, showUnowned: boolean, targetCur
   footerParts.push("ahousedividedgame.com");
   embed.setFooter({ text: footerParts.join(" · ") });
 
-  return embed;
+  if (result.companies.length === 0) return { embeds: [embed], files: [] };
+
+  // The chart is the scannable view; the description above stays as the text
+  // equivalent, which is what a screen reader and a narrow mobile client get.
+  const chart = chartAttachment(
+    buildChart(result, showUnowned, targetCurrency, rates),
+    "marketshare",
+    `${result.page}${showUnowned ? "u" : ""}`,
+  );
+  embed.setImage(chart.url);
+  return { embeds: [embed], files: [chart.file] };
 }
 
 function buildNavRow(page: number, totalPages: number, showUnowned: boolean): ActionRowBuilder<ButtonBuilder> {
@@ -284,14 +299,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const rates = await fetchForexRates();
 
     if (result.companies.length === 0 && result.totalPages <= 1) {
-      await interaction.editReply({ embeds: [buildEmbed(result, showUnowned, targetCurrency, rates)] });
+      await interaction.editReply(buildReply(result, showUnowned, targetCurrency, rates));
       return;
     }
 
     const totalPages = result.totalPages;
 
     const message = await interaction.editReply({
-      embeds: [buildEmbed(result, showUnowned, targetCurrency, rates)],
+      ...buildReply(result, showUnowned, targetCurrency, rates),
       components: [buildNavRow(page, totalPages, showUnowned)],
     });
 
@@ -325,7 +340,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           result = await getMarketShare({ type, country, state, page });
         }
         await btn.editReply({
-          embeds: [buildEmbed(result, showUnowned, targetCurrency, rates)],
+          ...buildReply(result, showUnowned, targetCurrency, rates),
           components: [buildNavRow(page, totalPages, showUnowned)],
         });
       } catch (error) {

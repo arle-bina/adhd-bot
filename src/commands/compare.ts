@@ -6,7 +6,9 @@ import {
 } from "discord.js";
 import { lookupByName, lookupByDiscordId, getAutocomplete, type CharacterResult } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
-import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
+import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, symbolFor, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
+import { renderVersus, compactMoney, compactNumber, type VersusMetric } from "../utils/viz/index.js";
+import { chartAttachment } from "../utils/viz/attach.js";
 
 export const cooldown = 5;
 
@@ -60,6 +62,90 @@ function makeForexFooter(displayCurrency: string, rates: Record<string, number>)
   return parts.join(" · ");
 }
 
+/**
+ * Head-to-head bars.
+ *
+ * "12,480 vs 11,020" makes the reader do the division; two bars off a shared
+ * centre make the gap a length. Every metric is scaled to its own pair, since
+ * an influence count and an approval percentage share no axis.
+ *
+ * Policy positions are deliberately excluded: "further left" is not "ahead",
+ * and a bar implies a winner. Those stay in the embed text.
+ */
+function buildCompareChart(
+  a: CharacterResult,
+  b: CharacterResult,
+  displayCurrency: string,
+  rates: Record<string, number>,
+): Buffer {
+  const sym = symbolFor(displayCurrency);
+  const cvtA = (n: number) => convertCurrency(n, currencyFor(a.countryId), displayCurrency, rates);
+  const cvtB = (n: number) => convertCurrency(n, currencyFor(b.countryId), displayCurrency, rates);
+
+  const metrics: VersusMetric[] = [
+    {
+      label: "Political influence",
+      left: Math.round(a.politicalInfluence ?? 0),
+      right: Math.round(b.politicalInfluence ?? 0),
+      leftDisplay: compactNumber(Math.round(a.politicalInfluence ?? 0)),
+      rightDisplay: compactNumber(Math.round(b.politicalInfluence ?? 0)),
+    },
+    {
+      label: "National influence",
+      left: Math.round(a.nationalInfluence ?? 0),
+      right: Math.round(b.nationalInfluence ?? 0),
+      leftDisplay: compactNumber(Math.round(a.nationalInfluence ?? 0)),
+      rightDisplay: compactNumber(Math.round(b.nationalInfluence ?? 0)),
+    },
+    {
+      label: "Approval",
+      left: Math.round(a.favorability ?? 0),
+      right: Math.round(b.favorability ?? 0),
+      leftDisplay: `${Math.round(a.favorability ?? 0)}%`,
+      rightDisplay: `${Math.round(b.favorability ?? 0)}%`,
+    },
+    {
+      label: "Infamy",
+      left: Math.round(a.infamy ?? 0),
+      right: Math.round(b.infamy ?? 0),
+      leftDisplay: String(Math.round(a.infamy ?? 0)),
+      rightDisplay: String(Math.round(b.infamy ?? 0)),
+      // A clean record is the better one, so the smaller bar leads here.
+      lowerIsBetter: true,
+    },
+    {
+      label: "Funds",
+      left: Math.max(0, cvtA(a.funds ?? 0)),
+      right: Math.max(0, cvtB(b.funds ?? 0)),
+      leftDisplay: compactMoney(cvtA(a.funds ?? 0), sym),
+      rightDisplay: compactMoney(cvtB(b.funds ?? 0), sym),
+    },
+    {
+      label: "Actions",
+      left: Math.round(a.actions ?? 0),
+      right: Math.round(b.actions ?? 0),
+      leftDisplay: String(Math.round(a.actions ?? 0)),
+      rightDisplay: String(Math.round(b.actions ?? 0)),
+    },
+    {
+      label: "Donor base",
+      left: Math.round(a.donorBaseLevel ?? 0),
+      right: Math.round(b.donorBaseLevel ?? 0),
+      leftDisplay: String(Math.round(a.donorBaseLevel ?? 0)),
+      rightDisplay: String(Math.round(b.donorBaseLevel ?? 0)),
+    },
+  ];
+
+  return renderVersus({
+    title: `${a.name} vs ${b.name}`,
+    subtitle: "Each metric scaled to its own pair",
+    footerLeft: `Values ${displayCurrency}`,
+    left: { name: a.name, detail: [a.position, a.party].filter(Boolean).join(" · "), color: a.partyColor },
+    right: { name: b.name, detail: [b.position, b.party].filter(Boolean).join(" · "), color: b.partyColor },
+    metrics,
+  });
+}
+
 function buildCompareEmbed(a: CharacterResult, b: CharacterResult, displayCurrency: string, rates: Record<string, number>): EmbedBuilder {
   const colorA = hexToInt(a.partyColor);
   const colorB = hexToInt(b.partyColor);
@@ -91,17 +177,16 @@ function buildCompareEmbed(a: CharacterResult, b: CharacterResult, displayCurren
     { name: "\u200b", value: b.stateUrl ? `[${b.state}](${b.stateUrl})` : (b.state || "Unknown"), inline: true },
   );
 
-  const statsLines = [
-    statRow("Political Influence", Math.round(a.politicalInfluence ?? 0).toLocaleString(), Math.round(b.politicalInfluence ?? 0).toLocaleString()),
-    statRow("National PI", Math.round(a.nationalInfluence ?? 0).toLocaleString(), Math.round(b.nationalInfluence ?? 0).toLocaleString()),
-    statRow("Approval", `${Math.round(a.favorability ?? 0)}%`, `${Math.round(b.favorability ?? 0)}%`),
-    statRow("Infamy", String(Math.round(a.infamy ?? 0)), String(Math.round(b.infamy ?? 0))),
-    statRow("Funds", formatCurrency(cvtA(a.funds ?? 0), displayCurrency), formatCurrency(cvtB(b.funds ?? 0), displayCurrency)),
-    statRow("Actions", String(Math.round(a.actions ?? 0)), String(Math.round(b.actions ?? 0))),
-    statRow("Donor Base", String(Math.round(a.donorBaseLevel ?? 0)), String(Math.round(b.donorBaseLevel ?? 0))),
-  ];
-
-  embed.addFields({ name: "Stats", value: statsLines.join("\n").slice(0, 1024), inline: false });
+  // Stats live on the chart. This line is the text equivalent, kept short so
+  // the hyperlinks above stay on the first screen on mobile.
+  embed.addFields({
+    name: "Stats",
+    value:
+      `PI ${Math.round(a.politicalInfluence ?? 0).toLocaleString()} vs ${Math.round(b.politicalInfluence ?? 0).toLocaleString()} · ` +
+      `Approval ${Math.round(a.favorability ?? 0)}% vs ${Math.round(b.favorability ?? 0)}% · ` +
+      `Funds ${formatCurrency(cvtA(a.funds ?? 0), displayCurrency)} vs ${formatCurrency(cvtB(b.funds ?? 0), displayCurrency)}`,
+    inline: false,
+  });
 
   const policyLines = [
     statRow("Economic", policyLabel(a.policies?.economic ?? 0), policyLabel(b.policies?.economic ?? 0)),
@@ -174,7 +259,14 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     }
 
     const displayCurrency = explicitCurrency || currencyFor(charA.countryId);
-    await interaction.editReply({ embeds: [buildCompareEmbed(charA, charB, displayCurrency, rates)] });
+    const embed = buildCompareEmbed(charA, charB, displayCurrency, rates);
+    const chart = chartAttachment(
+      buildCompareChart(charA, charB, displayCurrency, rates),
+      "compare",
+      `${charA.id}-${charB.id}`,
+    );
+    embed.setImage(chart.url);
+    await interaction.editReply({ embeds: [embed], files: [chart.file] });
   } catch (error) {
     await replyWithError(interaction, "compare", error);
   }

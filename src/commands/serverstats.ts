@@ -1,32 +1,9 @@
-import {
-  SlashCommandBuilder,
-  ChatInputCommandInteraction,
-  EmbedBuilder,
-  AttachmentBuilder,
-} from "discord.js";
-import { ChartJSNodeCanvas } from "chartjs-node-canvas";
-import type { ChartConfiguration } from "chart.js";
-import { registerFont } from "canvas";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from "discord.js";
 import { getStats } from "../utils/statsStore.js";
+import { renderTimeSeries, compactNumber } from "../utils/viz/index.js";
+import { chartAttachment } from "../utils/viz/attach.js";
 
 export const cooldown = 10;
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const FONT_PATH = join(__dirname, "..", "..", "assets", "DejaVuSans.ttf");
-
-registerFont(FONT_PATH, { family: "DejaVu Sans" });
-
-const chartCanvas = new ChartJSNodeCanvas({
-  width: 800,
-  height: 400,
-  backgroundColour: "#2b2d31",
-  chartCallback: (ChartJS) => {
-    ChartJS.defaults.font.family = "DejaVu Sans";
-  },
-});
 
 export const data = new SlashCommandBuilder()
   .setName("serverstats")
@@ -59,263 +36,27 @@ function formatDate(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-async function renderMessagesChart(
+/**
+ * All four server-stats views are the same chart with different data, so they
+ * share one renderer rather than four near-identical Chart.js configs.
+ */
+function statsChart(
   guildName: string,
   dates: string[],
-  dailyMessages: number[],
-): Promise<Buffer> {
-  // Compute cumulative totals
-  const cumulative: number[] = [];
-  let total = 0;
-  for (const count of dailyMessages) {
-    total += count;
-    cumulative.push(total);
-  }
-
-  const labels = dates.map(formatDate);
-
-  const config: ChartConfiguration = {
-    type: "line",
-    data: {
-      labels,
-      datasets: [
-        {
-          label: "Messages per Day",
-          data: dailyMessages,
-          borderColor: "#5865f2",
-          backgroundColor: "rgba(88, 101, 242, 0.15)",
-          fill: true,
-          tension: 0.3,
-          pointRadius: dates.length > 60 ? 0 : 3,
-          yAxisID: "y",
-        },
-        {
-          label: "Total Messages",
-          data: cumulative,
-          borderColor: "#57f287",
-          backgroundColor: "rgba(87, 242, 135, 0.08)",
-          fill: false,
-          tension: 0.3,
-          pointRadius: dates.length > 60 ? 0 : 3,
-          borderDash: [6, 3],
-          yAxisID: "y1",
-        },
-      ],
-    },
-    options: {
-      responsive: false,
-      plugins: {
-        title: {
-          display: true,
-          text: `${guildName} — Messages`,
-          color: "#ffffff",
-          font: { size: 16 },
-        },
-        legend: {
-          labels: { color: "#dcddde" },
-        },
-      },
-      scales: {
-        x: {
-          ticks: {
-            color: "#8e9297",
-            maxTicksLimit: 15,
-          },
-          grid: { color: "rgba(255,255,255,0.05)" },
-        },
-        y: {
-          type: "linear",
-          position: "left",
-          title: {
-            display: true,
-            text: "Messages / Day",
-            color: "#5865f2",
-          },
-          ticks: { color: "#5865f2" },
-          grid: { color: "rgba(255,255,255,0.05)" },
-          beginAtZero: true,
-        },
-        y1: {
-          type: "linear",
-          position: "right",
-          title: {
-            display: true,
-            text: "Cumulative Total",
-            color: "#57f287",
-          },
-          ticks: { color: "#57f287" },
-          grid: { drawOnChartArea: false },
-          beginAtZero: true,
-        },
-      },
-    },
-  };
-
-  return Buffer.from(await chartCanvas.renderToBuffer(config));
-}
-
-async function renderDailyMessagesChart(
-  guildName: string,
-  dates: string[],
-  dailyMessages: number[],
-): Promise<Buffer> {
-  const labels = dates.map(formatDate);
-
-  const config: ChartConfiguration = {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [
-        {
-          label: "Messages",
-          data: dailyMessages,
-          backgroundColor: "rgba(88, 101, 242, 0.6)",
-          borderColor: "#5865f2",
-          borderWidth: 1,
-        },
-      ],
-    },
-    options: {
-      responsive: false,
-      plugins: {
-        title: {
-          display: true,
-          text: `${guildName} — Daily Messages`,
-          color: "#ffffff",
-          font: { size: 16 },
-        },
-        legend: {
-          labels: { color: "#dcddde" },
-        },
-      },
-      scales: {
-        x: {
-          ticks: { color: "#8e9297", maxTicksLimit: 15 },
-          grid: { color: "rgba(255,255,255,0.05)" },
-        },
-        y: {
-          ticks: { color: "#8e9297" },
-          grid: { color: "rgba(255,255,255,0.05)" },
-          beginAtZero: true,
-        },
-      },
-    },
-  };
-
-  return Buffer.from(await chartCanvas.renderToBuffer(config));
-}
-
-async function renderDailyMembersChart(
-  guildName: string,
-  dates: string[],
-  dailyChange: number[],
-): Promise<Buffer> {
-  const labels = dates.map(formatDate);
-
-  const colors = dailyChange.map((v) =>
-    v >= 0 ? "rgba(87, 242, 135, 0.6)" : "rgba(237, 66, 69, 0.6)",
-  );
-  const borders = dailyChange.map((v) =>
-    v >= 0 ? "#57f287" : "#ed4245",
-  );
-
-  const config: ChartConfiguration = {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [
-        {
-          label: "Member Change",
-          data: dailyChange,
-          backgroundColor: colors,
-          borderColor: borders,
-          borderWidth: 1,
-        },
-      ],
-    },
-    options: {
-      responsive: false,
-      plugins: {
-        title: {
-          display: true,
-          text: `${guildName} — Daily Member Change`,
-          color: "#ffffff",
-          font: { size: 16 },
-        },
-        legend: {
-          labels: { color: "#dcddde" },
-        },
-      },
-      scales: {
-        x: {
-          ticks: { color: "#8e9297", maxTicksLimit: 15 },
-          grid: { color: "rgba(255,255,255,0.05)" },
-        },
-        y: {
-          ticks: { color: "#8e9297" },
-          grid: { color: "rgba(255,255,255,0.05)" },
-        },
-      },
-    },
-  };
-
-  return Buffer.from(await chartCanvas.renderToBuffer(config));
-}
-
-async function renderMembersChart(
-  guildName: string,
-  dates: string[],
-  members: number[],
-): Promise<Buffer> {
-  const labels = dates.map(formatDate);
-
-  const config: ChartConfiguration = {
-    type: "line",
-    data: {
-      labels,
-      datasets: [
-        {
-          label: "Server Members",
-          data: members,
-          borderColor: "#eb459e",
-          backgroundColor: "rgba(235, 69, 158, 0.15)",
-          fill: true,
-          tension: 0.3,
-          pointRadius: dates.length > 60 ? 0 : 3,
-        },
-      ],
-    },
-    options: {
-      responsive: false,
-      plugins: {
-        title: {
-          display: true,
-          text: `${guildName} — Members`,
-          color: "#ffffff",
-          font: { size: 16 },
-        },
-        legend: {
-          labels: { color: "#dcddde" },
-        },
-      },
-      scales: {
-        x: {
-          ticks: {
-            color: "#8e9297",
-            maxTicksLimit: 15,
-          },
-          grid: { color: "rgba(255,255,255,0.05)" },
-        },
-        y: {
-          ticks: { color: "#8e9297" },
-          grid: { color: "rgba(255,255,255,0.05)" },
-          beginAtZero: false,
-        },
-      },
-    },
-  };
-
-  return Buffer.from(await chartCanvas.renderToBuffer(config));
+  values: number[],
+  opts: { metric: string; subtitle: string; footerLeft: string; diverging?: boolean },
+): Buffer {
+  return renderTimeSeries({
+    title: `${guildName} — ${opts.metric}`,
+    subtitle: opts.subtitle,
+    footerLeft: opts.footerLeft,
+    labels: dates.map(formatDate),
+    series: [{ name: opts.metric, values }],
+    valueFormat: "number",
+    fill: !opts.diverging,
+    directional: Boolean(opts.diverging),
+    zeroBaseline: Boolean(opts.diverging),
+  });
 }
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -351,9 +92,11 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     const avgPerDay = stats.length > 0 ? Math.round(totalMessages / stats.length) : 0;
     const peakDay = stats.reduce((max, s) => (s.messages > max.messages ? s : max), stats[0]);
 
-    chartBuffer = daily
-      ? await renderDailyMessagesChart(guildName, dates, dailyMessages)
-      : await renderMessagesChart(guildName, dates, dailyMessages);
+    chartBuffer = statsChart(guildName, dates, dailyMessages, {
+      metric: daily ? "messages per day" : "daily messages",
+      subtitle: `Last ${stats.length} day${stats.length !== 1 ? "s" : ""}`,
+      footerLeft: `Total ${compactNumber(totalMessages)} · Avg ${compactNumber(avgPerDay)}/day · Peak ${formatDate(peakDay.date)}`,
+    });
     description = [
       `**Period:** ${stats.length} day${stats.length !== 1 ? "s" : ""}`,
       `**Total Messages:** ${totalMessages.toLocaleString()}`,
@@ -382,14 +125,23 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       const gained = dailyChange.filter((v) => v > 0).reduce((a, b) => a + b, 0);
       const lost = dailyChange.filter((v) => v < 0).reduce((a, b) => a + b, 0);
 
-      chartBuffer = await renderDailyMembersChart(guildName, filteredDates, dailyChange);
+      chartBuffer = statsChart(guildName, filteredDates, dailyChange, {
+        metric: "net members per day",
+        subtitle: `Last ${filteredStats.length} day${filteredStats.length !== 1 ? "s" : ""}`,
+        footerLeft: `Net ${changeStr} · Gained +${gained} · Lost ${lost}`,
+        diverging: true,
+      });
       description = [
         `**Period:** ${filteredStats.length} day${filteredStats.length !== 1 ? "s" : ""}`,
         `**Net Change:** ${changeStr}`,
         `**Gained:** +${gained} · **Lost:** ${lost}`,
       ].join("\n");
     } else {
-      chartBuffer = await renderMembersChart(guildName, filteredDates, filteredMembers);
+      chartBuffer = statsChart(guildName, filteredDates, filteredMembers, {
+        metric: "members",
+        subtitle: `Last ${filteredStats.length} day${filteredStats.length !== 1 ? "s" : ""}`,
+        footerLeft: `Now ${compactNumber(current)} · Change ${changeStr} · High ${compactNumber(Math.max(...filteredMembers))}`,
+      });
       description = [
         `**Period:** ${filteredStats.length} day${filteredStats.length !== 1 ? "s" : ""}`,
         `**Current Members:** ${current.toLocaleString()}`,
@@ -399,15 +151,15 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     }
   }
 
-  const attachment = new AttachmentBuilder(chartBuffer, { name: "stats.png" });
+  const chart = chartAttachment(chartBuffer, "serverstats", type);
 
   const embed = new EmbedBuilder()
     .setColor(type === "messages" ? 0x5865f2 : 0xeb459e)
     .setTitle(`Server Stats — ${type === "messages" ? "Messages" : "Members"}`)
     .setDescription(description)
-    .setImage("attachment://stats.png")
+    .setImage(chart.url)
     .setFooter({ text: "ahousedividedgame.com" })
     .setTimestamp();
 
-  await interaction.editReply({ embeds: [embed], files: [attachment] });
+  await interaction.editReply({ embeds: [embed], files: [chart.file] });
 }

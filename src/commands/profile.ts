@@ -21,8 +21,19 @@ import {
 } from "../utils/api.js";
 import { syncMemberRoles } from "../utils/roles.js";
 import { hexToInt, replyWithError, safeEmbedUrl } from "../utils/helpers.js";
-import { formatOfficeType, COUNTRY_FLAG } from "../utils/formatting.js";
-import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
+import { formatOfficeType, COUNTRY_FLAG, COUNTRY_NAMES } from "../utils/formatting.js";
+import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, symbolFor, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
+import {
+  renderEntityCard,
+  renderTimeline,
+  renderAchievements,
+  approvalColor,
+  infamyColor,
+  compactMoney,
+  compactNumber,
+  type CareerOutcome,
+} from "../utils/viz/index.js";
+import { chartAttachment } from "../utils/viz/attach.js";
 
 export const cooldown = 5;
 
@@ -69,12 +80,87 @@ function partyColor(char: CharacterResult): number {
   return hexToInt(char.partyColor);
 }
 
-function policyLabel(val: number): string {
-  const clamped = Math.round(Math.max(-100, Math.min(100, val)));
-  const dir = clamped > 10 ? "Left" : clamped < -10 ? "Right" : "Centre";
-  return `${dir} (${clamped > 0 ? "+" : ""}${clamped})`;
+/**
+ * The profile card.
+ *
+ * Approval and infamy are the only two stats with a real 0–100 domain, so they
+ * are the only two that get meters — a bar for PI or donor base would be
+ * inventing a denominator the bot is never told. Everything else is a figure.
+ */
+async function buildProfileCard(
+  char: CharacterResult,
+  displayCurrency: string,
+  rates: Record<string, number>,
+): Promise<Buffer> {
+  const nativeCc = currencyFor(char.countryId);
+  const sym = symbolFor(displayCurrency);
+  const money = (n: number) => compactMoney(convertCurrency(n, nativeCc, displayCurrency, rates), sym);
+
+  const position = [
+    char.position || "No office",
+    char.state,
+    char.countryId ? COUNTRY_NAMES[char.countryId] ?? char.countryId.toUpperCase() : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const rows: Array<{ label: string; value: string }> = [
+    { label: "Actions", value: String(Math.round(char.actions ?? 0)) },
+    { label: "Donor base", value: char.donorBaseLevel != null ? `Level ${Math.round(char.donorBaseLevel)}` : "—" },
+  ];
+  if (char.isInvestor && char.portfolioValue != null) {
+    const rank = char.investorRank ? ` · #${char.investorRank}` : "";
+    rows.push({ label: "Portfolio", value: `${money(char.portfolioValue)}${rank}` });
+  }
+  if (char.isCeo && char.ceoOf) rows.push({ label: "CEO of", value: char.ceoOf });
+  if (char.createdAt) {
+    const d = new Date(char.createdAt);
+    if (!isNaN(d.getTime())) {
+      rows.push({
+        label: "Joined",
+        value: d.toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" }),
+      });
+    }
+  }
+
+  const approval = Math.round(char.favorability ?? 0);
+  const infamy = Math.round(char.infamy ?? 0);
+
+  const activeElection = char.activeElection?.electionType
+    ? `Contesting: ${char.activeElection.electionLabel ?? formatOfficeType(char.activeElection.electionType)}` +
+      ` (${char.activeElection.electionState ?? "Unknown"})`
+    : null;
+
+  return renderEntityCard({
+    name: char.name,
+    position,
+    chip: char.party || null,
+    accent: char.partyColor,
+    avatarUrl: safeEmbedUrl(char.avatarUrl) ?? safeEmbedUrl(char.discordAvatarUrl),
+    banner: activeElection,
+    economic: char.policies?.economic ?? null,
+    social: char.policies?.social ?? null,
+    headline: [
+      { label: "Political influence", value: compactNumber(Math.round(char.politicalInfluence ?? 0)) },
+      { label: "National influence", value: compactNumber(Math.round(char.nationalInfluence ?? 0)) },
+      { label: "Funds", value: money(char.funds ?? 0) },
+    ],
+    meters: [
+      { label: "Approval", value: approval, display: `${approval}%`, color: approvalColor(approval) },
+      { label: "Infamy", value: infamy, display: `${infamy} / 100`, color: infamyColor(infamy) },
+    ],
+    rows,
+    footerLeft: `Values ${displayCurrency}`,
+  });
 }
 
+/**
+ * The embed that carries the card.
+ *
+ * Everything numeric moved onto the card image, so this keeps only what an
+ * image cannot do: clickable links, the bio, and the text equivalent of the
+ * headline stats for screen readers and anyone whose client blocks images.
+ */
 function buildProfileEmbed(char: CharacterResult, displayCurrency: string, rates: Record<string, number>): EmbedBuilder {
   const nativeCc = currencyFor(char.countryId);
   const cvt = (n: number) => convertCurrency(n, nativeCc, displayCurrency, rates);
@@ -85,7 +171,6 @@ function buildProfileEmbed(char: CharacterResult, displayCurrency: string, rates
     .setColor(partyColor(char))
     .setURL(safeEmbedUrl(char.profileUrl) ?? null);
 
-  // Build footer with forex rate info when not displaying in anchor currency
   const footerParts: string[] = [];
   if (displayCurrency !== "USD" && rates[displayCurrency] && rates[displayCurrency] !== 1) {
     const sym = CURRENCY_SYMBOLS[displayCurrency] ?? displayCurrency;
@@ -95,64 +180,79 @@ function buildProfileEmbed(char: CharacterResult, displayCurrency: string, rates
   footerParts.push("ahousedividedgame.com");
   embed.setFooter({ text: footerParts.join(" · ") });
 
+  const flag = COUNTRY_FLAG[char.countryId ?? ""] ? `${COUNTRY_FLAG[char.countryId!]} ` : "";
+  const links = [
+    `${flag}**${char.position || "No office"}**`,
+    char.partyUrl ? `[${char.party}](${char.partyUrl})` : char.party || "Unknown party",
+    char.stateUrl ? `[${char.state}](${char.stateUrl})` : char.state || "Unknown state",
+    char.countryUrl ? `[Country](${char.countryUrl})` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  // Text equivalent of the card's headline figures — a PNG has no accessible form.
+  const stats =
+    `PI ${Math.round(char.politicalInfluence ?? 0).toLocaleString()} · ` +
+    `NPI ${Math.round(char.nationalInfluence ?? 0).toLocaleString()} · ` +
+    `Approval ${Math.round(char.favorability ?? 0)}% · ` +
+    `Infamy ${Math.round(char.infamy ?? 0)} · ` +
+    `Funds ${fmt(cvt(char.funds ?? 0))}`;
+
+  const bio = char.bio ? `\n\n${char.bio.slice(0, 300)}${char.bio.length > 300 ? "..." : ""}` : "";
   const hint = "\n-# Try `/compare` for side-by-side or `/investor` for portfolio details";
-  if (char.bio) {
-    embed.setDescription(char.bio.slice(0, 300) + (char.bio.length > 300 ? "..." : "") + hint);
-  } else {
-    embed.setDescription(hint.trimStart());
-  }
 
-  embed.addFields(
-    {
-      name: "Position",
-      value: (COUNTRY_FLAG[char.countryId ?? ""] ? `${COUNTRY_FLAG[char.countryId!]} ` : "") + (char.position || "None"),
-      inline: true,
-    },
-    { name: "Party", value: char.partyUrl ? `[${char.party}](${char.partyUrl})` : (char.party || "Unknown"), inline: true },
-    { name: "State", value: (char.stateUrl ? `[${char.state}](${char.stateUrl})` : (char.state || "Unknown")) + (char.countryUrl ? ` · [Country](${char.countryUrl})` : ""), inline: true },
-    { name: "PI", value: String(Math.round(char.politicalInfluence ?? 0)), inline: true },
-    { name: "NPI", value: String(Math.round(char.nationalInfluence ?? 0)), inline: true },
-    { name: "Approval", value: `${Math.round(char.favorability ?? 0)}%`, inline: true },
-    { name: "Infamy", value: String(Math.round(char.infamy ?? 0)), inline: true },
-    { name: "Actions", value: String(Math.round(char.actions ?? 0)), inline: true },
-    { name: "Donor Base", value: String(Math.round(char.donorBaseLevel ?? 0)), inline: true },
-    { name: "Economic", value: policyLabel(char.policies?.economic ?? 0), inline: true },
-    { name: "Social", value: policyLabel(char.policies?.social ?? 0), inline: true },
-    { name: "Funds", value: fmt(cvt(char.funds ?? 0)), inline: true },
-  );
-
-  if (char.createdAt) {
-    const ts = Math.floor(new Date(char.createdAt).getTime() / 1000);
-    embed.addFields({ name: "Created", value: `<t:${ts}:R>`, inline: true });
-  }
-
-  if (char.isCeo && char.ceoOf) {
-    embed.addFields({ name: "CEO", value: char.ceoOf, inline: true });
-  }
-
-  if (char.isInvestor) {
-    const rank = char.investorRank ? ` (Rank #${char.investorRank})` : "";
-    const portfolio = char.portfolioValue != null
-      ? `${fmt(cvt(char.portfolioValue))}${rank}`
-      : `Investor${rank}`;
-    embed.addFields({ name: "Portfolio", value: portfolio, inline: true });
-  }
-
-  if (char.activeElection?.electionType) {
-    // Prefer the game's config-resolved label; it is absent for race types with
-    // no office config (snap elections), where the local map still wins.
-    const electionType =
-      char.activeElection.electionLabel ?? formatOfficeType(char.activeElection.electionType);
-    const electionState = char.activeElection.electionState ?? "Unknown";
-    embed.addFields({ name: "Active Election", value: `${electionType} (${electionState})`, inline: false });
-  }
-
-  // Validate before setting: a relative/invalid avatarUrl would otherwise throw
-  // and abort the command. Fall back to the (always-absolute) Discord avatar.
-  const thumbnail = safeEmbedUrl(char.avatarUrl) ?? safeEmbedUrl(char.discordAvatarUrl);
-  if (thumbnail) embed.setThumbnail(thumbnail);
+  embed.setDescription(`${links}\n-# ${stats}${bio}${hint}`.slice(0, 4096));
 
   return embed;
+}
+
+/** "Mar 2026" — day precision is noise on a career spanning years. */
+function shortMonth(iso: string): string {
+  const d = new Date(iso);
+  return isNaN(d.getTime())
+    ? ""
+    : d.toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
+}
+
+/** The career as a timeline: one node per event, coloured by outcome. */
+function buildCareerCard(char: CharacterResult, career: CareerEvent[]): Buffer {
+  const events = career.slice(0, 14).map((event) => ({
+    outcome: event.type as CareerOutcome,
+    office: event.office,
+    detail: event.party || undefined,
+    date: shortMonth(event.date),
+  }));
+
+  return renderTimeline({
+    title: `${char.name} — career`,
+    subtitle:
+      career.length > events.length
+        ? `${career.length} events · showing the most recent ${events.length}`
+        : `${career.length} event${career.length === 1 ? "" : "s"}`,
+    footerLeft: char.party || undefined,
+    events,
+  });
+}
+
+/** Achievements as a tile grid, highlighted ones first. */
+function buildAchievementsCard(char: CharacterResult, achievements: Achievement[]): Buffer {
+  const sorted = [...achievements].sort((a, b) => Number(b.isHighlighted) - Number(a.isHighlighted));
+  const shown = sorted.slice(0, 12);
+
+  return renderAchievements({
+    title: `${char.name} — achievements`,
+    subtitle:
+      achievements.length > shown.length
+        ? `${achievements.length} earned · showing ${shown.length}`
+        : `${achievements.length} earned`,
+    footerLeft: char.party || undefined,
+    achievements: shown.map((a) => ({
+      name: a.name,
+      description: a.description,
+      icon: a.icon,
+      highlighted: a.isHighlighted,
+    })),
+  });
 }
 
 function buildCareerEmbed(char: CharacterResult, career: CareerEvent[]): EmbedBuilder {
@@ -261,9 +361,15 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     let achievementsCache: Achievement[] | null = null;
     let activeTab: Tab = "profile";
 
+    const profileCard = await buildProfileCard(char, displayCurrency, rates).catch(() => null);
+    const cardAttachment = profileCard ? chartAttachment(profileCard, "profile", char.id) : null;
+    const profileEmbed = buildProfileEmbed(char, displayCurrency, rates);
+    if (cardAttachment) profileEmbed.setImage(cardAttachment.url);
+
     const message = await interaction.editReply({
       content: extras || undefined,
-      embeds: [buildProfileEmbed(char, displayCurrency, rates)],
+      embeds: [profileEmbed],
+      files: cardAttachment ? [cardAttachment.file] : [],
       components: [buildTabRow("profile")],
     });
 
@@ -282,15 +388,29 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
       if (btn.customId === "tab_profile") {
         activeTab = "profile";
-        await btn.editReply({ embeds: [buildProfileEmbed(char, displayCurrency, rates)], components: [buildTabRow("profile")] });
+        // Re-attach: switching tabs replaces the message's files, so the card
+        // has to be sent again or the embed's image reference dangles.
+        const card = await buildProfileCard(char, displayCurrency, rates).catch(() => null);
+        const attachment = card ? chartAttachment(card, "profile", char.id) : null;
+        const embed = buildProfileEmbed(char, displayCurrency, rates);
+        if (attachment) embed.setImage(attachment.url);
+        await btn.editReply({
+          embeds: [embed],
+          files: attachment ? [attachment.file] : [],
+          components: [buildTabRow("profile")],
+        });
       } else if (btn.customId === "tab_career") {
         activeTab = "career";
         if (!careerCache) {
           const res = await getCareer({ characterId: char.id });
           careerCache = res.career;
         }
+        const careerEmbed = buildCareerEmbed(char, careerCache);
+        const careerCard = chartAttachment(buildCareerCard(char, careerCache), "career", char.id);
+        if (careerCache.length > 0) careerEmbed.setImage(careerCard.url);
         await btn.editReply({
-          embeds: [buildCareerEmbed(char, careerCache)],
+          embeds: [careerEmbed],
+          files: careerCache.length > 0 ? [careerCard.file] : [],
           components: [buildTabRow("career")],
         });
       } else if (btn.customId === "tab_achievements") {
@@ -299,8 +419,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           const res = await getAchievements({ characterId: char.id });
           achievementsCache = res.achievements;
         }
+        const achEmbed = buildAchievementsEmbed(char, achievementsCache);
+        const achCard = chartAttachment(buildAchievementsCard(char, achievementsCache), "achievements", char.id);
+        if (achievementsCache.length > 0) achEmbed.setImage(achCard.url);
         await btn.editReply({
-          embeds: [buildAchievementsEmbed(char, achievementsCache)],
+          embeds: [achEmbed],
+          files: achievementsCache.length > 0 ? [achCard.file] : [],
           components: [buildTabRow("achievements")],
         });
       }

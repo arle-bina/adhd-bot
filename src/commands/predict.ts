@@ -7,6 +7,8 @@ import {
 import { getPrediction, PredictionPartyEntry, ApiError } from "../utils/api.js";
 import { replyWithError } from "../utils/helpers.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
+import { renderChamber, brandColor, type ChamberShape } from "../utils/viz/index.js";
+import { chartAttachment } from "../utils/viz/attach.js";
 
 export const cooldown = 5;
 
@@ -50,75 +52,46 @@ export async function autocomplete(interaction: AutocompleteInteraction): Promis
   await respondCountryAutocomplete(interaction);
 }
 
-const FALLBACK_PALETTE = [
-  "#e6194b", "#3cb44b", "#4363d8", "#f58231", "#911eb4",
-  "#42d4f4", "#f032e6", "#bfef45", "#fabed4", "#469990",
-  "#dcbeff", "#9A6324", "#fffac8", "#800000", "#aaffc3",
-];
+/**
+ * Hemicycle, one dot per seat.
+ *
+ * Replaces a QuickChart half-doughnut. Besides the form being wrong for a seat
+ * count, the old config never arrived intact: `datalabels.display` and
+ * `formatter` were function values, and `JSON.stringify` drops functions, so
+ * the "hide labels under 6%" rule never once applied in production.
+ */
+/**
+ * Chamber shape by race.
+ *
+ * The Commons is a horseshoe with facing benches, not a hemicycle — the two
+ * forms encode different politics and are not interchangeable. Everything else
+ * the game models seats in an arch.
+ */
+const CHAMBER_SHAPE: Record<string, ChamberShape> = {
+  commons: "westminster",
+};
 
-function normalizeColor(color: string | null | undefined, index: number): string {
-  if (color) return color.startsWith("#") ? color : `#${color}`;
-  return FALLBACK_PALETTE[index % FALLBACK_PALETTE.length];
-}
-
-async function buildParliamentChartUrl(entries: PredictionPartyEntry[], totalSeats: number): Promise<string> {
-  const colors = entries.map((e, i) => normalizeColor(e.partyColor, i));
-
-  const config = {
-    type: "doughnut" as const,
-    data: {
-      labels: entries.map((e) => `${e.partyName} (${e.seats})`),
-      datasets: [
-        {
-          data: entries.map((e) => e.seats),
-          backgroundColor: colors,
-          borderColor: "#2b2d31",
-          borderWidth: 2,
-        },
-      ],
-    },
-    options: {
-      rotation: -90,
-      circumference: 180,
-      cutout: "40%",
-      layout: { padding: { bottom: 0 } },
-      plugins: {
-        legend: {
-          display: true,
-          position: "bottom" as const,
-          labels: { color: "#dcddde", font: { size: 11 }, padding: 12, usePointStyle: true, pointStyle: "rectRounded" },
-        },
-        datalabels: {
-          display: (ctx: { dataIndex: number }) => {
-            const value = entries[ctx.dataIndex]?.seats ?? 0;
-            return value / totalSeats > 0.06;
-          },
-          color: "#fff",
-          font: { weight: "bold" as const, size: 13 },
-          formatter: (_: number, ctx: { dataIndex: number }) => entries[ctx.dataIndex]?.seats ?? "",
-        },
-      },
-    },
-  };
-
-  const response = await fetch("https://quickchart.io/chart/create", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chart: config,
-      width: 600,
-      height: 350,
-      backgroundColor: "#2b2d31",
-      version: "4",
-    }),
+async function buildChart(
+  entries: PredictionPartyEntry[],
+  totalSeats: number,
+  title: string,
+  subtitle: string,
+  race: string,
+): Promise<Buffer> {
+  const majority = Math.floor(totalSeats / 2) + 1;
+  return renderChamber({
+    shape: CHAMBER_SHAPE[race] ?? "arch",
+    title,
+    subtitle: `${totalSeats} seats · ${majority} for a majority${subtitle ? ` · ${subtitle}` : ""}`,
+    footerLeft: "Projected from current standing",
+    totalSeats,
+    majority,
+    parties: entries.map((e, i) => ({
+      name: e.partyName,
+      seats: e.seats,
+      color: brandColor(e.partyColor, i),
+    })),
   });
-
-  if (response.ok) {
-    const body = (await response.json()) as { success: boolean; url: string };
-    if (body.success) return body.url;
-  }
-
-  return `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(config))}&w=600&h=350&bkg=%232b2d31&v=4`;
 }
 
 function addOtherEntry(entries: PredictionPartyEntry[], totalSeats: number): PredictionPartyEntry[] {
@@ -191,17 +164,21 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     if (!showProjected) {
       // No active general — just show current composition
       const chartEntries = addOtherEntry(result.current, totalSeats);
-      const chartUrl = await buildParliamentChartUrl(chartEntries, totalSeats);
+      const chart = chartAttachment(
+        await buildChart(chartEntries, totalSeats, `${result.chamberName} — current seats`, "", race),
+        "seats",
+        race,
+      );
       const majorityLabel = buildMajorityLabel(result.current, totalSeats, race);
 
       const embed = new EmbedBuilder()
         .setTitle(`📊 ${result.chamberName} — Current Seats`)
         .setColor(embedColor)
         .setDescription(`_No general elections active._\n\n${majorityLabel}\n\n${buildSeatsColumn(result.current)}`)
-        .setImage(chartUrl)
+        .setImage(chart.url)
         .setFooter({ text: `${metaLine} · ahousedividedgame.com` });
 
-      await interaction.editReply({ embeds: [embed] });
+      await interaction.editReply({ embeds: [embed], files: [chart.file] });
       return;
     }
 
@@ -209,8 +186,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const projectedLabel = buildMajorityLabel(result.projected, totalSeats, race);
     const currentLabel = buildMajorityLabel(result.current, totalSeats, race);
 
-    // Don't add "Other" slice — show the actual projected breakdown only
-    const chartUrl = await buildParliamentChartUrl(result.projected, totalSeats);
+    // Don't add an "Other" bucket — show the actual projected breakdown only
+    const chart = chartAttachment(
+      await buildChart(result.projected, totalSeats, `${result.chamberName} — projection`, `${projectedSum} allocated`, race),
+      "projection",
+      race,
+    );
 
     const embed = new EmbedBuilder()
       .setTitle(`📊 ${result.chamberName}`)
@@ -228,10 +209,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           inline: true,
         },
       )
-      .setImage(chartUrl)
+      .setImage(chart.url)
       .setFooter({ text: `Projection based on current vote tallies · updates each turn · ${metaLine} · ahousedividedgame.com` });
 
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed], files: [chart.file] });
 
   } catch (error) {
     if (error instanceof ApiError) {

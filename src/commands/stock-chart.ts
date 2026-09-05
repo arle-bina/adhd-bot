@@ -1,6 +1,5 @@
 import {
   SlashCommandBuilder,
-  AttachmentBuilder,
   type ChatInputCommandInteraction,
   type AutocompleteInteraction,
 } from "discord.js";
@@ -8,14 +7,12 @@ import {
   getStockChart,
   getStockChartCorpList,
   type CorporationListItem,
+  type StockChartMetric,
 } from "../utils/api.js";
 import { replyWithError, standardFooter } from "../utils/helpers.js";
-import { formatCurrency, formatSharePrice, EXCHANGE_CURRENCY, currencyFor } from "../utils/currency.js";
-import {
-  generateStockChartMarket,
-  generateStockChartCorp,
-  type StockChartMetric,
-} from "../utils/chartGenerator.js";
+import { formatCurrency, formatSharePrice, EXCHANGE_CURRENCY, currencyFor, symbolFor } from "../utils/currency.js";
+import { renderTimeSeries } from "../utils/viz/index.js";
+import { chartAttachment } from "../utils/viz/attach.js";
 
 // ---------------------------------------------------------------------------
 // Corporation list cache for autocomplete (5-minute TTL)
@@ -145,19 +142,30 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       }
 
       const cc = EXCHANGE_CURRENCY[res.exchange] ?? "USD";
-      const chartBuffer = await generateStockChartMarket(res, { title, metric, currency: cc });
-      const attachment = new AttachmentBuilder(chartBuffer, {
-        name: `stock-chart-${res.exchange}-${Date.now()}.png`,
-        description: title,
-      });
-
       const latestPoint = res.points[res.points.length - 1];
       const firstPoint = res.points[0];
+
+      const chart = chartAttachment(
+        renderTimeSeries({
+          title,
+          subtitle: `${res.points.length} turns · T${firstPoint.turn}–T${latestPoint.turn}`,
+          footerLeft: `Values ${cc}`,
+          labels: res.points.map((p) => `T${p.turn}`),
+          series: [{ name: "Market cap", values: res.points.map((p) => p.marketCap) }],
+          valueFormat: "money",
+          currencySymbol: symbolFor(cc),
+          directional: true,
+          fill: true,
+        }),
+        "stock-chart",
+        res.exchange,
+      );
+      const attachment = chart.file;
 
       const embed = {
         color: 0x5865F2,
         title,
-        image: { url: `attachment://${attachment.name}` },
+        image: { url: chart.url },
         fields: [
           {
             name: "Current Market Cap",
@@ -188,19 +196,36 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       // Corp financial data is in the corp's native currency.
       // Use countryId from the API response to determine currency.
       const cc = res.corporation?.liquidCurrencyCode || currencyFor(res.corporation?.countryId || "us") || "USD";
-      const chartBuffer = await generateStockChartCorp(res, { title, metric, currency: cc });
-      const attachment = new AttachmentBuilder(chartBuffer, {
-        name: `stock-chart-${res.corporation.name.replace(/\s+/g, "-").toLowerCase()}-${Date.now()}.png`,
-        description: title,
-      });
-
       const latestPoint = res.points[res.points.length - 1];
       const firstPoint = res.points[0];
+
+      const metricLabels: Record<StockChartMetric, string> = {
+        sharePrice: "Share price",
+        marketCap: "Market cap",
+        revenue: "Revenue",
+        income: "Income",
+      };
+      const chart = chartAttachment(
+        renderTimeSeries({
+          title,
+          subtitle: `${res.points.length} turns · T${firstPoint.turn}–T${latestPoint.turn}`,
+          footerLeft: `Values ${cc}`,
+          labels: res.points.map((p) => `T${p.turn}`),
+          series: [{ name: metricLabels[metric], values: res.points.map((p) => p[metric]) }],
+          valueFormat: "money",
+          currencySymbol: symbolFor(cc),
+          directional: true,
+          fill: true,
+        }),
+        "stock-chart",
+        res.corporation.name,
+      );
+      const attachment = chart.file;
 
       const embed = {
         color: 0x57F287,
         title,
-        image: { url: `attachment://${attachment.name}` },
+        image: { url: chart.url },
         fields: [
           {
             name: "Share Price",

@@ -436,6 +436,9 @@ export interface StockChartMarketPoint {
   timestamp: string;
 }
 
+/** The numeric series /stock-chart can plot — the numeric keys of a corp point. */
+export type StockChartMetric = "marketCap" | "sharePrice" | "revenue" | "income";
+
 export interface StockChartCorpPoint {
   turn: number;
   sharePrice: number;

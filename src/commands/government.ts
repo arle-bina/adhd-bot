@@ -6,6 +6,8 @@ import {
 } from "discord.js";
 import { getGovernment, type GovernmentOfficial, type GovernmentFormationData } from "../utils/api.js";
 import { hexToInt, replyWithError, standardFooter } from "../utils/helpers.js";
+import { renderComposition, seriesColor, type CompositionSegment } from "../utils/viz/index.js";
+import { chartAttachment } from "../utils/viz/attach.js";
 import { COUNTRY_FLAG } from "../utils/formatting.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 
@@ -123,10 +125,57 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       });
     }
 
-    await interaction.editReply({ embeds: [embed] });
+    // A coalition's only real question is whether it clears the line, so the
+    // chart is a composition bar against the majority threshold — not a pie,
+    // which answers "what share" instead.
+    const chart = result.governmentFormation
+      ? buildSupportChart(result.governmentFormation, result.countryName)
+      : null;
+    const attachment = chart ? chartAttachment(chart, "government", result.country) : null;
+    if (attachment) embed.setImage(attachment.url);
+
+    await interaction.editReply({ embeds: [embed], files: attachment ? [attachment.file] : [] });
   } catch (error) {
     await replyWithError(interaction, "government", error);
   }
+}
+
+/**
+ * The governing bloc against the majority threshold.
+ *
+ * Coalition partners are drawn in seat order and named; everything not
+ * supporting the government falls into the remainder segment, so the bar always
+ * sums to the chamber.
+ */
+function buildSupportChart(gf: GovernmentFormationData, countryName: string): Buffer | null {
+  const total = gf.totalSeats;
+  if (!total || total <= 0) return null;
+
+  const supporters = Object.entries(gf.seatsByPartyNames ?? {})
+    .filter(([, seats]) => seats > 0)
+    .sort((a, b) => b[1] - a[1]);
+  if (supporters.length === 0) return null;
+
+  const segments: CompositionSegment[] = supporters.map(([name, seats], i) => ({
+    label: name,
+    value: seats,
+    color: seriesColor(i),
+  }));
+
+  const typeLabel = gf.formationType ? FORMATION_TYPE_LABEL[gf.formationType] ?? gf.formationType : null;
+  const statusLabel = gf.status.charAt(0).toUpperCase() + gf.status.slice(1);
+
+  return renderComposition({
+    title: `${countryName} — government support`,
+    subtitle: [typeLabel, statusLabel, gf.pmName ? `PM ${gf.pmName}` : null].filter(Boolean).join(" · "),
+    footerLeft: `${gf.totalSeatsSupporting} of ${total} seats supporting`,
+    segments,
+    total,
+    threshold: gf.majorityThreshold || undefined,
+    thresholdLabel: "Majority",
+    unit: "seats",
+    remainderLabel: "Not supporting",
+  });
 }
 
 const FORMATION_STATUS_EMOJI: Record<string, string> = {
