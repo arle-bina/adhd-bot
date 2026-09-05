@@ -52,6 +52,8 @@ export interface EntityCardOptions {
   avatarImage?: Image | null;
   /** Small muted line under the party chip, e.g. an active election. */
   banner?: string | null;
+  /** Standing badges — supporter tier, moderator, admin. Drawn beside the chip. */
+  badges?: Array<{ label: string; color: string }>;
 
   /** Economic axis, -100..100. Positive is left, per the game's own scale. */
   economic?: number | null;
@@ -131,19 +133,41 @@ export function renderEntityCardSync(o: EntityCardOptions): Buffer {
     ctx.fillText(ellipsize(ctx, o.position, tMax), tx, y + 47);
   }
 
+  // Party chip, then any standing badges on the same row. Badges are drawn in
+  // their own colours rather than the party's, so a supporter chip does not
+  // read as a second party affiliation.
+  let chipX = tx;
   if (o.chip) {
     ctx.font = font(600, 11);
     const label = ellipsize(ctx, o.chip, tMax - 20);
     const cw = ctx.measureText(label).width + 18;
     ctx.fillStyle = alpha(accent, 0.2);
-    roundRect(ctx, tx, y + 56, cw, 20, 10);
+    roundRect(ctx, chipX, y + 56, cw, 20, 10);
     ctx.fill();
     ctx.strokeStyle = alpha(accent, 0.5);
     ctx.lineWidth = 1;
-    roundRect(ctx, tx + 0.5, y + 56.5, cw - 1, 19, 9.5);
+    roundRect(ctx, chipX + 0.5, y + 56.5, cw - 1, 19, 9.5);
     ctx.stroke();
     ctx.fillStyle = INK.primary;
-    ctx.fillText(label, tx + 9, y + 70);
+    ctx.fillText(label, chipX + 9, y + 70);
+    chipX += cw + 6;
+  }
+
+  for (const badge of o.badges ?? []) {
+    ctx.font = font(700, 9);
+    const bw = ctx.measureText(badge.label).width + 14;
+    // Stop rather than overflow into the brand mark.
+    if (chipX + bw > W - PAD - GEO.markSize - 10) break;
+    ctx.fillStyle = alpha(badge.color, 0.22);
+    roundRect(ctx, chipX, y + 57, bw, 18, 9);
+    ctx.fill();
+    ctx.strokeStyle = alpha(badge.color, 0.55);
+    ctx.lineWidth = 1;
+    roundRect(ctx, chipX + 0.5, y + 57.5, bw - 1, 17, 8.5);
+    ctx.stroke();
+    ctx.fillStyle = badge.color;
+    ctx.fillText(badge.label, chipX + 7, y + 69.5);
+    chipX += bw + 5;
   }
 
   if (o.banner) {

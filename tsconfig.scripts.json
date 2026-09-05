@@ -1,0 +1,9 @@
+{
+  "//": "Typechecks scripts/ and tests/, which the build's rootDir excludes. Without this, a rename in src/ can break a script silently — scripts/viz-preview.ts did exactly that when the candle renderer was removed.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src/**/*", "scripts/**/*", "tests/**/*"]
+}

@@ -34,6 +34,7 @@ import {
   type CareerOutcome,
 } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
+import { badgesFor, resolveMember, type Badge } from "../utils/badges.js";
 
 export const cooldown = 5;
 
@@ -91,6 +92,7 @@ async function buildProfileCard(
   char: CharacterResult,
   displayCurrency: string,
   rates: Record<string, number>,
+  badges: Badge[] = [],
 ): Promise<Buffer> {
   const nativeCc = currencyFor(char.countryId);
   const sym = symbolFor(displayCurrency);
@@ -136,6 +138,7 @@ async function buildProfileCard(
     position,
     chip: char.party || null,
     accent: char.partyColor,
+    badges: badges.map((b) => ({ label: b.label, color: b.color })),
     avatarUrl: safeEmbedUrl(char.avatarUrl) ?? safeEmbedUrl(char.discordAvatarUrl),
     banner: activeElection,
     economic: char.policies?.economic ?? null,
@@ -161,7 +164,12 @@ async function buildProfileCard(
  * image cannot do: clickable links, the bio, and the text equivalent of the
  * headline stats for screen readers and anyone whose client blocks images.
  */
-function buildProfileEmbed(char: CharacterResult, displayCurrency: string, rates: Record<string, number>): EmbedBuilder {
+function buildProfileEmbed(
+  char: CharacterResult,
+  displayCurrency: string,
+  rates: Record<string, number>,
+  badges: Badge[] = [],
+): EmbedBuilder {
   const nativeCc = currencyFor(char.countryId);
   const cvt = (n: number) => convertCurrency(n, nativeCc, displayCurrency, rates);
   const fmt = (n: number) => formatCurrency(Math.round(n), displayCurrency);
@@ -181,8 +189,10 @@ function buildProfileEmbed(char: CharacterResult, displayCurrency: string, rates
   embed.setFooter({ text: footerParts.join(" · ") });
 
   const flag = COUNTRY_FLAG[char.countryId ?? ""] ? `${COUNTRY_FLAG[char.countryId!]} ` : "";
+  // Badges are on the card as chips; this is their text equivalent.
+  const badgeText = badges.length > 0 ? badges.map((b) => `\`${b.label}\``).join(" ") + " " : "";
   const links = [
-    `${flag}**${char.position || "No office"}**`,
+    `${badgeText}${flag}**${char.position || "No office"}**`,
     char.partyUrl ? `[${char.party}](${char.partyUrl})` : char.party || "Unknown party",
     char.stateUrl ? `[${char.state}](${char.stateUrl})` : char.state || "Unknown state",
     char.countryUrl ? `[Country](${char.countryUrl})` : null,
@@ -361,9 +371,23 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     let achievementsCache: Achievement[] | null = null;
     let activeTab: Tab = "profile";
 
-    const profileCard = await buildProfileCard(char, displayCurrency, rates).catch(() => null);
+    /*
+     * Supporter, mod and admin badges come from the subject's Discord roles.
+     * We have their id directly for `/profile` and `/profile user:@x`; a
+     * name lookup only yields `discordUsername`, which `resolveMember` searches
+     * on. Any failure just means no badges — never a failed reply.
+     */
+    const subjectDiscordId = name ? null : (user?.id ?? interaction.user.id);
+    const badges = badgesFor(
+      await resolveMember(interaction.guild, {
+        discordId: subjectDiscordId,
+        discordUsername: char.discordUsername,
+      }),
+    );
+
+    const profileCard = await buildProfileCard(char, displayCurrency, rates, badges).catch(() => null);
     const cardAttachment = profileCard ? chartAttachment(profileCard, "profile", char.id) : null;
-    const profileEmbed = buildProfileEmbed(char, displayCurrency, rates);
+    const profileEmbed = buildProfileEmbed(char, displayCurrency, rates, badges);
     if (cardAttachment) profileEmbed.setImage(cardAttachment.url);
 
     const message = await interaction.editReply({
@@ -390,9 +414,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         activeTab = "profile";
         // Re-attach: switching tabs replaces the message's files, so the card
         // has to be sent again or the embed's image reference dangles.
-        const card = await buildProfileCard(char, displayCurrency, rates).catch(() => null);
+        const card = await buildProfileCard(char, displayCurrency, rates, badges).catch(() => null);
         const attachment = card ? chartAttachment(card, "profile", char.id) : null;
-        const embed = buildProfileEmbed(char, displayCurrency, rates);
+        const embed = buildProfileEmbed(char, displayCurrency, rates, badges);
         if (attachment) embed.setImage(attachment.url);
         await btn.editReply({
           embeds: [embed],

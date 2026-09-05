@@ -11,7 +11,10 @@ const char: LeaderboardCharacter = {
   stateCode: "CA",
   position: "Senator",
   politicalInfluence: 1500,
+  nationalPoliticalInfluence: 420,
   favorability: 75,
+  actions: 6,
+  funds: 250_000,
   profileUrl: "https://example.com",
 };
 

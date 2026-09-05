@@ -23,6 +23,13 @@ export {
   type CareerOutcome,
 } from "./timeline.js";
 export {
+  renderWaterfall,
+  waterfallHeight,
+  buildColumns,
+  type WaterfallStep,
+  type WaterfallOptions,
+} from "./waterfall.js";
+export {
   renderVersus,
   versusHeight,
   type VersusMetric,

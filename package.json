@@ -10,7 +10,9 @@
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.scripts.json",
+    "viz:preview": "tsx scripts/viz-preview.ts .viz-preview"
   },
   "dependencies": {
     "canvas": "^3.2.0",
