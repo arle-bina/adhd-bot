@@ -1,12 +1,12 @@
 import {
   SlashCommandBuilder,
   EmbedBuilder,
-  AttachmentBuilder,
   type ChatInputCommandInteraction,
 } from "discord.js";
 import { apiFetchPublic, ApiError } from "../utils/api-base.js";
 import { symbolFor } from "../utils/currency.js";
-import { generateForexChart, type ForexRateData } from "../utils/chartGenerator.js";
+import { renderTimeSeries, SERIES } from "../utils/viz/index.js";
+import { chartAttachment } from "../utils/viz/attach.js";
 import { replyWithError, standardFooter } from "../utils/helpers.js";
 
 export const cooldown = 10;
@@ -44,6 +44,61 @@ function pctChange(history: Array<{ rate: number }>): string {
   const pct = ((last - first) / first) * 100;
   const sign = pct >= 0 ? "+" : "";
   return `${sign}${pct.toFixed(2)}%`;
+}
+
+/**
+ * Currency ordering for the chart.
+ *
+ * Colours are assigned by fixed slot in the validated series ramp, never by
+ * rank, so adding or removing a currency never repaints the others. The order
+ * is the ramp's own — the previous hand-picked "national hue" palette here
+ * (USD steel blue, JPY green, BRL green, CNY red) failed the validator badly:
+ * BRL #009C3B against JPY #228833 was ΔE 5.8 in *normal* vision, and CNY
+ * against BRL was ΔE 4.0 under deuteranopia.
+ */
+const CURRENCY_SLOT: Record<string, number> = {
+  USD: 0, GBP: 1, EUR: 2, JPY: 3, BRL: 4, CNY: 5, NGN: 6,
+};
+
+function slotFor(code: string, fallback: number): number {
+  return CURRENCY_SLOT[code] ?? fallback;
+}
+
+/** Performance indexed to each currency's first observation in the window. */
+function buildForexChart(rates: ForexExchangeRate[]): Buffer | null {
+  const usable = rates.filter((r) => r.rateHistory.length > 1);
+  if (usable.length === 0) return null;
+
+  const turns = [...new Set(usable.flatMap((r) => r.rateHistory.map((h) => h.turn)))].sort((a, b) => a - b);
+
+  const series = usable
+    .map((r, i) => ({ r, slot: slotFor(r.currencyCode, i) }))
+    .sort((a, b) => a.slot - b.slot)
+    .map(({ r, slot }) => {
+      const base = r.rateHistory[0].rate;
+      const byTurn = new Map(r.rateHistory.map((h) => [h.turn, h.rate]));
+
+      // Carry the last known rate across turns a currency did not trade in,
+      // rather than breaking the line.
+      let last = base;
+      const values = turns.map((t) => {
+        const v = byTurn.get(t);
+        if (v != null && isFinite(v)) last = v;
+        return !base || !isFinite(base) ? 0 : ((last - base) / base) * 100;
+      });
+
+      return { name: `${r.currencyCode} (${symbolFor(r.currencyCode)})`, values, color: SERIES[slot % SERIES.length] };
+    });
+
+  return renderTimeSeries({
+    title: "Currency performance",
+    subtitle: `Change vs. period open · last ${turns.length} turns`,
+    footerLeft: "Indexed to each currency's first observation",
+    labels: turns.map((t) => `T${t}`),
+    series,
+    valueFormat: "percent",
+    zeroBaseline: true,
+  });
 }
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -87,23 +142,11 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
     embed.setFooter(standardFooter("1 INT = listed rate in local currency \u00b7 Updated every turn"));
 
-    // Generate chart
-    const chartData: ForexRateData[] = res.rates
-      .filter((r) => r.rateHistory.length > 1)
-      .map((r) => ({
-        currencyCode: r.currencyCode,
-        rateHistory: r.rateHistory,
-      }));
-
-    if (chartData.length > 0) {
-      const chartBuffer = await generateForexChart(chartData);
-      const attachment = new AttachmentBuilder(chartBuffer, {
-        name: `forex-${Date.now()}.png`,
-        description: "Currency performance chart",
-      });
-
-      embed.setImage(`attachment://${attachment.name}`);
-      await interaction.editReply({ embeds: [embed], files: [attachment] });
+    const chartBuffer = buildForexChart(res.rates);
+    if (chartBuffer) {
+      const chart = chartAttachment(chartBuffer, "forex");
+      embed.setImage(chart.url);
+      await interaction.editReply({ embeds: [embed], files: [chart.file] });
     } else {
       await interaction.editReply({ embeds: [embed] });
     }

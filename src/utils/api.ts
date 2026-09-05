@@ -92,6 +92,7 @@ export type {
   MarketShareResponse,
   StockChartMarketPoint,
   StockChartCorpPoint,
+  StockChartMetric,
   StockChartMarketResponse,
   StockChartCorpResponse,
   StockChartNotFoundResponse,

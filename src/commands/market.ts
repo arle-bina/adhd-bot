@@ -1,8 +1,17 @@
-import { SlashCommandBuilder, AttachmentBuilder, ChatInputCommandInteraction } from "discord.js";
+import { SlashCommandBuilder, ChatInputCommandInteraction } from "discord.js";
 import { getMarketData } from "../utils/api.js";
 import { errorMessage } from "../utils/helpers.js";
-import { EXCHANGE_CURRENCY } from "../utils/currency.js";
-import { generateLineChart, generateCandleChart } from "../utils/chartGenerator.js";
+
+/** "12 Mar" — full dates make an unreadable x axis at 30+ points. */
+function shortDate(iso: string): string {
+  const d = new Date(iso);
+  return isNaN(d.getTime())
+    ? String(iso).slice(0, 6)
+    : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+}
+import { EXCHANGE_CURRENCY, symbolFor } from "../utils/currency.js";
+import { renderCandles, renderPriceWithVolume } from "../utils/viz/index.js";
+import { chartAttachment } from "../utils/viz/attach.js";
 
 export const data = new SlashCommandBuilder()
     .setName("market")
@@ -76,31 +85,46 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         return;
       }
 
-      // Generate chart
-      let chartBuffer: Buffer;
-      if (chartType === "candle") {
-        chartBuffer = await generateCandleChart(marketData, {
-          exchange: marketData.exchangeName,
-          days
-        });
-      } else {
-        chartBuffer = await generateLineChart(marketData, {
-          exchange: marketData.exchangeName,
-          days
-        });
-      }
+      const history = marketData.history;
+      const labels = history.map((point) => shortDate(point.date));
+      const symbol = symbolFor(EXCHANGE_CURRENCY[exchange] ?? "USD");
 
-      const attachment = new AttachmentBuilder(chartBuffer, {
-        name: `market-${exchange}-${Date.now()}.png`,
-        description: `${marketData.exchangeName} ${chartType} chart`
-      });
+      // Price and volume get their own panels. The old line chart put them on
+      // two y-axes in one frame, which makes any two series look correlated.
+      const chartBuffer =
+        chartType === "candle"
+          ? renderCandles({
+              title: marketData.exchangeName,
+              subtitle: `Open/high/low/close · last ${days} days`,
+              footerLeft: `Turn ${marketData.currentTurn}`,
+              candles: history.map((p) => ({
+                label: shortDate(p.date),
+                open: p.open,
+                high: p.high,
+                low: p.low,
+                close: p.close,
+              })),
+              currencySymbol: symbol,
+            })
+          : renderPriceWithVolume({
+              title: marketData.exchangeName,
+              subtitle: `Close price · last ${days} days`,
+              footerLeft: `Turn ${marketData.currentTurn}`,
+              labels,
+              price: history.map((p) => p.close),
+              volume: history.map((p) => p.volume),
+              currencySymbol: symbol,
+            });
+
+      const chart = chartAttachment(chartBuffer, `market-${exchange}`, chartType);
+      const attachment = chart.file;
 
       const embed = {
         color: 0x5865F2,
         title: `${marketData.exchangeName}`,
         description: `${chartType === "candle" ? "Candlestick" : "Line"} chart • Last ${days} days`,
         image: {
-          url: `attachment://${attachment.name}`
+          url: chart.url
         },
         fields: [
           {

@@ -32,3 +32,6 @@ data/
 
 # Worktrees
 .worktrees/
+
+# Chart design previews (regenerate with: npx tsx scripts/viz-preview.ts)
+.viz-preview/
