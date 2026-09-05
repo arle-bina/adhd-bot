@@ -13,7 +13,7 @@
  */
 
 import { createCanvas, type Image, type CanvasRenderingContext2D } from "canvas";
-import { ellipsize, roundRect, SITE, type Rect } from "./card.js";
+import { ellipsize, encodePng, roundRect, SITE, type Rect } from "./card.js";
 import { ensureFonts, font } from "./fonts.js";
 import { drawAvatar, loadAvatar } from "./avatar.js";
 import { drawBrandMark, warmBrandAssets } from "./brand.js";
@@ -245,7 +245,7 @@ export function renderEntityCardSync(o: EntityCardOptions): Buffer {
   ctx.fillText(o.footerRight ?? SITE, W - PAD, H - PAD + 1);
   ctx.textAlign = "left";
 
-  return canvas.toBuffer("image/png");
+  return encodePng(canvas);
 }
 
 /**

@@ -7,6 +7,9 @@ import {
 import { getParty } from "../utils/api.js";
 import { hexToInt, replyWithError, positionBar } from "../utils/helpers.js";
 import { currencyFor, formatCurrency } from "../utils/currency.js";
+import { renderVersus, compactMoney, compactNumber, type VersusMetric } from "../utils/viz/index.js";
+import { chartAttachment } from "../utils/viz/attach.js";
+import { symbolFor } from "../utils/currency.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 
 export const cooldown = 5;
@@ -92,6 +95,59 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     // Blend colors for embed: use the first party's color
     const color = hexToInt(p1.color);
 
+    /*
+     * Head-to-head bars.
+     *
+     * Ideology is deliberately absent: "further left" is not "ahead", and a
+     * diverging bar implies a winner. Positions stay in the embed's ideology
+     * section, where a direction reads as a direction.
+     *
+     * Treasuries are compared in each party's own currency because the two can
+     * sit in different countries; the card says which, rather than silently
+     * converting one into the other's.
+     */
+    const cc1 = currencyFor(country1);
+    const cc2 = currencyFor(country2);
+    const metrics: VersusMetric[] = [
+      {
+        label: "Members",
+        left: p1.memberCount ?? 0,
+        right: p2.memberCount ?? 0,
+        leftDisplay: compactNumber(p1.memberCount ?? 0),
+        rightDisplay: compactNumber(p2.memberCount ?? 0),
+      },
+      {
+        label: "Treasury",
+        left: Math.max(0, p1.treasury ?? 0),
+        right: Math.max(0, p2.treasury ?? 0),
+        leftDisplay: compactMoney(p1.treasury ?? 0, symbolFor(cc1)),
+        rightDisplay: compactMoney(p2.treasury ?? 0, symbolFor(cc2)),
+        // Different currencies; the bar lengths are not a like-for-like
+        // comparison, so neither side is marked as leading.
+        neutral: cc1 !== cc2,
+      },
+      {
+        label: "Top-member influence",
+        left: p1.topMembers.reduce((sum, m) => sum + (m.politicalInfluence ?? 0), 0),
+        right: p2.topMembers.reduce((sum, m) => sum + (m.politicalInfluence ?? 0), 0),
+        leftDisplay: compactNumber(p1.topMembers.reduce((sum, m) => sum + (m.politicalInfluence ?? 0), 0)),
+        rightDisplay: compactNumber(p2.topMembers.reduce((sum, m) => sum + (m.politicalInfluence ?? 0), 0)),
+      },
+    ];
+
+    const chart = chartAttachment(
+      renderVersus({
+        title: `${p1.name} vs ${p2.name}`,
+        subtitle: cc1 === cc2 ? "Each metric scaled to its own pair" : `Treasuries in ${cc1} and ${cc2} — not directly comparable`,
+        footerLeft: `${p1.abbreviation || p1.name} · ${p2.abbreviation || p2.name}`,
+        left: { name: p1.name, detail: ideologyLabel(p1.economicPosition, p1.socialPosition), color: p1.color },
+        right: { name: p2.name, detail: ideologyLabel(p2.economicPosition, p2.socialPosition), color: p2.color },
+        metrics,
+      }),
+      "party-compare",
+      `${p1.id}-${p2.id}`,
+    );
+
     const embed = new EmbedBuilder()
       .setTitle(`${p1.name} vs ${p2.name}`.slice(0, 256))
       .setColor(color)
@@ -158,7 +214,8 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       });
     }
 
-    await interaction.editReply({ embeds: [embed] });
+    embed.setImage(chart.url);
+    await interaction.editReply({ embeds: [embed], files: [chart.file] });
   } catch (error) {
     await replyWithError(interaction, "party-compare", error);
   }

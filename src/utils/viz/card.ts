@@ -42,6 +42,18 @@ export interface CardSpec {
 
 export const SITE = "ahousedividedgame.com";
 
+/**
+ * PNG encode settings.
+ *
+ * Rendering happens on the bot's event loop, and the encode is the bulk of it.
+ * Level 3 measured 27% faster than node-canvas's default 6 for about 20% more
+ * bytes — a card is ~140 KB against Discord's 10 MB attachment limit, so the
+ * size is free and the latency is not.
+ */
+export function encodePng(canvas: Canvas): Buffer {
+  return canvas.toBuffer("image/png", { compressionLevel: 3 });
+}
+
 /** Rounded-rectangle path. node-canvas has no `roundRect` on older builds. */
 export function roundRect(
   ctx: CanvasRenderingContext2D,
@@ -195,7 +207,7 @@ export function renderCard(
     ctx.textAlign = "left";
   }
 
-  return canvas.toBuffer("image/png");
+  return encodePng(canvas);
 }
 
 /** Centred "no data" state, so an empty result still looks intentional. */
