@@ -24,7 +24,7 @@ import {
 import { hexToInt, replyWithError, safeEmbedUrl } from "../utils/helpers.js";
 import { AttachmentBuilder } from "discord.js";
 import { currencyFor, formatCurrency, formatSharePrice, formatCurrencySigned, padCurrency, convertCurrency, fetchForexRates, symbolFor, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
-import { renderEntityCard, compactMoney, compactNumber, signedPercent, seriesColor } from "../utils/viz/index.js";
+import { renderEntityCard, renderWaterfall, compactMoney, compactNumber, signedPercent, seriesColor, type WaterfallStep } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
 
 // ---------------------------------------------------------------------------
@@ -349,6 +349,59 @@ function buildBondsEmbed(res: BondsResponse, name: string, countryId: string | u
     .setFooter({ text: forexFooter(displayCurrency, nativeCcForFooter, rates, "Total debt in USD anchor") });
 }
 
+/**
+ * The income statement as a waterfall.
+ *
+ * A P&L is a running balance, not a set of independent quantities: ranked bars
+ * would say which cost is biggest, while this says how revenue becomes income.
+ * Steps stay in statement order — reordering a waterfall breaks the arithmetic
+ * it exists to show — and zero-value costs are dropped rather than drawn as
+ * invisible slivers.
+ */
+function buildFinancialsChart(
+  res: FinancialsResponse,
+  displayCurrency: string,
+  rates: Record<string, number>,
+): Buffer | null {
+  const corp = res.corporation;
+  const inc = res.incomeStatement;
+  if (!inc || !(inc.totalRevenue > 0 || inc.netIncome !== 0)) return null;
+
+  const nativeCc = corp.liquidCurrencyCode || currencyFor(corp.countryId);
+  const to = (n: number | null | undefined) =>
+    n != null ? convertCurrency(n, nativeCc, displayCurrency, rates) : 0;
+  const sym = symbolFor(displayCurrency);
+
+  const costs = inc.costs;
+  const steps: WaterfallStep[] = [{ label: "Revenue", delta: to(inc.totalRevenue) }];
+
+  for (const [label, raw] of [
+    ["Maintenance", costs.maintenance],
+    ["Growth", costs.growth],
+    ["Marketing", costs.marketing],
+    ["Logistics", costs.logistics],
+    ["CEO salary", costs.ceoSalary],
+  ] as const) {
+    const value = to(raw);
+    if (value > 0) steps.push({ label, delta: -value });
+  }
+
+  steps.push({ label: "Operating income", delta: 0, total: true });
+
+  const interest = to(costs.bondInterest);
+  if (interest > 0) steps.push({ label: "Bond interest", delta: -interest });
+
+  steps.push({ label: "Net income", delta: 0, total: true });
+
+  return renderWaterfall({
+    title: `${corp.name} — income statement`,
+    subtitle: `Per turn · ${corp.typeLabel || corp.type}`,
+    footerLeft: `Values ${displayCurrency}`,
+    steps,
+    format: (v) => compactMoney(v, sym),
+  });
+}
+
 function buildFinancialsEmbed(res: FinancialsResponse, displayCurrency: string, rates: Record<string, number>): EmbedBuilder {
   const corp = res.corporation;
   // API provides liquidCurrencyCode on the corporation object.
@@ -373,17 +426,13 @@ function buildFinancialsEmbed(res: FinancialsResponse, displayCurrency: string, 
   if (logoThumb) embed.setThumbnail(logoThumb);
 
   const W = 14;
-  const incomeBlock = [
-    padCurrency("Revenue:       ", cvt(inc.totalRevenue), W, cc),
-    padCurrency("- Operating:   ", cvt(inc.costs.operatingTotal), W, cc),
-    padCurrency("- Interest:    ", cvt(inc.costs.bondInterest), W, cc),
-    padCurrency("= Net Income:  ", cvt(inc.netIncome), W, cc),
-    padCurrency("Dividends:     ", cvt(inc.dailyDividendPayout), W, cc) + ` (${inc.dividendRate ?? 0}%)`,
-    padCurrency("Retained:      ", cvt(inc.retainedEarnings), W, cc),
-  ].join("\n");
+  // Revenue through net income is the waterfall above. What it has no column
+  // for is what happens to the income afterwards.
   embed.addFields({
-    name: "Income Statement",
-    value: `\`\`\`\n${incomeBlock}\n\`\`\``.slice(0, 1024),
+    name: "Distribution",
+    value:
+      `Dividends ${formatCurrency(cvt(inc.dailyDividendPayout), cc)}/turn (${inc.dividendRate ?? 0}%)` +
+      ` · Retained ${formatCurrency(cvt(inc.retainedEarnings), cc)}`,
     inline: false,
   });
 
@@ -532,7 +581,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
             if (!bondsRes) bondsRes = await getBonds({ corp: name });
             embed = buildBondsEmbed(bondsRes, name, overviewRes.corporation?.countryId, displayCurrency, rates, overviewRes.corporation?.liquidCurrencyCode ?? null);
             break;
-          case "financials":
+          case "financials": {
             if (!financialsRes) {
               financialsRes = await getFinancials(name);
               if (!financialsRes.found) {
@@ -541,7 +590,14 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
               }
             }
             embed = buildFinancialsEmbed(financialsRes, displayCurrency, rates);
+            const waterfall = buildFinancialsChart(financialsRes, displayCurrency, rates);
+            if (waterfall) {
+              const attachment = chartAttachment(waterfall, "financials", overviewRes.corporation?.id ?? name);
+              embed.setImage(attachment.url);
+              files = [attachment.file];
+            }
             break;
+          }
           default:
             return;
         }

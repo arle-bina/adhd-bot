@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { renderBarChart } from "../src/utils/viz/bars.js";
 import { renderChamber } from "../src/utils/viz/chamber.js";
 import { warmBrandAssets } from "../src/utils/viz/brand.js";
-import { renderTimeSeries, renderCandles } from "../src/utils/viz/timeseries.js";
+import { renderTimeSeries } from "../src/utils/viz/timeseries.js";
 import { OTHERS, SERIES, UNOWNED, brandColor } from "../src/utils/viz/theme.js";
 import { compactMoney, compactNumber } from "../src/utils/viz/format.js";
 import { renderEntityCardSync, approvalColor, infamyColor } from "../src/utils/viz/profile.js";
@@ -21,6 +21,7 @@ import { partyAxisToCompass, seriesColor } from "../src/utils/viz/theme.js";
 import { renderComposition } from "../src/utils/viz/composition.js";
 import { renderVersus } from "../src/utils/viz/versus.js";
 import { renderTimeline, renderAchievements } from "../src/utils/viz/timeline.js";
+import { renderWaterfall } from "../src/utils/viz/waterfall.js";
 
 await warmBrandAssets();
 
@@ -208,23 +209,6 @@ write("serverstats.png", renderTimeSeries({
   valueFormat: "number",
   fill: true,
 }));
-
-console.log("candles:");
-const candles = Array.from({ length: 34 }, (_, i) => {
-  const base = 40 + Math.sin(i / 3) * 6 + i * 0.25;
-  const open = base + Math.sin(i * 2.1) * 1.2;
-  const close = base + Math.cos(i * 1.7) * 1.4;
-  return { label: `T${578 + i}`, open, close, high: Math.max(open, close) + 1.1, low: Math.min(open, close) - 1.3 };
-});
-write("candles.png", renderCandles({
-  title: "NYSE — price range",
-  subtitle: "Last 34 turns · open/high/low/close",
-  footerLeft: "Turn 612 · USD",
-  candles,
-  currencySymbol: "$",
-}));
-
-
 
 // ── /profile ────────────────────────────────────────────────────────────────
 console.log("profile:");
@@ -519,6 +503,75 @@ write("bonds.png", renderBarChart({
     secondary: compactMoney(issued as number, "$"),
     tag: (defaulted as boolean) ? `DEFAULTED · ${tag}` : (tag as string),
   })),
+}));
+
+
+
+// ── /corporation financials ─────────────────────────────────────────────────
+console.log("financials:");
+write("financials.png", renderWaterfall({
+  title: "Expeditors — income statement",
+  subtitle: "Per turn · Logistics",
+  footerLeft: "Values USD",
+  steps: [
+    { label: "Revenue", delta: 946_400 },
+    { label: "Maintenance", delta: -318_200 },
+    { label: "Growth", delta: -142_700 },
+    { label: "Marketing", delta: -96_400 },
+    { label: "Logistics", delta: -118_900 },
+    { label: "CEO salary", delta: -36_600 },
+    { label: "Operating income", delta: 0, total: true },
+    { label: "Bond interest", delta: -41_200 },
+    { label: "Net income", delta: 0, total: true },
+  ],
+  format: (v) => compactMoney(v, "$"),
+}));
+
+write("financials-loss.png", renderWaterfall({
+  title: "Atlas Automotive — income statement",
+  subtitle: "Per turn · Automobiles",
+  footerLeft: "Values USD",
+  steps: [
+    { label: "Revenue", delta: 210_000 },
+    { label: "Maintenance", delta: -184_000 },
+    { label: "Growth", delta: -62_000 },
+    { label: "Marketing", delta: -24_000 },
+    { label: "Operating income", delta: 0, total: true },
+    { label: "Bond interest", delta: -31_000 },
+    { label: "Net income", delta: 0, total: true },
+  ],
+  format: (v) => compactMoney(v, "$"),
+}));
+
+// ── /profile with standing badges ───────────────────────────────────────────
+console.log("profile badges:");
+write("profile-badges.png", renderEntityCardSync({
+  name: "Eleanor Vance",
+  position: "Senator · Vermont · United States",
+  chip: "Democratic Party",
+  accent: "#2a5fd6",
+  badges: [
+    { label: "MOD", color: "#3b82f6" },
+    { label: "SUPPORTER++", color: "#d4af37" },
+  ],
+  banner: "Contesting: Senate (Vermont)",
+  economic: 34,
+  social: 51,
+  headline: [
+    { label: "Political influence", value: compactNumber(12_480) },
+    { label: "National influence", value: compactNumber(3_180) },
+    { label: "Funds", value: compactMoney(1_204_000, "$") },
+  ],
+  meters: [
+    { label: "Approval", value: 62, display: "62%", color: approvalColor(62) },
+    { label: "Infamy", value: 18, display: "18 / 100", color: infamyColor(18) },
+  ],
+  rows: [
+    { label: "Actions", value: "6" },
+    { label: "Donor base", value: "Level 4" },
+    { label: "Joined", value: "Mar 2026" },
+  ],
+  footerLeft: "Turn 612 · Values USD",
 }));
 
 console.log(`\nWrote previews to ${out}/`);
