@@ -10,6 +10,7 @@ import { respondCountryAutocomplete, validateCountry } from "../utils/countryCho
 import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, symbolFor, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
 import { renderEntityCard, partyAxisToCompass, compactMoney, compactNumber } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
+import { linkList, subtext, meta } from "../utils/embeds.js";
 import { COUNTRY_NAMES } from "../utils/formatting.js";
 
 export function ideologyLabel(economic: number, social: number): string {
@@ -144,20 +145,24 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       .setColor(hexToInt(party.color))
       .setFooter({ text: footerParts.join(" · ") });
 
-    // The card carries the figures; the description keeps what an image cannot
-    // do — links back to each member's page on the main site.
+    // The card lists these members with their offices and carries every figure,
+    // so the description keeps only what an image cannot do: the links.
     const memberLinks =
-      party.topMembers
-        .slice(0, 5)
-        .map((m, i) => `${i + 1}. [${m.name}](${m.profileUrl}) — ${m.position}`)
-        .join("\n") || "_No members yet._";
+      party.topMembers.length > 0
+        ? linkList(party.topMembers.slice(0, 5).map((m) => ({ label: m.name, url: m.profileUrl })))
+        : "_No members yet._";
 
     embed.setDescription(
       [
-        `**Top members**`,
+        "**Top members**",
         memberLinks,
-        `-# ${party.memberCount.toLocaleString()} members · Treasury ${formatCurrency(treasuryConverted, displayCurrency)}` +
-          ` · ${ideologyLabel(party.economicPosition, party.socialPosition)}`,
+        subtext(
+          meta(
+            `${party.memberCount.toLocaleString()} members`,
+            `Treasury ${formatCurrency(treasuryConverted, displayCurrency)}`,
+            ideologyLabel(party.economicPosition, party.socialPosition),
+          ),
+        ),
       ].join("\n"),
     );
 

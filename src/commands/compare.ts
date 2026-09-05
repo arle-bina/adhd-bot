@@ -9,6 +9,7 @@ import { hexToInt, replyWithError } from "../utils/helpers.js";
 import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, symbolFor, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
 import { renderVersus, compactMoney, compactNumber, type VersusMetric } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
+import { subtext, meta } from "../utils/embeds.js";
 
 export const cooldown = 5;
 
@@ -162,31 +163,35 @@ function buildCompareEmbed(a: CharacterResult, b: CharacterResult, displayCurren
     .setColor(color)
     .setFooter({ text: makeForexFooter(displayCurrency, rates) });
 
-  embed.addFields(
-    { name: "Politician", value: nameA, inline: true },
-    { name: "\u200b", value: "vs", inline: true },
-    { name: "\u200b", value: nameB, inline: true },
-    { name: "Party", value: a.partyUrl ? `[${a.party}](${a.partyUrl})` : (a.party || "Unknown"), inline: true },
-    { name: "\u200b", value: "\u200b", inline: true },
-    { name: "\u200b", value: b.partyUrl ? `[${b.party}](${b.partyUrl})` : (b.party || "Unknown"), inline: true },
-    { name: "Position", value: a.position || "None", inline: true },
-    { name: "\u200b", value: "\u200b", inline: true },
-    { name: "\u200b", value: b.position || "None", inline: true },
-    { name: "State", value: a.stateUrl ? `[${a.state}](${a.stateUrl})` : (a.state || "Unknown"), inline: true },
-    { name: "\u200b", value: "\u200b", inline: true },
-    { name: "\u200b", value: b.stateUrl ? `[${b.state}](${b.stateUrl})` : (b.state || "Unknown"), inline: true },
-  );
+  /*
+   * The card draws both sides' office and party under their names, and every
+   * stat as a bar. These twelve paired inline fields were the same facts a
+   * second time, reflowed by Discord into an unreadable grid on mobile. Only
+   * the links survive.
+   */
+  const sideLinks = (c: CharacterResult, name: string) =>
+    meta(
+      name,
+      c.partyUrl ? `[${c.party}](${c.partyUrl})` : c.party || null,
+      c.stateUrl ? `[${c.state}](${c.stateUrl})` : c.state || null,
+    );
 
-  // Stats live on the chart. This line is the text equivalent, kept short so
-  // the hyperlinks above stay on the first screen on mobile.
-  embed.addFields({
-    name: "Stats",
-    value:
-      `PI ${Math.round(a.politicalInfluence ?? 0).toLocaleString()} vs ${Math.round(b.politicalInfluence ?? 0).toLocaleString()} · ` +
-      `Approval ${Math.round(a.favorability ?? 0)}% vs ${Math.round(b.favorability ?? 0)}% · ` +
-      `Funds ${formatCurrency(cvtA(a.funds ?? 0), displayCurrency)} vs ${formatCurrency(cvtB(b.funds ?? 0), displayCurrency)}`,
-    inline: false,
-  });
+
+  embed.setDescription(
+    [
+      sideLinks(a, nameA),
+      "**vs**",
+      sideLinks(b, nameB),
+      // One-line text equivalent of the chart, for images-off and screen readers.
+      subtext(
+        meta(
+          `PI ${Math.round(a.politicalInfluence ?? 0).toLocaleString()} vs ${Math.round(b.politicalInfluence ?? 0).toLocaleString()}`,
+          `Approval ${Math.round(a.favorability ?? 0)}% vs ${Math.round(b.favorability ?? 0)}%`,
+          `Funds ${formatCurrency(cvtA(a.funds ?? 0), displayCurrency)} vs ${formatCurrency(cvtB(b.funds ?? 0), displayCurrency)}`,
+        ),
+      ),
+    ].join("\n"),
+  );
 
   const policyLines = [
     statRow("Economic", policyLabel(a.policies?.economic ?? 0), policyLabel(b.policies?.economic ?? 0)),

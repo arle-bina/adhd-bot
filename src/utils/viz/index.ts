@@ -53,13 +53,8 @@ export { warmBrandAssets, brandMark, drawBrandMark } from "./brand.js";
 export { loadAvatar, initialsFor, drawAvatar } from "./avatar.js";
 export {
   renderTimeSeries,
-  renderCandles,
-  renderPriceWithVolume,
   type TimeSeries,
   type TimeSeriesOptions,
-  type Candle,
-  type CandleOptions,
-  type PricePanelOptions,
 } from "./timeseries.js";
 export {
   renderEntityCard,

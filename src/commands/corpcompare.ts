@@ -22,6 +22,7 @@ import {
 } from "../utils/currency.js";
 import { renderVersus, renderBarChart, seriesColor, compactMoney, compactNumber, type VersusMetric, type BarRow } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
+import { linkList, subtext, meta } from "../utils/embeds.js";
 import { symbolFor } from "../utils/currency.js";
 
 // ---------------------------------------------------------------------------
@@ -307,80 +308,30 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       .setColor(0x3b82f6)
       .setFooter({ text: `Values in ${targetCurrency} · ahousedividedgame.com` });
 
-    // Add primary metric comparison
-    const primaryMetricData = METRICS.find(m => m.id === primaryMetric);
-    if (primaryMetricData) {
-      const values = validCorps.map(corp => {
-        const raw = getMetricValue(corp.corporation, corp.financials, primaryMetric);
-        return primaryMetricData.monetary ? convertFromCorp(raw, corp) : raw;
-      });
-      const maxValue = Math.max(...values);
-
-      const metricLines = validCorps.map((corp, index) => {
-        const value = values[index];
-        const isMax = value === maxValue && maxValue > 0;
-        const prefix = isMax ? "🏆 " : "";
-        return `${prefix}**${corp.corporation!.name}**: ${primaryMetricData.formatter(value, targetCurrency)}`;
-      });
-
-      embed.addFields({
-        name: `📊 ${primaryMetricData.name}`,
-        value: metricLines.join("\n"),
-        inline: false,
-      });
-    }
-
-    // Add corporation type comparison
-    const typeLines = validCorps.map(corp => {
-      const c = corp.corporation!;
-      return `**${c.name}**: ${c.typeLabel || c.type}`;
-    });
-
-    embed.addFields({
-      name: "🏭 Corporation Types",
-      value: typeLines.join("\n"),
-      inline: false,
-    });
-
-    // Add quick stats table
-    const statLines: string[] = [];
-    
-    METRICS.forEach(metric => {
-      if (metric.id !== primaryMetric) {
-        const values = validCorps.map(corp => {
-          const raw = getMetricValue(corp.corporation, corp.financials, metric.id);
-          return metric.monetary ? convertFromCorp(raw, corp) : raw;
-        });
-        const lineParts = validCorps.map((corp, index) => {
-          return `${corp.corporation!.name.slice(0, 10)}: ${metric.formatter(values[index], targetCurrency)}`;
-        });
-
-        statLines.push(`**${metric.name}**: ${lineParts.join(" | ")}`);
-      }
-    });
-
-    if (statLines.length > 0) {
-      embed.addFields({
-        name: "📈 Quick Stats",
-        value: statLines.join("\n"),
-        inline: false,
-      });
-    }
-
-    // Add corporation details
-    const details = validCorps.map(corp => {
-      const c = corp.corporation!;
-      const cvt = (n: number) => convertFromCorp(n, corp);
-      return `🏢 **${c.name}**\n` +
-             `📍 ${c.headquartersStateName} | 💰 ${formatCurrency(cvt(c.liquidCapital ?? 0), targetCurrency)}\n` +
-             `📈 ${formatSharePrice(cvt(c.sharePrice ?? 0), targetCurrency)} | 🏭 ${c.typeLabel || c.type}`;
-    });
-
-    embed.addFields({
-      name: "🏢 Corporation Details",
-      value: details.join("\n\n"),
-      inline: false,
-    });
+    /*
+     * The chart carries every metric for every corporation — head-to-head at
+     * two, ranked bars at three. The primary-metric list, the type list, the
+     * quick-stats table and the details block were four more copies of the same
+     * numbers. What is left is the links and one caption line.
+     */
+    embed.setDescription(
+      [
+        linkList(
+          validCorps.map((corp) => ({
+            label: corp.corporation!.name,
+            url: corp.corporation!.corpUrl,
+            note: corp.corporation!.typeLabel || corp.corporation!.type,
+          })),
+        ),
+        subtext(
+          meta(
+            `Compared on ${METRICS.find((m) => m.id === primaryMetric)?.name ?? primaryMetric}`,
+            `Values ${targetCurrency}`,
+            failedCorps.length > 0 ? `could not load: ${failedCorps.join(", ")}` : null,
+          ),
+        ),
+      ].join("\n"),
+    );
 
     if (chart) embed.setImage(chart.url);
     await interaction.editReply({ embeds: [embed], files: chart ? [chart.file] : [] });

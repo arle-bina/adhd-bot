@@ -13,6 +13,7 @@ import { getMarketShare, SectorType, MarketShareResponse } from "../utils/api.js
 import { hexToInt, replyWithError } from "../utils/helpers.js";
 import { renderBarChart, brandColor, OTHERS, UNOWNED, compactMoney, type BarRow } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
+import { linkList, subtext, meta } from "../utils/embeds.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 import {
   currencyFor,
@@ -183,20 +184,36 @@ function buildReply(result: MarketShareResponse, showUnowned: boolean, targetCur
   if (result.companies.length === 0) {
     embed.setDescription("No corporations in this market yet.");
   } else {
-    const lines = result.companies.map((c, i) => {
-      const rank = (result.page - 1) * result.pageSize + i + 1;
-      const tag = c.isNatcorp ? " · NatCorp" : "";
-      const corpHref = c.corporationSequentialId != null
-        ? new URL(`/corporation/${c.corporationSequentialId}`, gameSiteOrigin()).href
-        : null;
-      const nameStr = corpHref ? `[${c.corporationName}](${corpHref})` : c.corporationName;
-      // Per-company revenue is in the corp's local currency (JPY, GBP, etc).
-      // liquidCurrencyCode is authoritative; fall back to country-based mapping.
-      const sourceCurrency = c.liquidCurrencyCode || currencyFor(c.countryId);
-      const rev = convertCurrency(c.revenue, sourceCurrency, targetCurrency, rates);
-      return `${rank}. **${nameStr}** — ${c.marketSharePercent.toFixed(2)}% · ${formatCurrency(rev, targetCurrency)}${tag}`;
-    });
-    embed.setDescription(lines.join("\n").slice(0, 4096));
+    /*
+     * The chart already ranks every corporation with its share and revenue, so
+     * this is a link run rather than a second copy of the same table. It exists
+     * for the one thing the image cannot do: click through to a corporation on
+     * the main site.
+     */
+    const leader = result.companies[0];
+    const links = linkList(
+      result.companies.map((c) => ({
+        label: c.corporationName,
+        url:
+          c.corporationSequentialId != null
+            ? new URL(`/corporation/${c.corporationSequentialId}`, gameSiteOrigin()).href
+            : null,
+        note: c.isNatcorp ? "NatCorp" : undefined,
+      })),
+    );
+
+    embed.setDescription(
+      [
+        links,
+        subtext(
+          meta(
+            `Leader ${leader.corporationName} ${leader.marketSharePercent.toFixed(2)}%`,
+            `${result.companies.length} shown`,
+            `Values ${targetCurrency}`,
+          ),
+        ),
+      ].join("\n"),
+    );
   }
 
   const footerParts: string[] = [];
