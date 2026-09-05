@@ -6,9 +6,10 @@ import {
 } from "discord.js";
 import { getParty } from "../utils/api.js";
 import { hexToInt, replyWithError, positionBar } from "../utils/helpers.js";
-import { currencyFor, formatCurrency } from "../utils/currency.js";
+import { currencyFor } from "../utils/currency.js";
 import { renderVersus, compactMoney, compactNumber, type VersusMetric } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
+import { subtext, meta } from "../utils/embeds.js";
 import { symbolFor } from "../utils/currency.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 
@@ -153,23 +154,24 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       .setColor(color)
       .setFooter({ text: "ahousedividedgame.com" });
 
-    // Header row
-    embed.addFields(
-      { name: "Party", value: p1.partyUrl ? `[${p1.name}](${p1.partyUrl})` : p1.name, inline: true },
-      { name: "\u200b", value: "vs", inline: true },
-      { name: "\u200b", value: p2.partyUrl ? `[${p2.name}](${p2.partyUrl})` : p2.name, inline: true },
-      { name: "Abbreviation", value: p1.abbreviation || "—", inline: true },
-      { name: "\u200b", value: "\u200b", inline: true },
-      { name: "\u200b", value: p2.abbreviation || "—", inline: true },
-      { name: "Members", value: (p1.memberCount ?? 0).toLocaleString(), inline: true },
-      { name: "\u200b", value: "\u200b", inline: true },
-      { name: "\u200b", value: (p2.memberCount ?? 0).toLocaleString(), inline: true },
-      { name: "Treasury", value: formatCurrency(p1.treasury ?? 0, currencyFor(country1)), inline: true },
-      { name: "\u200b", value: "\u200b", inline: true },
-      { name: "\u200b", value: formatCurrency(p2.treasury ?? 0, currencyFor(country2)), inline: true },
-      { name: "Chair", value: p1.chairName ?? "Vacant", inline: true },
-      { name: "\u200b", value: "\u200b", inline: true },
-      { name: "\u200b", value: p2.chairName ?? "Vacant", inline: true },
+    /*
+     * The chart draws members, treasury and top-member influence for both sides,
+     * so the fifteen paired inline fields that used to sit here are gone. Discord
+     * reflowed them into an unreadable grid on mobile anyway. What survives is
+     * the two links and the facts the chart has no row for.
+     */
+    embed.setDescription(
+      [
+        `${p1.partyUrl ? `[${p1.name}](${p1.partyUrl})` : p1.name}` +
+          ` **vs** ` +
+          `${p2.partyUrl ? `[${p2.name}](${p2.partyUrl})` : p2.name}`,
+        subtext(
+          meta(
+            `${p1.abbreviation || "—"} chair ${p1.chairName ?? "vacant"}`,
+            `${p2.abbreviation || "—"} chair ${p2.chairName ?? "vacant"}`,
+          ),
+        ),
+      ].join("\n"),
     );
 
     // Ideology section

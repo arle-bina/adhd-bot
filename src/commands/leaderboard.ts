@@ -15,6 +15,7 @@ import { COUNTRY_NAMES } from "../utils/formatting.js";
 import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, symbolFor, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
 import { renderBarChart, brandColor, compactMoney, compactNumber, type BarRow } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
+import { linkList, subtext, meta } from "../utils/embeds.js";
 
 // Explicit conditional avoids TypeScript's TS7053 "any" error from dynamic key indexing (char[metric]).
 export function getMetricValue(
@@ -143,19 +144,20 @@ function buildLeaderboardEmbed(
   const slice = characters.slice(start, start + PAGE_SIZE);
   const metricLabel = metricLabels[metric];
 
-  const lines = slice.map((char) => {
-    const raw = getMetricValue(char, metric);
-    let value: string;
-    if (metric === "funds") {
-      const cc = country ? currencyFor(country) : "USD";
-      const converted = Math.round(convertCurrency(raw, cc, displayCurrency, rates));
-      value = formatCurrency(converted, displayCurrency);
-    } else {
-      value = raw.toLocaleString();
-    }
-    const nameStr = char.profileUrl ? `[${char.name}](${char.profileUrl})` : char.name;
-    return `${char.rank}. **${nameStr}** -- ${char.position} · ${char.party} · ${value}`;
-  });
+  /*
+   * The chart ranks these players with their office, state and metric value, so
+   * this is a link run to each profile rather than a second copy of the table.
+   */
+  const links = linkList(slice.map((char) => ({ label: char.name, url: char.profileUrl })));
+
+  const leader = slice[0];
+  const leaderValue = (() => {
+    if (!leader) return null;
+    const raw = getMetricValue(leader, metric);
+    if (metric !== "funds") return raw.toLocaleString();
+    const cc = country ? currencyFor(country) : "USD";
+    return formatCurrency(Math.round(convertCurrency(raw, cc, displayCurrency, rates)), displayCurrency);
+  })();
 
   const footerParts: string[] = [];
   if (totalPages > 1) footerParts.push(`Page ${page + 1} of ${totalPages}`);
@@ -170,7 +172,14 @@ function buildLeaderboardEmbed(
   return new EmbedBuilder()
     .setTitle(`Top Politicians -- ${metricLabel}`)
     .setColor(0x2b2d31)
-    .setDescription(lines.join("\n"))
+    .setDescription(
+      [
+        links,
+        subtext(meta(leader && `Leading: ${leader.name} ${leaderValue}`, `${slice.length} shown`)),
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    )
     .setFooter({ text: footerParts.join(" · ") });
 }
 

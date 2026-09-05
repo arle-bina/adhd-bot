@@ -19,6 +19,7 @@ import {
 } from "../utils/currency.js";
 import { renderBarChart, seriesColor, signedPercent, compactMoney, STATUS, OTHERS, type BarRow } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
+import { linkList, subtext, meta } from "../utils/embeds.js";
 
 export const cooldown = 10;
 
@@ -89,41 +90,53 @@ export const data = new SlashCommandBuilder()
       .addChoices(...CURRENCY_CHOICES)
   );
 
-function buildOwnedEmbed(result: OwnedSectorsResponse, targetCurrency: string, rates: Record<string, number>): EmbedBuilder {
-  const lines = result.sectors.map((sector, index) => {
-    const rank = (result.page - 1) * 10 + index + 1;
-    const sectorHref = normalizeGamePageUrl(sector.sectorUrl);
-    // Sector revenue is in the corp's local currency (liquidCurrencyCode).
-    // Convert from that currency to the user's chosen display currency.
-    const sourceCurrency = sector.liquidCurrencyCode ?? currencyFor(sector.countryId);
-    const rev = convertCurrency(sector.revenue, sourceCurrency, targetCurrency, rates);
-    const growth = sector.currentGrowthRate ?? sector.growthRate ?? 0;
-    return `${rank}. [**${sector.corporationName}** — ${sector.stateName}](${sectorHref}) · ${formatCurrency(rev, targetCurrency)} rev · ${growth.toFixed(1)}% growth · ${sector.workers.toLocaleString()} workers`;
-  });
+function buildOwnedEmbed(result: OwnedSectorsResponse, targetCurrency: string): EmbedBuilder {
+  /*
+   * The chart carries revenue and growth per sector. Worker counts are not on it
+   * — there is no room for a third column — so they ride in the caption as a
+   * total rather than being repeated per row.
+   */
+  const links = linkList(
+    result.sectors.map((sector) => ({
+      label: `${sector.corporationName} — ${sector.stateName}`,
+      url: normalizeGamePageUrl(sector.sectorUrl),
+    })),
+  );
+  const workers = result.sectors.reduce((sum, s) => sum + (s.workers ?? 0), 0);
 
   return new EmbedBuilder()
     .setTitle(`🏭 ${result.sectorLabel} Sectors`)
     .setColor(0x3b82f6)
-    .setDescription(lines.join("\n").slice(0, 4096))
+    .setDescription(
+      [links, subtext(meta(`${workers.toLocaleString()} workers on this page`, `Values ${targetCurrency}`))].join("\n"),
+    )
     .setFooter({
       text: `Page ${result.page}/${result.totalPages} · ${result.totalItems} total sectors · Values in ${targetCurrency} · ahousedividedgame.com`,
     });
 }
 
 function buildUnownedEmbed(result: UnownedSectorsResponse, targetCurrency: string, rates: Record<string, number>): EmbedBuilder {
-  const lines = result.sectors.map((sector, index) => {
-    const rank = (result.page - 1) * 10 + index + 1;
-    const stateHref = new URL(`/state/${encodeURIComponent(sector.stateId)}`, gameSiteOrigin()).href;
-    // All market amounts are in anchor currency (₳ = USD).
-    const unowned = convertCurrency(sector.unownedRevenue, "USD", targetCurrency, rates);
-    const total = convertCurrency(sector.totalMarket, "USD", targetCurrency, rates);
-    return `${rank}. [**${sector.stateName}**](${stateHref}) — ${formatCurrency(unowned, targetCurrency)} unowned (of ${formatCurrency(total, targetCurrency)} total)`;
-  });
+  const links = linkList(
+    result.sectors.map((sector) => ({
+      label: sector.stateName,
+      url: new URL(`/state/${encodeURIComponent(sector.stateId)}`, gameSiteOrigin()).href,
+    })),
+  );
+  // Market amounts arrive in anchor currency (₳ = USD).
+  const totalUnowned = result.sectors.reduce(
+    (sum, s) => sum + convertCurrency(s.unownedRevenue, "USD", targetCurrency, rates),
+    0,
+  );
 
   return new EmbedBuilder()
     .setTitle(`🏭 ${result.sectorLabel} — Unowned Market`)
     .setColor(0x57f287)
-    .setDescription(lines.join("\n").slice(0, 4096))
+    .setDescription(
+      [
+        links,
+        subtext(meta(`${formatCurrency(totalUnowned, targetCurrency)} unowned on this page`, `Values ${targetCurrency}`)),
+      ].join("\n"),
+    )
     .setFooter({
       text: `Page ${result.page}/${result.totalPages} · ${result.totalItems} states with unowned market · Values in ${targetCurrency} · ahousedividedgame.com`,
     });
@@ -248,7 +261,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       const unownedMode = result.mode === "unowned";
       const embed = unownedMode
         ? buildUnownedEmbed(result as UnownedSectorsResponse, targetCurrency, rates)
-        : buildOwnedEmbed(result as OwnedSectorsResponse, targetCurrency, rates);
+        : buildOwnedEmbed(result as OwnedSectorsResponse, targetCurrency);
       const buffer = unownedMode
         ? buildUnownedChart(result as UnownedSectorsResponse, targetCurrency, rates)
         : buildOwnedChart(result as OwnedSectorsResponse, targetCurrency, rates);

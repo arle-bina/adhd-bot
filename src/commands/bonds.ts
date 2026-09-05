@@ -9,6 +9,7 @@ import { hexToInt, replyWithError } from "../utils/helpers.js";
 import { formatCurrency, formatSharePrice, convertCurrency, fetchForexRates, symbolFor, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
 import { renderBarChart, brandColor, compactMoney, STATUS, type BarRow } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
+import { linkList, subtext, meta } from "../utils/embeds.js";
 
 // ---------------------------------------------------------------------------
 // Corporation list cache (5-minute TTL)
@@ -107,25 +108,29 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     const fmt = (n: number) => formatCurrency(Math.round(n), targetCurrency);
     const fmtS = (n: number) => formatSharePrice(n, targetCurrency);
 
-    const description = bonds
-      .map((b) => {
-        const name = b.corporationName ?? "Unknown";
-        const maturity = b.maturityLabel ?? "?";
-        const coupon = (b.couponRate ?? 0).toFixed(1);
-        const price = fmtS(cvtFromBond(b.marketPrice, b.currencyCode));
-        const ytm = `${(b.yieldToMaturity ?? 0).toFixed(1)}%`;
-        const issued = fmt(cvtFromBond(b.totalIssued, b.currencyCode));
-        const turns = b.turnsRemaining ?? 0;
-        const holders = b.holders ?? 0;
-        const defaultPrefix = b.defaulted ? "⚠️ DEFAULTED — " : "";
-
-        const titleLine = `**[${name} ${maturity} @ ${coupon}%](${b.bondUrl})**`;
-        const detailLine = `${defaultPrefix}Price: ${price} · YTM: ${ytm} · ${issued} issued · ${turns} turns left · ${holders} holders`;
-
-        return `${titleLine}\n${detailLine}`;
-      })
-      .join("\n\n")
-      .slice(0, 4096);
+    /*
+     * The chart ranks these by yield with maturity, coupon and amount issued, so
+     * the embed carries the links plus the two facts it has no column for:
+     * market price and turns remaining.
+     */
+    const links = linkList(
+      bonds.map((b) => ({
+        label: `${b.corporationName ?? "Unknown"} ${b.maturityLabel ?? "?"}`,
+        url: b.bondUrl,
+        note: b.defaulted ? "defaulted" : `${b.turnsRemaining ?? 0} turns left`,
+      })),
+    );
+    const priciest = [...bonds].sort((a, b) => (b.yieldToMaturity ?? 0) - (a.yieldToMaturity ?? 0))[0];
+    const description = [
+      links,
+      subtext(
+        meta(
+          priciest && `Top yield ${(priciest.yieldToMaturity ?? 0).toFixed(1)}% (${priciest.corporationName ?? "Unknown"})`,
+          priciest && `at ${fmtS(cvtFromBond(priciest.marketPrice, priciest.currencyCode))}`,
+          `Values ${targetCurrency}`,
+        ),
+      ),
+    ].join("\n");
 
     /*
      * Bonds ranked by yield to maturity — the number a buyer is actually

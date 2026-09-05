@@ -338,38 +338,6 @@ export async function getStockExchange(exchange = "global"): Promise<StockExchan
 // Market Data
 // ---------------------------------------------------------------------------
 
-export interface MarketHistoryPoint {
-  turn: number;
-  date: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}
-
-export interface MarketDataResponse {
-  found: boolean;
-  exchange: string;
-  exchangeName: string;
-  currentTurn: number;
-  currentPrice: number;
-  priceChange24h: number;
-  priceChangePct: number;
-  history: MarketHistoryPoint[];
-}
-
-export async function getMarketData(params: {
-  exchange: string;
-  days?: number;
-  chartType?: string;
-}): Promise<MarketDataResponse> {
-  const p: Record<string, string> = { exchange: params.exchange };
-  if (params.days != null) p.days = String(params.days);
-  if (params.chartType) p.chartType = params.chartType;
-  return apiFetch<MarketDataResponse>("/api/discord-bot/market", p);
-}
-
 // ---------------------------------------------------------------------------
 // Market Share
 // ---------------------------------------------------------------------------

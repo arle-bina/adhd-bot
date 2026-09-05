@@ -78,11 +78,6 @@ export async function autocomplete(interaction: AutocompleteInteraction): Promis
 import { renderBarChart, brandColor, compactNumber, type BarRow } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
 
-function voteBar(pct: number, width = 12): string {
-  const filled = Math.max(0, Math.min(width, Math.round((pct / 100) * width)));
-  return "▓".repeat(filled) + "░".repeat(width - filled);
-}
-
 function ts(iso: string): number {
   return Math.floor(new Date(iso).getTime() / 1000);
 }
@@ -294,8 +289,6 @@ function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
     }
   } else {
     // General / ended / upcoming with candidates
-    const snapshot = votes.latestSnapshot ?? null;
-    const showVotes = (phase.inGeneral || phase.isEnded) && snapshot != null;
     const sorted = [...candidates].sort((a, b) => b.sharePct - a.sharePct);
 
     for (const c of sorted) {
@@ -305,19 +298,9 @@ function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
         : `**${c.characterName}**${npp}`;
       const header = `${nameStr} · ${c.party}`;
 
-      let voteLine = "";
-      if (showVotes && snapshot) {
-        const pct = snapshot.sharesPct[c.id] ?? c.sharePct ?? 0;
-        const count = snapshot.cumulativeVotes[c.id] ?? 0;
-        voteLine = `\`${voteBar(pct)}\` **${pct.toFixed(1)}%** · ${count.toLocaleString()} votes`;
-      }
-
-      const evLine =
-        votes.electoralVotes && votes.electoralVotes[c.id] != null
-          ? ` · EV: ${votes.electoralVotes[c.id]}`
-          : "";
-
-      const stats = `PI: ${Math.round(c.politicalInfluence ?? 0)} · Fav: ${Math.round(c.favorability ?? 0)}% · Funds: ${formatCurrency(c.campaignFunds ?? 0, currencyFor(election.countryId))}${evLine}`;
+      // Vote share and count are on the chart; these are the campaign figures
+      // it has no room for.
+      const stats = `PI: ${Math.round(c.politicalInfluence ?? 0)} · Fav: ${Math.round(c.favorability ?? 0)}% · Funds: ${formatCurrency(c.campaignFunds ?? 0, currencyFor(election.countryId))}`;
 
       const ideology = `Econ: \`${positionBar(c.economicPosition ?? 0, 8)}\` · Social: \`${positionBar(c.socialPosition ?? 0, 8)}\``;
 
@@ -330,7 +313,7 @@ function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
         endorseLine = `${c.endorsementCount} endorsement(s)`;
       }
 
-      const block = [header, voteLine, stats, ideology, endorseLine, c.runningMateName ? `Running mate: ${c.runningMateName}` : ""]
+      const block = [header, stats, ideology, endorseLine, c.runningMateName ? `Running mate: ${c.runningMateName}` : ""]
         .filter(Boolean)
         .join("\n");
 

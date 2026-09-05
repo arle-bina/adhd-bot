@@ -241,57 +241,44 @@ function buildOverviewEmbed(res: CorporationResponse, displayCurrency: string, r
     .setColor(hexToInt(corp.brandColor) || 0x3b82f6)
     .setFooter({ text: forexFooter(displayCurrency, nativeCc, rates) });
 
-  const logoThumb = safeEmbedUrl(corp.logoUrl);
-  if (logoThumb) embed.setThumbnail(logoThumb);
-  if (corp.description) embed.setDescription(corp.description.slice(0, 4096));
-
+  /*
+   * The card above carries the logo, the description, the type and HQ, and every
+   * headline figure — market cap, share price, liquid capital, the P&L, the
+   * dividend, public float. Repeating them here pushed the parts an image cannot
+   * do (the CEO's profile link, the shareholder roster, the sector breakdown)
+   * below the fold on mobile, so they are gone.
+   *
+   * A thumbnail would be the third copy of the same logo.
+   */
   const ceoValue = ceo
     ? (ceo.profileUrl ? `[${ceo.name}](${ceo.profileUrl})` : ceo.name)
     : "Vacant";
 
-  embed.addFields(
-    { name: "Type", value: corp.typeLabel, inline: true },
-    { name: "HQ", value: corp.headquartersStateName, inline: true },
-    { name: "CEO", value: ceoValue, inline: true },
-    { name: "Liquid Capital", value: formatCurrency(cvt(corp.liquidCapital), cc), inline: true },
-    { name: "Share Price", value: formatSharePrice(cvt(corp.sharePrice), cc), inline: true },
-    { name: "Market Cap", value: formatCurrency(cvt(corp.marketCapitalization), cc), inline: true },
-    { name: "Daily Revenue", value: formatCurrency(cvt(financials.totalRevenue), cc), inline: true },
-    { name: "Daily Costs", value: formatCurrency(cvt(financials.totalCosts), cc), inline: true },
-    { name: "Daily Income", value: formatCurrencySigned(cvt(financials.income), cc), inline: true },
+  // One-line text equivalent of the card, for screen readers and clients that
+  // do not load images.
+  embed.setDescription(
+    [
+      `**${corp.typeLabel}** · ${corp.headquartersStateName} · CEO ${ceoValue}`,
+      `-# Market cap ${formatCurrency(cvt(corp.marketCapitalization), cc)}` +
+        ` · Share ${formatSharePrice(cvt(corp.sharePrice), cc)}` +
+        ` · Income ${formatCurrencySigned(cvt(financials.income), cc)}/day`,
+    ].join("\n"),
   );
 
-  if ((corp.dividendRate ?? 0) !== 0) {
-    embed.addFields({
-      name: "Dividends",
-      value: `${corp.dividendRate}% · ${formatCurrency(cvt(financials.dailyDividendPayout), cc)}/day`,
-      inline: true,
-    });
-  }
-
-  if (creditRating) {
-    embed.addFields({
-      name: "Credit Rating",
-      value: `${creditRating.rating} (${creditRating.compositeScore ?? 0}/100)`,
-      inline: true,
-    });
-  }
-
+  const standing: string[] = [];
+  if (creditRating) standing.push(`Credit **${creditRating.rating}** (${creditRating.compositeScore ?? 0}/100)`);
   if (bonds.length > 0) {
     const totalDebt = bonds.reduce((sum, b) => sum + (b.totalIssued ?? 0), 0);
-    embed.addFields({
-      name: "Debt",
-      value: `${formatCurrency(cvt(totalDebt), cc)} (${bonds.length} bond${bonds.length === 1 ? "" : "s"})`,
-      inline: true,
-    });
+    standing.push(`Debt ${formatCurrency(cvt(totalDebt), cc)} across ${bonds.length} bond${bonds.length === 1 ? "" : "s"}`);
   }
+  standing.push(`Marketing ${formatCurrency(cvt(corp.marketingBudget), cc)} · strength ${corp.marketingStrength ?? 0}`);
+  embed.addFields({ name: "Standing", value: standing.join("\n").slice(0, 1024), inline: false });
 
   if (shareholders.length > 0) {
     const maxShow = 3;
     const lines = shareholders.slice(0, maxShow).map(
       (s) => `${s.name} — ${(s.shares ?? 0).toLocaleString("en-US")} (${(s.percentage ?? 0).toFixed(1)}%)`
     );
-    lines.push(`Public Float — ${(corp.publicFloat ?? 0).toLocaleString("en-US")} (${(corp.publicFloatPct ?? 0).toFixed(1)}%)`);
     if (shareholders.length > maxShow) {
       lines.push(`…and ${shareholders.length - maxShow} more`);
     }
@@ -301,12 +288,6 @@ function buildOverviewEmbed(res: CorporationResponse, displayCurrency: string, r
       inline: false,
     });
   }
-
-  embed.addFields({
-    name: "Marketing",
-    value: `Budget: ${formatCurrency(cvt(corp.marketingBudget), cc)} · Strength: ${corp.marketingStrength ?? 0}`,
-    inline: false,
-  });
 
   if (sectors.length > 0) {
     const maxShow = 5;

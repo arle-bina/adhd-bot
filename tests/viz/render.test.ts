@@ -3,7 +3,7 @@ import { renderBarChart } from "../../src/utils/viz/bars.js";
 import { renderChamber } from "../../src/utils/viz/chamber.js";
 import { renderComposition } from "../../src/utils/viz/composition.js";
 import { renderEntityCardSync } from "../../src/utils/viz/profile.js";
-import { renderTimeSeries, renderCandles, renderPriceWithVolume } from "../../src/utils/viz/timeseries.js";
+import { renderTimeSeries } from "../../src/utils/viz/timeseries.js";
 import { renderTimeline, renderAchievements } from "../../src/utils/viz/timeline.js";
 import { renderVersus } from "../../src/utils/viz/versus.js";
 import { warmBrandAssets } from "../../src/utils/viz/brand.js";
@@ -224,25 +224,6 @@ describe("time series", () => {
     expectValidCard(renderTimeSeries({ title: "T", labels: [], series: [] }));
   });
 
-  it("renders candles", () => {
-    const candles = labels.map((label, i) => {
-      const open = 40 + i * 0.2;
-      const close = open + Math.sin(i) * 2;
-      return { label, open, close, high: Math.max(open, close) + 1, low: Math.min(open, close) - 1 };
-    });
-    expectValidCard(renderCandles({ title: "T", candles }));
-    expectValidCard(renderCandles({ title: "T", candles: [] }));
-  });
-
-  it("renders price with a volume panel", () => {
-    expectValidCard(
-      renderPriceWithVolume({ title: "T", labels, price: values, volume: values.map((v) => v * 100) }),
-    );
-  });
-
-  it("renders price with no volume data at all", () => {
-    expectValidCard(renderPriceWithVolume({ title: "T", labels, price: values }));
-  });
 });
 
 describe("timeline and achievements", () => {
