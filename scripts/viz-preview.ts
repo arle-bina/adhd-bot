@@ -495,4 +495,30 @@ write("corporation.png", renderEntityCardSync({
   footerLeft: "Revenue $946.4K/day · Values USD",
 }));
 
+
+
+// ── /bonds ──────────────────────────────────────────────────────────────────
+console.log("bonds:");
+write("bonds.png", renderBarChart({
+  title: "Bond market — by yield to maturity",
+  subtitle: "42 active bonds · page 1 of 5",
+  footerLeft: "Yield to maturity · amount issued · Values USD",
+  labelFraction: 0.4,
+  rows: [
+    ["Atlas Automotive", 14.2, 8_400_000, "2031 · 6.0% cpn", true],
+    ["Rgold", 11.8, 12_100_000, "2029 · 7.5% cpn", false],
+    ["Butxot-Freiburg", 9.4, 24_600_000, "2033 · 5.5% cpn", false],
+    ["Lockheed Commerce", 7.1, 61_000_000, "2028 · 4.0% cpn", false],
+    ["Vermont Logistics", 5.6, 88_400_000, "2027 · 4.5% cpn", false],
+    ["Expeditors", 4.2, 194_000_000, "2030 · 3.5% cpn", false],
+  ].map(([name, ytm, issued, tag, defaulted], i) => ({
+    label: name as string,
+    value: ytm as number,
+    color: (defaulted as boolean) ? "#ef4444" : SERIES[i % SERIES.length],
+    primary: `${(ytm as number).toFixed(1)}%`,
+    secondary: compactMoney(issued as number, "$"),
+    tag: (defaulted as boolean) ? `DEFAULTED · ${tag}` : (tag as string),
+  })),
+}));
+
 console.log(`\nWrote previews to ${out}/`);
