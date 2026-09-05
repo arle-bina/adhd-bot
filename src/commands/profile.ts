@@ -23,7 +23,7 @@ import { syncMemberRoles } from "../utils/roles.js";
 import { hexToInt, replyWithError, safeEmbedUrl } from "../utils/helpers.js";
 import { formatOfficeType, COUNTRY_FLAG, COUNTRY_NAMES } from "../utils/formatting.js";
 import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, symbolFor, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
-import { renderProfileCard, approvalColor, infamyColor, compactMoney, compactNumber } from "../utils/viz/index.js";
+import { renderEntityCard, approvalColor, infamyColor, compactMoney, compactNumber } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
 
 export const cooldown = 5;
@@ -122,10 +122,10 @@ async function buildProfileCard(
       ` (${char.activeElection.electionState ?? "Unknown"})`
     : null;
 
-  return renderProfileCard({
+  return renderEntityCard({
     name: char.name,
     position,
-    party: char.party || null,
+    chip: char.party || null,
     accent: char.partyColor,
     avatarUrl: safeEmbedUrl(char.avatarUrl) ?? safeEmbedUrl(char.discordAvatarUrl),
     banner: activeElection,

@@ -38,11 +38,11 @@ export {
   type PricePanelOptions,
 } from "./timeseries.js";
 export {
-  renderProfileCard,
-  renderProfileCardSync,
+  renderEntityCard,
+  renderEntityCardSync,
   approvalColor,
   infamyColor,
-  type ProfileCardOptions,
+  type EntityCardOptions,
   type ProfileStat,
   type ProfileMeter,
 } from "./profile.js";

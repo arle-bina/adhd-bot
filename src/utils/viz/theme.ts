@@ -179,6 +179,21 @@ export function ensureVisible(hex: string, surface: string = SURFACE.plot, min =
   return "#7a7a8c";
 }
 
+/**
+ * Convert a party/state ideology axis onto the compass scale.
+ *
+ * These are two different conventions and mixing them silently mirrors the
+ * chart. The game stores party and state positions on **-5..+5 where negative
+ * is left** (`src/lib/politicalMetrics/derive/countryLean.ts`), while a
+ * character's `policies.economic` / `policies.social` are **-100..100 where
+ * positive is left** (see the /profile command's own scale). The compass draws
+ * the character convention, so party values need both a rescale and a sign
+ * flip. This applies to the social axis too — negative there is progressive.
+ */
+export function partyAxisToCompass(value: number): number {
+  return -(Math.max(-5, Math.min(5, value)) / 5) * 100;
+}
+
 /** Semantic colour for a signed change. Always paired with a +/- sign in text. */
 export function deltaColor(value: number): string {
   if (value > 0) return STATUS.good;

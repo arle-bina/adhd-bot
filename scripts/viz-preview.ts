@@ -16,7 +16,8 @@ import { warmBrandAssets } from "../src/utils/viz/brand.js";
 import { renderTimeSeries, renderCandles } from "../src/utils/viz/timeseries.js";
 import { OTHERS, SERIES, UNOWNED, brandColor } from "../src/utils/viz/theme.js";
 import { compactMoney, compactNumber } from "../src/utils/viz/format.js";
-import { renderProfileCardSync, approvalColor, infamyColor } from "../src/utils/viz/profile.js";
+import { renderEntityCardSync, approvalColor, infamyColor } from "../src/utils/viz/profile.js";
+import { partyAxisToCompass } from "../src/utils/viz/theme.js";
 
 await warmBrandAssets();
 
@@ -224,10 +225,10 @@ write("candles.png", renderCandles({
 
 // ── /profile ────────────────────────────────────────────────────────────────
 console.log("profile:");
-write("profile.png", renderProfileCardSync({
+write("profile.png", renderEntityCardSync({
   name: "Eleanor Vance",
   position: "Senator · Vermont · United States",
-  party: "Democratic Party",
+  chip: "Democratic Party",
   accent: "#2a5fd6",
   banner: "Contesting: Senate (Vermont)",
   economic: 34,
@@ -251,10 +252,10 @@ write("profile.png", renderProfileCardSync({
   footerLeft: "Turn 612 · Values USD",
 }));
 
-write("profile-minimal.png", renderProfileCardSync({
+write("profile-minimal.png", renderEntityCardSync({
   name: "Hollis Barrow",
   position: "Backbencher · Yorkshire · United Kingdom",
-  party: "Labour",
+  chip: "Labour",
   accent: "#d0021b",
   economic: null,
   social: null,
@@ -339,6 +340,34 @@ write("race.png", renderBarChart({
     { label: "Noor Haddad", value: 3.2, color: "#12a67c", primary: "3.2%", secondary: "13.2K votes", tag: "Progressive · NPP" },
     { label: "Cassius Bell", value: 1.3, color: "#faa61a", primary: "1.3%", secondary: "5.4K votes", tag: "Liberal Party" },
   ],
+}));
+
+
+
+// ── /party ──────────────────────────────────────────────────────────────────
+console.log("party:");
+write("party.png", renderEntityCardSync({
+  name: "Democratic Party",
+  position: "[DEM] · United States",
+  chip: "Left-Liberal",
+  accent: "#2a5fd6",
+  banner: "Chair: Eleanor Vance",
+  economic: partyAxisToCompass(-2.4),
+  social: partyAxisToCompass(-3.1),
+  headline: [
+    { label: "Members", value: compactNumber(1_284) },
+    { label: "Treasury", value: compactMoney(24_800_000, "$") },
+    { label: "Chair", value: "Eleanor Vance" },
+  ],
+  meters: [],
+  rows: [
+    { label: "Eleanor Vance", value: "Senator" },
+    { label: "Ada Okonkwo", value: "Representative" },
+    { label: "Petra Novak", value: "Mayor" },
+    { label: "Iris Delgado", value: "Senator" },
+    { label: "Yuki Tanaka", value: "Senator" },
+  ],
+  footerLeft: "Values USD",
 }));
 
 console.log(`\nWrote previews to ${out}/`);

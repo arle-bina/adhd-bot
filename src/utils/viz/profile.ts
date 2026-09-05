@@ -39,12 +39,12 @@ export interface ProfileRow {
   value: string;
 }
 
-export interface ProfileCardOptions {
+export interface EntityCardOptions {
   name: string;
   /** e.g. "Senator · Vermont". */
   position?: string;
-  /** Party name, drawn as a chip in the party's own colour. */
-  party?: string | null;
+  /** Short label drawn as a chip in the accent colour — a party, an ideology. */
+  chip?: string | null;
   /** Party colour, or a categorical slot if the party has none. */
   accent?: string | null;
   avatarUrl?: string | null;
@@ -73,15 +73,15 @@ const PAD = 20;
 const AVATAR_R = 42;
 
 /** Load the avatar, then render. Never rejects on a bad avatar URL. */
-export async function renderProfileCard(o: ProfileCardOptions): Promise<Buffer> {
+export async function renderEntityCard(o: EntityCardOptions): Promise<Buffer> {
   const [image] = await Promise.all([
     o.avatarImage ? Promise.resolve(o.avatarImage) : loadAvatar(o.avatarUrl),
     warmBrandAssets(),
   ]);
-  return renderProfileCardSync({ ...o, avatarImage: image });
+  return renderEntityCardSync({ ...o, avatarImage: image });
 }
 
-export function renderProfileCardSync(o: ProfileCardOptions): Buffer {
+export function renderEntityCardSync(o: EntityCardOptions): Buffer {
   ensureFonts();
 
   const W = o.width ?? 640;
@@ -131,9 +131,9 @@ export function renderProfileCardSync(o: ProfileCardOptions): Buffer {
     ctx.fillText(ellipsize(ctx, o.position, tMax), tx, y + 47);
   }
 
-  if (o.party) {
+  if (o.chip) {
     ctx.font = font(600, 11);
-    const label = ellipsize(ctx, o.party, tMax - 20);
+    const label = ellipsize(ctx, o.chip, tMax - 20);
     const cw = ctx.measureText(label).width + 18;
     ctx.fillStyle = alpha(accent, 0.2);
     roundRect(ctx, tx, y + 56, cw, 20, 10);

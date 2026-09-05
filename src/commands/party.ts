@@ -7,7 +7,10 @@ import {
 import { getParty } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
-import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
+import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, symbolFor, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
+import { renderEntityCard, partyAxisToCompass, compactMoney, compactNumber } from "../utils/viz/index.js";
+import { chartAttachment } from "../utils/viz/attach.js";
+import { COUNTRY_NAMES } from "../utils/formatting.js";
 
 export function ideologyLabel(economic: number, social: number): string {
   const econ = economic < -1 ? "Left" : economic > 1 ? "Right" : "Center";
@@ -19,6 +22,22 @@ export function ideologyLabel(economic: number, social: number): string {
 }
 
 export const cooldown = 5;
+
+function gameSiteOrigin(): string {
+  try {
+    return new URL(process.env.GAME_API_URL!).origin;
+  } catch {
+    return "https://www.ahousedividedgame.com";
+  }
+}
+
+/**
+ * The party's logo, served by the game. The endpoint redirects to the AHD mark
+ * when a party has no logo of its own, so this never 404s into a placeholder.
+ */
+function partyLogoUrl(partyId: string): string {
+  return new URL(`/api/logos/parties/${encodeURIComponent(partyId)}`, gameSiteOrigin()).href;
+}
 
 export const data = new SlashCommandBuilder()
   .setName("party")
@@ -85,12 +104,6 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const displayCurrency = explicitCurrency || nativeCc;
     const treasuryConverted = Math.round(convertCurrency(party.treasury, nativeCc, displayCurrency, rates));
 
-    const topMembersValue =
-      party.topMembers
-        .slice(0, 5)
-        .map((m, i) => `${i + 1}. ${m.name} — ${m.position}`)
-        .join("\n") || "None";
-
     // Build footer with forex awareness
     const footerParts: string[] = ["Try /party-compare for side-by-side"];
     if (displayCurrency !== "USD" && rates[displayCurrency] && rates[displayCurrency] !== 1) {
@@ -100,24 +113,57 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
     footerParts.push("ahousedividedgame.com");
 
+    const card = await renderEntityCard({
+      name: party.name,
+      position: [`[${party.abbreviation}]`, COUNTRY_NAMES[country] ?? country.toUpperCase()]
+        .filter(Boolean)
+        .join(" · "),
+      chip: ideologyLabel(party.economicPosition, party.socialPosition),
+      accent: party.color,
+      avatarUrl: partyLogoUrl(party.id),
+      banner: party.chairName ? `Chair: ${party.chairName}` : "Chair: vacant",
+      // Party axes are -5..+5 with negative = left; the compass draws the
+      // character convention, so both are converted rather than passed raw.
+      economic: partyAxisToCompass(party.economicPosition),
+      social: partyAxisToCompass(party.socialPosition),
+      headline: [
+        { label: "Members", value: compactNumber(party.memberCount) },
+        { label: "Treasury", value: compactMoney(treasuryConverted, symbolFor(displayCurrency)) },
+        { label: "Chair", value: party.chairName ?? "Vacant" },
+      ],
+      meters: [],
+      rows: party.topMembers.slice(0, 5).map((m) => ({ label: m.name, value: m.position })),
+      footerLeft: `Values ${displayCurrency}`,
+    }).catch(() => null);
+
+    const attachment = card ? chartAttachment(card, "party", party.id) : null;
+
     const embed = new EmbedBuilder()
       .setTitle(`[${party.abbreviation}] ${party.name}`)
       .setURL(party.partyUrl)
       .setColor(hexToInt(party.color))
-      .addFields(
-        { name: "Chair", value: party.chairName ?? "Vacant", inline: true },
-        { name: "Members", value: party.memberCount.toLocaleString(), inline: true },
-        { name: "Treasury", value: formatCurrency(treasuryConverted, displayCurrency), inline: true },
-        {
-          name: "Ideology",
-          value: ideologyLabel(party.economicPosition, party.socialPosition),
-          inline: true,
-        },
-        { name: "Top Members", value: topMembersValue }
-      )
       .setFooter({ text: footerParts.join(" · ") });
 
-    await interaction.editReply({ embeds: [embed] });
+    // The card carries the figures; the description keeps what an image cannot
+    // do — links back to each member's page on the main site.
+    const memberLinks =
+      party.topMembers
+        .slice(0, 5)
+        .map((m, i) => `${i + 1}. [${m.name}](${m.profileUrl}) — ${m.position}`)
+        .join("\n") || "_No members yet._";
+
+    embed.setDescription(
+      [
+        `**Top members**`,
+        memberLinks,
+        `-# ${party.memberCount.toLocaleString()} members · Treasury ${formatCurrency(treasuryConverted, displayCurrency)}` +
+          ` · ${ideologyLabel(party.economicPosition, party.socialPosition)}`,
+      ].join("\n"),
+    );
+
+    if (attachment) embed.setImage(attachment.url);
+
+    await interaction.editReply({ embeds: [embed], files: attachment ? [attachment.file] : [] });
   } catch (error) {
     await replyWithError(interaction, "party", error);
   }
