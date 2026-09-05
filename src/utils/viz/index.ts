@@ -12,6 +12,17 @@ export { renderCard, roundRect, ellipsize, drawEmptyState, SITE, type CardSpec, 
 export { ensureFonts, font } from "./fonts.js";
 export { renderBarChart, barChartHeight, type BarRow, type BarChartOptions } from "./bars.js";
 export {
+  renderTimeline,
+  renderAchievements,
+  timelineHeight,
+  achievementsHeight,
+  type TimelineEvent,
+  type TimelineOptions,
+  type AchievementTile,
+  type AchievementsOptions,
+  type CareerOutcome,
+} from "./timeline.js";
+export {
   renderVersus,
   versusHeight,
   type VersusMetric,

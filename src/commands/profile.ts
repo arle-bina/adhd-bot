@@ -23,7 +23,16 @@ import { syncMemberRoles } from "../utils/roles.js";
 import { hexToInt, replyWithError, safeEmbedUrl } from "../utils/helpers.js";
 import { formatOfficeType, COUNTRY_FLAG, COUNTRY_NAMES } from "../utils/formatting.js";
 import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, symbolFor, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
-import { renderEntityCard, approvalColor, infamyColor, compactMoney, compactNumber } from "../utils/viz/index.js";
+import {
+  renderEntityCard,
+  renderTimeline,
+  renderAchievements,
+  approvalColor,
+  infamyColor,
+  compactMoney,
+  compactNumber,
+  type CareerOutcome,
+} from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
 
 export const cooldown = 5;
@@ -197,6 +206,55 @@ function buildProfileEmbed(char: CharacterResult, displayCurrency: string, rates
   return embed;
 }
 
+/** "Mar 2026" — day precision is noise on a career spanning years. */
+function shortMonth(iso: string): string {
+  const d = new Date(iso);
+  return isNaN(d.getTime())
+    ? ""
+    : d.toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
+}
+
+/** The career as a timeline: one node per event, coloured by outcome. */
+function buildCareerCard(char: CharacterResult, career: CareerEvent[]): Buffer {
+  const events = career.slice(0, 14).map((event) => ({
+    outcome: event.type as CareerOutcome,
+    office: event.office,
+    detail: event.party || undefined,
+    date: shortMonth(event.date),
+  }));
+
+  return renderTimeline({
+    title: `${char.name} — career`,
+    subtitle:
+      career.length > events.length
+        ? `${career.length} events · showing the most recent ${events.length}`
+        : `${career.length} event${career.length === 1 ? "" : "s"}`,
+    footerLeft: char.party || undefined,
+    events,
+  });
+}
+
+/** Achievements as a tile grid, highlighted ones first. */
+function buildAchievementsCard(char: CharacterResult, achievements: Achievement[]): Buffer {
+  const sorted = [...achievements].sort((a, b) => Number(b.isHighlighted) - Number(a.isHighlighted));
+  const shown = sorted.slice(0, 12);
+
+  return renderAchievements({
+    title: `${char.name} — achievements`,
+    subtitle:
+      achievements.length > shown.length
+        ? `${achievements.length} earned · showing ${shown.length}`
+        : `${achievements.length} earned`,
+    footerLeft: char.party || undefined,
+    achievements: shown.map((a) => ({
+      name: a.name,
+      description: a.description,
+      icon: a.icon,
+      highlighted: a.isHighlighted,
+    })),
+  });
+}
+
 function buildCareerEmbed(char: CharacterResult, career: CareerEvent[]): EmbedBuilder {
   const embed = new EmbedBuilder()
     .setTitle(`${char.name} — Career History`)
@@ -347,9 +405,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           const res = await getCareer({ characterId: char.id });
           careerCache = res.career;
         }
+        const careerEmbed = buildCareerEmbed(char, careerCache);
+        const careerCard = chartAttachment(buildCareerCard(char, careerCache), "career", char.id);
+        if (careerCache.length > 0) careerEmbed.setImage(careerCard.url);
         await btn.editReply({
-          embeds: [buildCareerEmbed(char, careerCache)],
-          files: [],
+          embeds: [careerEmbed],
+          files: careerCache.length > 0 ? [careerCard.file] : [],
           components: [buildTabRow("career")],
         });
       } else if (btn.customId === "tab_achievements") {
@@ -358,9 +419,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
           const res = await getAchievements({ characterId: char.id });
           achievementsCache = res.achievements;
         }
+        const achEmbed = buildAchievementsEmbed(char, achievementsCache);
+        const achCard = chartAttachment(buildAchievementsCard(char, achievementsCache), "achievements", char.id);
+        if (achievementsCache.length > 0) achEmbed.setImage(achCard.url);
         await btn.editReply({
-          embeds: [buildAchievementsEmbed(char, achievementsCache)],
-          files: [],
+          embeds: [achEmbed],
+          files: achievementsCache.length > 0 ? [achCard.file] : [],
           components: [buildTabRow("achievements")],
         });
       }

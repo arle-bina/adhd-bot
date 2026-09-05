@@ -20,6 +20,9 @@ import {
   currencyFor,
   CURRENCY_CHOICES,
 } from "../utils/currency.js";
+import { renderVersus, renderBarChart, seriesColor, compactMoney, compactNumber, type VersusMetric, type BarRow } from "../utils/viz/index.js";
+import { chartAttachment } from "../utils/viz/attach.js";
+import { symbolFor } from "../utils/currency.js";
 
 // ---------------------------------------------------------------------------
 // Corporation list cache
@@ -81,6 +84,104 @@ const METRICS = [
   { id: "sharePrice", name: "Share Price", monetary: true, formatter: (n: number | undefined | null, cc: string) => formatSharePrice(n, cc) },
   { id: "liquidCapital", name: "Liquid Capital", monetary: true, formatter: (n: number | undefined | null, cc: string) => formatCurrency(n, cc) },
 ];
+
+type Convert = (amount: number, corp: CorporationResponse) => number;
+
+/** Metric value in the display currency, ready to chart. */
+function chartValue(corp: CorporationResponse, metricId: string, convert: Convert): number {
+  const raw = getMetricValue(corp.corporation, corp.financials, metricId);
+  const monetary = METRICS.find((m) => m.id === metricId)?.monetary ?? false;
+  return monetary ? convert(raw, corp) : raw;
+}
+
+/**
+ * Two corporations, every metric, diverging from a centre line.
+ *
+ * Profit margin is a ratio and the rest are money, so each row is scaled to its
+ * own pair; a shared axis across those units would be meaningless.
+ */
+function buildVersusChart(corps: CorporationResponse[], targetCurrency: string, convert: Convert): Buffer | null {
+  const [a, b] = corps;
+  if (!a?.corporation || !b?.corporation) return null;
+  const sym = symbolFor(targetCurrency);
+
+  const metrics: VersusMetric[] = METRICS.map((m) => {
+    const left = chartValue(a, m.id, convert);
+    const right = chartValue(b, m.id, convert);
+    const fmt = (v: number) =>
+      m.id === "profitMargin"
+        ? `${(v * 100).toFixed(1)}%`
+        : m.monetary
+          ? compactMoney(v, sym)
+          : compactNumber(v);
+    return {
+      label: m.name,
+      left: Math.max(0, left),
+      right: Math.max(0, right),
+      leftDisplay: fmt(left),
+      rightDisplay: fmt(right),
+    };
+  });
+
+  return renderVersus({
+    title: `${a.corporation.name} vs ${b.corporation.name}`,
+    subtitle: "Each metric scaled to its own pair",
+    footerLeft: `Values ${targetCurrency}`,
+    left: {
+      name: a.corporation.name,
+      detail: [a.corporation.typeLabel || a.corporation.type, a.corporation.headquartersStateName]
+        .filter(Boolean)
+        .join(" · "),
+      color: seriesColor(0),
+    },
+    right: {
+      name: b.corporation.name,
+      detail: [b.corporation.typeLabel || b.corporation.type, b.corporation.headquartersStateName]
+        .filter(Boolean)
+        .join(" · "),
+      color: seriesColor(1),
+    },
+    metrics,
+  });
+}
+
+/** Three or more corporations: rank them on the primary metric. */
+function buildRankedChart(
+  corps: CorporationResponse[],
+  primaryMetric: string,
+  targetCurrency: string,
+  convert: Convert,
+): Buffer | null {
+  const metric = METRICS.find((m) => m.id === primaryMetric);
+  if (!metric) return null;
+  const sym = symbolFor(targetCurrency);
+
+  const rows: BarRow[] = corps
+    .map((corp, i) => {
+      const value = chartValue(corp, primaryMetric, convert);
+      return {
+        label: corp.corporation!.name,
+        value: Math.max(0, value),
+        color: seriesColor(i),
+        primary:
+          primaryMetric === "profitMargin"
+            ? `${(value * 100).toFixed(1)}%`
+            : metric.monetary
+              ? compactMoney(value, sym)
+              : compactNumber(value),
+        tag: corp.corporation!.typeLabel || corp.corporation!.type,
+      };
+    })
+    .sort((x, y) => y.value - x.value);
+
+  return renderBarChart({
+    title: `${metric.name} — comparison`,
+    subtitle: `${corps.length} corporations`,
+    footerLeft: metric.monetary ? `Values ${targetCurrency}` : undefined,
+    labelFraction: 0.4,
+    rows,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Autocomplete
@@ -190,6 +291,16 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       return;
     }
 
+    // Two corporations get the full head-to-head; three get ranked bars on the
+    // primary metric, because a diverging pair only has two sides.
+    const chartBuffer =
+      validCorps.length === 2
+        ? buildVersusChart(validCorps, targetCurrency, convertFromCorp)
+        : buildRankedChart(validCorps, primaryMetric, targetCurrency, convertFromCorp);
+    const chart = chartBuffer
+      ? chartAttachment(chartBuffer, "corpcompare", validCorps.map((c) => c.corporation!.id).join("-"))
+      : null;
+
     // Build comparison
     const embed = new EmbedBuilder()
       .setTitle("Corporation Comparison")
@@ -271,7 +382,8 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       inline: false,
     });
 
-    await interaction.editReply({ embeds: [embed] });
+    if (chart) embed.setImage(chart.url);
+    await interaction.editReply({ embeds: [embed], files: chart ? [chart.file] : [] });
 
   } catch (error) {
     await replyWithError(interaction, "corpcompare", error);

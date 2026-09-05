@@ -20,6 +20,7 @@ import { renderEntityCardSync, approvalColor, infamyColor } from "../src/utils/v
 import { partyAxisToCompass, seriesColor } from "../src/utils/viz/theme.js";
 import { renderComposition } from "../src/utils/viz/composition.js";
 import { renderVersus } from "../src/utils/viz/versus.js";
+import { renderTimeline, renderAchievements } from "../src/utils/viz/timeline.js";
 
 await warmBrandAssets();
 
@@ -425,6 +426,41 @@ write("compare.png", renderVersus({
     { label: "Funds", left: 1204000, right: 2840000, leftDisplay: "$1.2M", rightDisplay: "$2.8M" },
     { label: "Actions", left: 6, right: 4, leftDisplay: "6", rightDisplay: "4" },
     { label: "Donor base", left: 4, right: 5, leftDisplay: "4", rightDisplay: "5" },
+  ],
+}));
+
+
+
+// ── /profile career + achievements ──────────────────────────────────────────
+console.log("profile tabs:");
+write("career.png", renderTimeline({
+  title: "Eleanor Vance — career",
+  subtitle: "9 events",
+  footerLeft: "Democratic Party",
+  events: [
+    { outcome: "elected", office: "Senator (Vermont)", detail: "Democratic Party", date: "Mar 2026" },
+    { outcome: "elected", office: "Representative (VT-1)", detail: "Democratic Party", date: "Nov 2025" },
+    { outcome: "appointed", office: "Chair, Ways and Means", detail: "Democratic Party", date: "Sep 2025" },
+    { outcome: "lost_election", office: "Governor (Vermont)", detail: "Democratic Party", date: "Jun 2025" },
+    { outcome: "resigned", office: "Mayor (Burlington)", detail: "Democratic Party", date: "Feb 2025" },
+    { outcome: "elected", office: "Mayor (Burlington)", detail: "Independent", date: "Aug 2024" },
+    { outcome: "removed", office: "State Senator (VT)", detail: "Independent", date: "Mar 2024" },
+  ],
+}));
+
+write("achievements.png", renderAchievements({
+  title: "Eleanor Vance — achievements",
+  subtitle: "18 earned · showing 8",
+  footerLeft: "Democratic Party",
+  achievements: [
+    { name: "First Blood", description: "Win your first election", icon: "\u2b50", highlighted: true },
+    { name: "Kingmaker", description: "Endorse three winning candidates", icon: "\u265a", highlighted: true },
+    { name: "Rainmaker", description: "Raise $1M in a single cycle", icon: "\u25c9" },
+    { name: "Floor Leader", description: "Pass ten bills", icon: "\u25a0" },
+    { name: "Comeback", description: "Win after losing a general", icon: "\u21ba" },
+    { name: "Landslide", description: "Win by more than 30 points", icon: "\u25b2" },
+    { name: "Committee Chair", description: "Chair any standing committee", icon: "\u25c6" },
+    { name: "Whip Count", description: "Flip five votes on one bill", icon: "\u2726" },
   ],
 }));
 
