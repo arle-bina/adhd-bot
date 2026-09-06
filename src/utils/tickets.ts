@@ -36,6 +36,12 @@ import {
   MAX_TICKETS_PER_CATEGORY,
 } from "./ticketStore.js";
 import {
+  PLATFORM_PROMPT_OPTIONS,
+  categoryNeedsPlatform,
+  formatTicketPlatform,
+  type TicketPlatform,
+} from "./ticketPlatform.js";
+import {
   createTicket as apiCreateTicket,
   updateTicket as apiUpdateTicket,
   type GameTicketCategory,
@@ -194,6 +200,8 @@ async function getOrCreateCategory(guild: Guild): Promise<string> {
 export interface TicketDetails {
   subject: string;
   description?: string;
+  /** Surface the reporter was playing on. Bug reports only; see categoryNeedsPlatform. */
+  platform?: TicketPlatform;
 }
 
 /**
@@ -348,6 +356,9 @@ export async function createTicket(
         { name: "Created", value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
       );
 
+    if (details?.platform) {
+      embed.addFields({ name: "Platform", value: formatTicketPlatform(details.platform), inline: true });
+    }
     if (details?.subject) {
       embed.addFields({ name: "Subject", value: details.subject });
     }
@@ -368,6 +379,17 @@ export async function createTicket(
       await channel.send(`<@&${pingRoleId}>`).catch(() => {});
     }
 
+    // Paths that never showed the picker (reaction panels, the text-only
+    // fallback modal) still have to ask, or the ticket arrives unreproducible.
+    if (categoryNeedsPlatform(category) && !details?.platform) {
+      await channel
+        .send(
+          `<@${userId}> one more thing before we dig in: where are you playing? ` +
+            `${PLATFORM_PROMPT_OPTIONS}.`,
+        )
+        .catch(() => {});
+    }
+
     const ticketRecord = {
       userId,
       category,
@@ -376,6 +398,7 @@ export async function createTicket(
       ticketNumber,
       subject: details?.subject,
       description: details?.description,
+      platform: details?.platform,
       embedMessageId: embedMessage.id,
     };
     addTicket(guild.id, ticketRecord);
@@ -384,10 +407,12 @@ export async function createTicket(
     // tickets.json store above is the source of truth for the Discord UX.
     const openerName = sanitizeDisplayName(guild, userId, username);
     const title = (details?.subject?.trim() || `${config.label}`).slice(0, 200);
+    const body =
+      details?.description?.trim() || details?.subject?.trim() || "No description provided.";
+    // The backend ticket schema has no platform field, so the answer rides in the
+    // description, which is what the ops dashboard, support MCP and triage read.
     const description = (
-      details?.description?.trim() ||
-      details?.subject?.trim() ||
-      "No description provided."
+      details?.platform ? `Platform: ${formatTicketPlatform(details.platform)}\n\n${body}` : body
     ).slice(0, 5000);
     apiCreateTicket({
       category: toGameCategory(category),

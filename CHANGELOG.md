@@ -8,12 +8,20 @@ All notable changes to the AHD Discord Bot are documented here.
 
 ### Added
 
+- Ticket intake now asks bug reporters where they are playing. The `/ticket` flow and the ticket-panel buttons open a modal with a required platform picker: mobile web, mobile Android app, desktop web, desktop client, or desktop single player. The answer shows as a `Platform` field on the ticket embed, is stored on the ticket record, appears in `/copy-ticket` transcripts, and is carried into the backend mirror as the first line of the description so the ops dashboard and support MCP see it too.
+- `src/utils/ticketPlatform.ts` (option list, labels, `categoryNeedsPlatform`) and `src/utils/ticketModal.ts` (shared modal builder + field reader) so `/ticket` and the panel buttons cannot drift apart on what intake asks. Vitest coverage in `tests/utils/ticket-modal.test.ts`.
+- Ticket paths that never show the modal (legacy reaction panels, the text-only fallback modal) post a follow-up in the ticket channel asking the opener for the platform.
 - `/accept` now also assigns the Beta Tester role (ID `1490410327387541687`) alongside Member and Alpha Tester, so every newly verified member becomes a beta tester automatically.
 - `/sync-roles beta-update:true` — one-off backfill that assigns the Beta Tester role to every non-bot member that doesn't already have it. Without the option, `/sync-roles` still runs the normal game-role sync.
 
 ### Changed
 
+- Only bug reports get the platform question. Moderation reports are about people and mechanics questions are about rules, so neither answer would change with the client.
 - Beta Tester role ID added to the protected role list in `utils/roles.ts` so the regular sync never strips it.
+
+### Fixed
+
+- Removed an absolute `node_modules` symlink that was committed by accident in `eee5bc4d2`. Every deploy was replacing the server's real `node_modules` with a dangling link to a path that only exists on the dev box, forcing a cold reinstall each time. `.gitignore` now uses `node_modules` without a trailing slash so a symlink is ignored as well as a directory.
 
 ---
 

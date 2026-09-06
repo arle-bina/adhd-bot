@@ -1,6 +1,7 @@
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { readJsonSafe, writeJsonAtomic } from "./atomicJson.js";
+import type { TicketPlatform } from "./ticketPlatform.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -18,6 +19,8 @@ export interface Ticket {
   ticketNumber: number;
   subject?: string;
   description?: string;
+  /** Surface the reporter was playing on (bug reports only). */
+  platform?: TicketPlatform;
   /** User IDs of openers whose tickets were merged into this one */
   mergedFromUserIds?: string[];
   /** Staff member who claimed this ticket */

@@ -6,6 +6,7 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { getTicketByChannel } from "../utils/ticketStore.js";
+import { formatTicketPlatform } from "../utils/ticketPlatform.js";
 import { fetchAllMessages } from "../utils/tickets.js";
 import type { TicketCategory } from "../utils/ticketStore.js";
 
@@ -53,6 +54,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       `Copied by: ${interaction.user.id}`,
       `Copied at: ${new Date().toISOString()}`,
     ];
+    if (ticket.platform) lines.push(`Platform: ${formatTicketPlatform(ticket.platform)}`);
     if (ticket.subject) lines.push(`Subject: ${ticket.subject}`);
     if (ticket.description) lines.push(`Description: ${ticket.description}`);
     lines.push(`Messages: ${messages.length}`);
