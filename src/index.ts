@@ -6,10 +6,6 @@ import {
   ChatInputCommandInteraction,
   ActivityType,
   Partials,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  ActionRowBuilder,
   TextChannel,
 } from "discord.js";
 import { readdirSync } from "fs";
@@ -30,6 +26,8 @@ import { getChannelConfig, postWebhookReaction, getPendingPasswordResets, ackPas
 import { getBulkSyncRoles, type SyncRolesBulkUser } from "./utils/api.js";
 import { syncMemberRoles } from "./utils/roles.js";
 import { getTicketByChannel } from "./utils/ticketStore.js";
+import type { TicketCategory } from "./utils/ticketStore.js";
+import { readTicketModalFields, showTicketModal } from "./utils/ticketModal.js";
 import { updateTicket as apiUpdateTicket, getPendingResolutions } from "./utils/ticketsApi.js";
 import { checkMessage } from "./utils/filter.js";
 import { isBotEnabled } from "./utils/botState.js";
@@ -885,32 +883,7 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      const modal = new ModalBuilder()
-        .setCustomId(`ticket_modal_${category}`)
-        .setTitle("Open a Ticket");
-
-      const subjectInput = new TextInputBuilder()
-        .setCustomId("ticket_subject")
-        .setLabel("Subject")
-        .setPlaceholder("Brief summary of your issue")
-        .setStyle(TextInputStyle.Short)
-        .setMaxLength(100)
-        .setRequired(true);
-
-      const descriptionInput = new TextInputBuilder()
-        .setCustomId("ticket_description")
-        .setLabel("Description (optional)")
-        .setPlaceholder("Any additional details...")
-        .setStyle(TextInputStyle.Paragraph)
-        .setMaxLength(1000)
-        .setRequired(false);
-
-      modal.addComponents(
-        new ActionRowBuilder<TextInputBuilder>().addComponents(subjectInput),
-        new ActionRowBuilder<TextInputBuilder>().addComponents(descriptionInput),
-      );
-
-      await interaction.showModal(modal);
+      await showTicketModal(interaction, category as TicketCategory);
     } catch (error) {
       console.error("Ticket panel button error:", error);
     }
@@ -1012,15 +985,13 @@ client.on("interactionCreate", async (interaction) => {
       }
       await interaction.deferReply({ ephemeral: true });
       const { createTicket } = await import("./utils/tickets.js");
-      const subject = interaction.fields.getTextInputValue("ticket_subject");
-      const description = interaction.fields.getTextInputValue("ticket_description") || undefined;
 
       const result = await createTicket(
         interaction.guild!,
         interaction.user.id,
         interaction.user.username,
-        category as "bug" | "suggestion" | "moderation" | "mechanics",
-        { subject, description },
+        category as TicketCategory,
+        readTicketModalFields(interaction),
       );
 
       if (result.success) {
