@@ -21,7 +21,7 @@ All notable changes to the AHD Discord Bot are documented here.
 
 ### Fixed
 
-- Removed an absolute `node_modules` symlink that was committed by accident in `eee5bc4d2`. Every deploy was replacing the server's real `node_modules` with a dangling link to a path that only exists on the dev box, forcing a cold reinstall each time. `.gitignore` now uses `node_modules` without a trailing slash so a symlink is ignored as well as a directory.
+- Removed an absolute `node_modules` symlink that was committed by accident in `eee5bc4d2`. It pointed at a path that only exists on the dev box. In practice git refused to replace the deploy server's real `node_modules` directory with it (`warning: unable to unlink 'node_modules': Is a directory` on every deploy), so no deploy was actually broken, but a fresh clone would have got the dangling link. `.gitignore` now uses `node_modules` without a trailing slash so a symlink is ignored as well as a directory.
 
 ---
 
