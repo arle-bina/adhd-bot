@@ -24,6 +24,7 @@ export {
   getBulkSyncRoles,
   postSupporter,
   deleteSupporter,
+  postTempSpAccess,
 } from "./api-politics.js";
 
 export type {
@@ -54,6 +55,7 @@ export type {
   SyncRolesBulkUser,
   SyncRolesBulkResponse,
   SupporterResponse,
+  TempSpAccessResponse,
 } from "./api-politics.js";
 
 export {
