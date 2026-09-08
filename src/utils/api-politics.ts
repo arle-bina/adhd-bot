@@ -606,3 +606,28 @@ export async function deleteSupporter(body: {
 }): Promise<SupporterResponse> {
   return apiPost<SupporterResponse>("/api/discord-bot/supporter/remove", body);
 }
+
+// ---------------------------------------------------------------------------
+// Temporary singleplayer access
+// ---------------------------------------------------------------------------
+
+export interface TempSpAccessResponse {
+  found: boolean;
+  alreadyPermanent?: boolean;
+  extended?: boolean;
+  username?: string;
+  characterName?: string | null;
+  discordId?: string;
+  discordUsername?: string | null;
+  expiresAt?: string | null;
+  days?: number;
+  message?: string;
+}
+
+export async function postTempSpAccess(body: {
+  discordId: string;
+  days?: number;
+  grantedBy?: string;
+}): Promise<TempSpAccessResponse> {
+  return apiPost<TempSpAccessResponse>("/api/discord-bot/client-access", body);
+}

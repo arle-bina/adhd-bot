@@ -286,6 +286,16 @@ export const categories: Category[] = [
         examples: ["/sync-roles"],
       },
       {
+        name: "/temp-sp-access",
+        usage: "/temp-sp-access user:<@user> [days]",
+        description:
+          "Grant a tagged, Discord-linked player limited (time-limited) singleplayer access. Default 30 days, max 90. Requires Manage Roles. Does not overwrite a permanent grant, and will not shorten a later expiry.",
+        examples: [
+          "/temp-sp-access user:@johndoe",
+          "/temp-sp-access user:@johndoe days:7",
+        ],
+      },
+      {
         name: "/strike",
         usage: "/strike add user:<@user> reason:<text>  ·  /strike remove user:<@user> id:<id>  ·  /strike clear user:<@user>  ·  /strike list  ·  /strike info [user]",
         description:
