@@ -23,14 +23,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   const ticket = interaction.options.getInteger("ticket", true);
 
   const result = await reassessTicket(ticket, interaction.user.username);
-  if (!result) {
-    await interaction.editReply({
-      content: "Could not reach the ops dashboard. Check `OPS_DASHBOARD_URL` and `OPS_HANDOFF_TOKEN`, then try again.",
-    });
+  if (!result.ok) {
+    await interaction.editReply({ content: `Reassessment failed for ticket #${ticket} — ${result.reason}` });
     return;
   }
 
   await interaction.editReply({
-    content: `Reassessing ticket #${result.ticket} — the page updates in a few seconds:\n${result.opsUrl}`,
+    content: `Reassessing ticket #${result.data.ticket} — the page updates in a few seconds:\n${result.data.opsUrl}`,
   });
 }
