@@ -25,10 +25,11 @@ import { handleLockReaction, TICKET_CLOSE_MODAL_PREFIX, handleTicketCloseModalSu
 import { getChannelConfig, postWebhookReaction, getPendingPasswordResets, ackPasswordResets, getPendingBroadcastDms, ackBroadcastDms } from "./utils/api-game.js";
 import { getBulkSyncRoles, type SyncRolesBulkUser } from "./utils/api.js";
 import { syncMemberRoles } from "./utils/roles.js";
-import { getTicketByChannel } from "./utils/ticketStore.js";
+import { getTicketByChannel, removeTicket } from "./utils/ticketStore.js";
 import type { TicketCategory } from "./utils/ticketStore.js";
 import { readTicketModalFields, showTicketModal } from "./utils/ticketModal.js";
 import { updateTicket as apiUpdateTicket, getPendingResolutions, getTicketReceiptUrl } from "./utils/ticketsApi.js";
+import { resolutionDeliveryPlan } from "./utils/ticketResolutionDelivery.js";
 import { checkMessage } from "./utils/filter.js";
 import { isBotEnabled } from "./utils/botState.js";
 import { isChannelBanned } from "./utils/channelBans.js";
@@ -264,9 +265,9 @@ client.once("ready", () => {
   };
   setInterval(autoSyncRoles, 6 * 60 * 60 * 1000);
 
-  // Deliver ticket resolution receipts set by agents or admins in the ops
-  // dashboard. The dashboard normally posts to the ticket channel first; this
-  // poll is the durable fallback for a missing channel or bot outage.
+  // Finish ticket resolution delivery started by agents or admins in the ops
+  // dashboard. A dashboard channel post is a visible fallback, but the bot
+  // owns the final DM/close lifecycle so a resolved ticket cannot remain open.
   const deliverResolutions = async () => {
     try {
       const pending = await getPendingResolutions();
@@ -274,7 +275,10 @@ client.once("ready", () => {
 
       for (const ticket of pending) {
         try {
-          const receiptUrl = await getTicketReceiptUrl(ticket.ticketNumber);
+          const plan = resolutionDeliveryPlan(ticket);
+          const receiptUrl = plan.needsPlayerDelivery
+            ? await getTicketReceiptUrl(ticket.ticketNumber)
+            : undefined;
           const embed = new EmbedBuilder()
             .setTitle(`Your ticket #${ticket.ticketNumber} has been resolved`)
             .setDescription([
@@ -285,40 +289,80 @@ client.once("ready", () => {
             .setFooter({ text: "Reply by opening a new ticket if you need further help." })
             .setTimestamp();
 
-          let delivered = false;
-
-          // Preferred: post in the ticket channel. The support receipt is a
-          // channel event first, so players see the same history as staff.
-          if (!delivered && ticket.discordChannelId) {
+          let channel: TextChannel | null = null;
+          let channelFetchFailed = false;
+          if (ticket.discordChannelId) {
             try {
-              const channel = await client.channels.fetch(ticket.discordChannelId).catch(() => null);
-              if (channel?.isTextBased() && "send" in channel) {
-                await (channel as TextChannel).send({
-                  content: `<@${ticket.discordUserId}>`,
-                  embeds: [embed],
-                  allowedMentions: { users: [ticket.discordUserId] },
-                });
-                delivered = true;
+              const candidate = await client.channels.fetch(ticket.discordChannelId);
+              if (candidate?.isTextBased() && "send" in candidate && "delete" in candidate) {
+                channel = candidate as TextChannel;
               }
-            } catch {
-              // channel gone or no permission — try a direct message below.
+            } catch (err) {
+              const code = String((err as { code?: unknown })?.code ?? "");
+              // Unknown Channel means it is already closed. Other failures
+              // (permissions/network) must remain retryable.
+              channelFetchFailed = code !== "10003";
+              if (channelFetchFailed) {
+                console.warn(`Resolution channel lookup failed for #${ticket.ticketNumber}:`, err);
+              }
             }
           }
 
-          // Fallback: DM the opener when the ticket channel is gone or cannot
-          // accept a message. The pending record remains until this succeeds.
-          if (!delivered) {
+          // Prefer a DM so deleting the ticket channel cannot hide the receipt.
+          let delivered = Boolean(ticket.deliveredAt) || Boolean(ticket.channelUpdatePosted);
+          if (plan.needsPlayerDelivery) {
             try {
               const user = await client.users.fetch(ticket.discordUserId);
               await user.send({ embeds: [embed] });
               delivered = true;
             } catch {
-              // DMs closed / user unfetchable — retry on the next sweep.
+              // DMs may be closed; use the already-open channel below.
             }
           }
 
-          if (delivered) {
-            await apiUpdateTicket({ ticketNumber: ticket.ticketNumber, action: "resolution-delivered" });
+          // If the dashboard did not already post a channel receipt, use the
+          // channel as the final delivery fallback before leaving it pending.
+          if (!delivered && channel && plan.needsPlayerDelivery && !ticket.channelUpdatePosted) {
+            try {
+              await channel.send({
+                content: `<@${ticket.discordUserId}>`,
+                embeds: [embed],
+                allowedMentions: { users: [ticket.discordUserId] },
+              });
+              delivered = true;
+            } catch {
+              // Leave undelivered and retry on the next sweep.
+            }
+          }
+
+          // The dashboard's channel post is a valid fallback when DMs are
+          // closed. It is safe to close only after acknowledging that post.
+          if (!delivered && ticket.channelUpdatePosted) delivered = true;
+
+          if (delivered && !ticket.deliveredAt) {
+            const marked = await apiUpdateTicket({ ticketNumber: ticket.ticketNumber, action: "resolution-delivered" });
+            if (!marked) delivered = false;
+          }
+
+          if (delivered && plan.needsChannelClose) {
+            let closed = false;
+            if (channel) {
+              try {
+                await channel.delete(`Resolved ticket #${ticket.ticketNumber}`);
+                closed = true;
+              } catch (err) {
+                console.warn(`Resolution channel close failed for #${ticket.ticketNumber}:`, err);
+              }
+            } else if (!channelFetchFailed) {
+              closed = true;
+            }
+            if (closed) {
+              await apiUpdateTicket({ ticketNumber: ticket.ticketNumber, action: "resolution-channel-closed" });
+              const guildId = channel?.guild?.id || process.env.DISCORD_GUILD_ID;
+              if (guildId && ticket.discordChannelId) {
+                removeTicket(guildId, ticket.discordChannelId);
+              }
+            }
           }
         } catch (err) {
           console.error(`Resolution delivery error for ticket #${ticket.ticketNumber}:`, err);

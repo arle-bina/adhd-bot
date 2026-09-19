@@ -53,7 +53,13 @@ interface TicketReceiptUrlResponse {
   receiptUrl: string;
 }
 
-export type UpdateTicketAction = "append" | "status" | "close" | "retriage" | "resolution-delivered";
+export type UpdateTicketAction =
+  | "append"
+  | "status"
+  | "close"
+  | "retriage"
+  | "resolution-delivered"
+  | "resolution-channel-closed";
 
 export interface TicketResolutionPayload {
   message: string;
@@ -113,6 +119,11 @@ export interface PendingResolution {
   discordUserId: string;
   discordChannelId?: string;
   message: string;
+  deliveredAt?: string | null;
+  channelClosedAt?: string | null;
+  channelUpdatePosted?: boolean;
+  needsDelivery?: boolean;
+  needsChannelClose?: boolean;
 }
 
 interface PendingResolutionsResponse {
