@@ -21,7 +21,17 @@ import {
   getBinding as getReactionRoleBinding,
   emojiMatches as reactionRoleEmojiMatches,
 } from "./utils/reactionRoleStore.js";
-import { handleLockReaction, TICKET_CLOSE_MODAL_PREFIX, handleTicketCloseModalSubmit, TICKET_MERGE_MODAL_PREFIX, mergeTickets, TICKET_CLAIM_BUTTON_ID, handleClaimTicket } from "./utils/tickets.js";
+import {
+  fetchAllMessages,
+  handleLockReaction,
+  TICKET_CLOSE_MODAL_PREFIX,
+  handleTicketCloseModalSubmit,
+  TICKET_MERGE_MODAL_PREFIX,
+  mergeTickets,
+  TICKET_CLAIM_BUTTON_ID,
+  handleClaimTicket,
+} from "./utils/tickets.js";
+import { postTicketClosureLog } from "./utils/ticketClosureLog.js";
 import { getChannelConfig, postWebhookReaction, getPendingPasswordResets, ackPasswordResets, getPendingBroadcastDms, ackBroadcastDms } from "./utils/api-game.js";
 import { getBulkSyncRoles, type SyncRolesBulkUser } from "./utils/api.js";
 import { syncMemberRoles } from "./utils/roles.js";
@@ -347,6 +357,22 @@ client.once("ready", () => {
           if (delivered && plan.needsChannelClose) {
             let closed = false;
             if (channel) {
+              const storedTicket = getTicketByChannel(channel.guild.id, channel.id);
+              const logPosted = await postTicketClosureLog(channel.guild, {
+                ticketNumber: ticket.ticketNumber,
+                category: storedTicket?.category ?? "bug",
+                userId: storedTicket?.userId ?? ticket.discordUserId,
+                createdAt: storedTicket?.createdAt ?? new Date().toISOString(),
+                subject: storedTicket?.subject,
+                description: storedTicket?.description,
+                closerId: client.user?.id ?? "resolution-bot",
+                resolutionMessage: ticket.message,
+                messages: await fetchAllMessages(channel, 500),
+              });
+              if (!logPosted) {
+                console.warn(`Ticket #${ticket.ticketNumber} left open because its closure log could not be posted`);
+                continue;
+              }
               try {
                 await channel.delete(`Resolved ticket #${ticket.ticketNumber}`);
                 closed = true;
