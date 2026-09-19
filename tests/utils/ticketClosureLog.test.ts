@@ -12,6 +12,7 @@ describe("buildTicketClosureLogPayload", () => {
       description: "How do I buy out the minority holders?",
       closerId: "resolution-bot",
       resolutionMessage: "Use the private sale flow.",
+      receiptUrl: "https://ops.lakesidegames.net/t/GC67yNBfy-Uy",
       messages: [
         {
           createdAt: new Date("2026-09-19T08:45:57.658Z"),
@@ -26,9 +27,14 @@ describe("buildTicketClosureLogPayload", () => {
       expect.arrayContaining([
         { name: "Closed by", value: "<@resolution-bot>", inline: true },
         { name: "Resolution", value: "Use the private sale flow." },
+        {
+          name: "Receipt",
+          value: "[View player receipt](https://ops.lakesidegames.net/t/GC67yNBfy-Uy)",
+        },
       ]),
     );
     expect(payload.transcript).toContain("Resolution (to opener): Use the private sale flow.");
+    expect(payload.transcript).toContain("Receipt: https://ops.lakesidegames.net/t/GC67yNBfy-Uy");
     expect(payload.attachmentName).toBe("ticket-1335.txt");
   });
 });

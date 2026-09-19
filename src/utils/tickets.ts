@@ -484,6 +484,7 @@ function buildTranscriptText(
   closerId: string,
   messages: Message[],
   resolutionMessage?: string,
+  receiptUrl?: string,
 ): string {
   const config = CATEGORY_CONFIG[ticket.category];
   const lines: string[] = [
@@ -499,6 +500,7 @@ function buildTranscriptText(
   if (resolutionMessage) {
     lines.push(`Resolution (to opener): ${resolutionMessage}`);
   }
+  if (receiptUrl) lines.push(`Receipt: ${receiptUrl}`);
   lines.push("---");
 
   for (const msg of messages) {
@@ -551,6 +553,10 @@ async function finalizeTicketClose(
       value: resolutionMessage.length > 1024 ? `${resolutionMessage.slice(0, 1021)}...` : resolutionMessage,
     });
   }
+  const receiptUrl = await getTicketReceiptUrl(apiTicketNumber);
+  if (receiptUrl) {
+    logFields.push({ name: "Receipt", value: `[View player receipt](${receiptUrl})` });
+  }
 
   const logEmbed = new EmbedBuilder()
     .setTitle(`🎫 Ticket Closed — #${paddedNum}`)
@@ -561,7 +567,13 @@ async function finalizeTicketClose(
     })
     .setTimestamp();
 
-  const transcript = buildTranscriptText(ticket, closer.id, messages, resolutionMessage || undefined);
+  const transcript = buildTranscriptText(
+    ticket,
+    closer.id,
+    messages,
+    resolutionMessage || undefined,
+    receiptUrl,
+  );
 
   const logChannelId = process.env.TICKET_LOG_CHANNEL_ID ?? "1483974417628270593";
   if (logChannelId) {
@@ -577,7 +589,6 @@ async function finalizeTicketClose(
     }
   }
 
-  const receiptUrl = await getTicketReceiptUrl(apiTicketNumber);
   const playerResolution = resolutionMessage || "Your support report was closed from Discord.";
   const playerFollowUp = "If the issue is still present, open a new support ticket and mention this report.";
   const receiptMessage = [
@@ -633,7 +644,12 @@ async function finalizeTicketClose(
       const dmEmbed = new EmbedBuilder()
         .setTitle(`Ticket #${paddedNum} closed`)
         .setColor(0x95a5a6)
-        .setDescription(`${header}${resolutionMessage.slice(0, maxRes)}`)
+        .setDescription(
+          `${header}${resolutionMessage.slice(0, maxRes)}${receiptUrl ? `\n\n**Support receipt:** ${receiptUrl}` : ""}`.slice(
+            0,
+            4096,
+          ),
+        )
         .setFooter({ text: "ahousedividedgame.com" })
         .setTimestamp();
 
@@ -662,7 +678,11 @@ async function finalizeTicketClose(
       const mergedDm = new EmbedBuilder()
         .setTitle(`Ticket #${paddedNum} closed`)
         .setColor(0x95a5a6)
-        .setDescription(`${header}${resolutionMessage ? resolutionMessage.slice(0, maxRes) : ""}`.trim())
+        .setDescription(
+          `${header}${resolutionMessage ? resolutionMessage.slice(0, maxRes) : ""}${
+            receiptUrl ? `\n\n**Support receipt:** ${receiptUrl}` : ""
+          }`.trim().slice(0, 4096),
+        )
         .setFooter({ text: "ahousedividedgame.com" })
         .setTimestamp();
 

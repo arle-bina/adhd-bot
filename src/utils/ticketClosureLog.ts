@@ -23,6 +23,7 @@ export interface TicketClosureLogInput {
   description?: string;
   closerId: string;
   resolutionMessage?: string;
+  receiptUrl?: string;
   messages: readonly TicketClosureLogMessage[];
 }
 
@@ -59,6 +60,9 @@ export function buildTicketClosureLogPayload(input: TicketClosureLogInput) {
           : input.resolutionMessage,
     });
   }
+  if (input.receiptUrl) {
+    logFields.push({ name: "Receipt", value: `[View player receipt](${input.receiptUrl})` });
+  }
 
   const embed = new EmbedBuilder()
     .setTitle(`🎫 Ticket Closed — #${paddedNum}`)
@@ -85,6 +89,7 @@ export function buildTicketClosureLogPayload(input: TicketClosureLogInput) {
   if (input.resolutionMessage) {
     lines.push(`Resolution (to opener): ${input.resolutionMessage}`);
   }
+  if (input.receiptUrl) lines.push(`Receipt: ${input.receiptUrl}`);
   lines.push("---");
   for (const message of input.messages) {
     const timestamp = message.createdAt.toISOString().slice(0, 19).replace("T", " ");
@@ -120,7 +125,19 @@ export async function postTicketClosureLog(
   const existingTitle = payload.embed.title;
   try {
     const recent = await candidate.messages.fetch({ limit: 100 });
-    if (recent.some((message) => message.embeds.some((embed) => embed.title === existingTitle))) {
+    const existing = recent.find((message) => message.embeds.some((embed) => embed.title === existingTitle));
+    if (existing) {
+      const hasReceipt = existing.embeds.some((embed) =>
+        embed.fields?.some((field) => field.name === "Receipt" && field.value.includes(input.receiptUrl ?? "")),
+      );
+      if (input.receiptUrl && !hasReceipt && existing.embeds[0]) {
+        await existing.edit({
+          embeds: [EmbedBuilder.from(existing.embeds[0]).addFields({
+            name: "Receipt",
+            value: `[View player receipt](${input.receiptUrl})`,
+          })],
+        });
+      }
       return true;
     }
   } catch (error) {

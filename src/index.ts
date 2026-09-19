@@ -286,9 +286,7 @@ client.once("ready", () => {
       for (const ticket of pending) {
         try {
           const plan = resolutionDeliveryPlan(ticket);
-          const receiptUrl = plan.needsPlayerDelivery
-            ? await getTicketReceiptUrl(ticket.ticketNumber)
-            : undefined;
+          const receiptUrl = await getTicketReceiptUrl(ticket.ticketNumber);
           const embed = new EmbedBuilder()
             .setTitle(`Your ticket #${ticket.ticketNumber} has been resolved`)
             .setDescription([
@@ -367,6 +365,7 @@ client.once("ready", () => {
                 description: storedTicket?.description,
                 closerId: client.user?.id ?? "resolution-bot",
                 resolutionMessage: ticket.message,
+                receiptUrl,
                 messages: await fetchAllMessages(channel, 500),
               });
               if (!logPosted) {
