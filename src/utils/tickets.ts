@@ -43,6 +43,7 @@ import {
 } from "./ticketPlatform.js";
 import {
   createTicket as apiCreateTicket,
+  getTicketReceiptUrl,
   updateTicket as apiUpdateTicket,
   type GameTicketCategory,
 } from "./ticketsApi.js";
@@ -146,7 +147,7 @@ function buildTicketCloseModal(channelId: string): ModalBuilder {
     .setCustomId("ticket_resolution_message")
     .setLabel("Resolution message for the opener")
     .setPlaceholder(
-      "Required when staff closes someone else's ticket. Shown to them via DM when the ticket closes.",
+      "Required when staff closes someone else's ticket. Shown in the ticket channel and support receipt.",
     )
     .setStyle(TextInputStyle.Paragraph)
     .setMaxLength(1000)
@@ -510,7 +511,7 @@ function buildTranscriptText(
   return lines.join("\n");
 }
 
-/** Whether the opener received the resolution DM (only relevant when staff closed for someone else). */
+/** Deliver the player-facing resolution before the Discord ticket channel is removed. */
 async function finalizeTicketClose(
   channel: TextChannel,
   closer: GuildMember,
@@ -523,6 +524,7 @@ async function finalizeTicketClose(
 
   const config = CATEGORY_CONFIG[ticket.category];
   const paddedNum = String(ticket.ticketNumber).padStart(4, "0");
+  const apiTicketNumber = ticket.apiTicketNumber ?? ticket.ticketNumber;
   const created = new Date(ticket.createdAt);
   const duration = Math.floor((Date.now() - created.getTime()) / 60000);
   const durationStr = duration < 60 ? `${duration}m` : `${Math.floor(duration / 60)}h ${duration % 60}m`;
@@ -575,6 +577,53 @@ async function finalizeTicketClose(
     }
   }
 
+  const receiptUrl = await getTicketReceiptUrl(apiTicketNumber);
+  const playerResolution = resolutionMessage || "Your support report was closed from Discord.";
+  const playerFollowUp = "If the issue is still present, open a new support ticket and mention this report.";
+  const receiptMessage = [
+    `<@${ticket.userId}>`,
+    "",
+    "**Your support report has been resolved.**",
+    "",
+    playerResolution,
+    "",
+    playerFollowUp,
+    receiptUrl ? `\n**Support receipt:** ${receiptUrl}` : "",
+  ].filter(Boolean).join("\n").slice(0, 1900);
+
+  // Persist the resolution before the channel is removed. A later delivery
+  // sweep can retry the channel/DM path if Discord rejects the message.
+  const persisted = await apiUpdateTicket({
+    discordChannelId: channel.id,
+    action: "close",
+    closedBy: closer.id,
+    resolution: {
+      message: playerResolution,
+      actions: [],
+      followUp: playerFollowUp,
+      source: "discord",
+    },
+    resolutionDelivered: false,
+  });
+  if (!persisted) {
+    throw new Error("Could not persist the ticket resolution; leaving the Discord channel open");
+  }
+
+  let channelReceiptDelivered = false;
+  try {
+    await channel.send({
+      content: receiptMessage,
+      allowedMentions: { users: [ticket.userId] },
+    });
+    channelReceiptDelivered = true;
+    await apiUpdateTicket({
+      discordChannelId: channel.id,
+      action: "resolution-delivered",
+    });
+  } catch (err) {
+    console.warn("Ticket channel receipt post failed:", err);
+  }
+
   let resolutionDmDelivered = false;
   if (closer.id !== ticket.userId && resolutionMessage) {
     try {
@@ -623,16 +672,9 @@ async function finalizeTicketClose(
     }
   }
 
-  // Best-effort mirror of the close onto the backend ticket (non-fatal).
-  void apiUpdateTicket({
-    discordChannelId: channel.id,
-    action: "close",
-    closedBy: closer.id,
-  });
-
   removeTicket(guild.id, channel.id);
   await channel.delete(`Ticket #${paddedNum} closed by ${closer.user.tag}`).catch(() => {});
-  return resolutionDmDelivered;
+  return resolutionDmDelivered || channelReceiptDelivered;
 }
 
 export async function handleClaimTicket(
@@ -747,8 +789,8 @@ export async function handleTicketCloseModalSubmit(interaction: ModalSubmitInter
     let reply = "Ticket closed.";
     if (staffClosingOther && resolutionMessage) {
       reply += dmDelivered
-        ? " The opener was sent your resolution via DM."
-        : " The opener could not be DMed (they may have DMs disabled).";
+        ? " The opener was sent a player-facing resolution update."
+        : " The player-facing resolution could not be delivered; it will be retried by the backend sweep.";
     }
     await interaction.editReply({ content: reply });
   } catch (err) {

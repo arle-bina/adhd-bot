@@ -28,7 +28,7 @@ import { syncMemberRoles } from "./utils/roles.js";
 import { getTicketByChannel } from "./utils/ticketStore.js";
 import type { TicketCategory } from "./utils/ticketStore.js";
 import { readTicketModalFields, showTicketModal } from "./utils/ticketModal.js";
-import { updateTicket as apiUpdateTicket, getPendingResolutions } from "./utils/ticketsApi.js";
+import { updateTicket as apiUpdateTicket, getPendingResolutions, getTicketReceiptUrl } from "./utils/ticketsApi.js";
 import { checkMessage } from "./utils/filter.js";
 import { isBotEnabled } from "./utils/botState.js";
 import { isChannelBanned } from "./utils/channelBans.js";
@@ -264,10 +264,9 @@ client.once("ready", () => {
   };
   setInterval(autoSyncRoles, 6 * 60 * 60 * 1000);
 
-  // Deliver ticket resolution messages set by admins in the ops dashboard.
-  // Polls the game backend for closed tickets whose resolution hasn't been
-  // delivered, then DMs the opener (falling back to the ticket channel if their
-  // DMs are closed). Runs ~30s after ready, then every ~3 minutes.
+  // Deliver ticket resolution receipts set by agents or admins in the ops
+  // dashboard. The dashboard normally posts to the ticket channel first; this
+  // poll is the durable fallback for a missing channel or bot outage.
   const deliverResolutions = async () => {
     try {
       const pending = await getPendingResolutions();
@@ -275,25 +274,21 @@ client.once("ready", () => {
 
       for (const ticket of pending) {
         try {
+          const receiptUrl = await getTicketReceiptUrl(ticket.ticketNumber);
           const embed = new EmbedBuilder()
             .setTitle(`Your ticket #${ticket.ticketNumber} has been resolved`)
-            .setDescription(ticket.message || "Your ticket has been resolved.")
+            .setDescription([
+              ticket.message || "Your ticket has been resolved.",
+              receiptUrl ? `\nSupport receipt: ${receiptUrl}` : "",
+            ].filter(Boolean).join("\n"))
             .setColor(0x57f287)
             .setFooter({ text: "Reply by opening a new ticket if you need further help." })
             .setTimestamp();
 
           let delivered = false;
 
-          // Preferred: DM the opener.
-          try {
-            const user = await client.users.fetch(ticket.discordUserId);
-            await user.send({ embeds: [embed] });
-            delivered = true;
-          } catch {
-            // DMs closed / user unfetchable — fall back to the ticket channel.
-          }
-
-          // Fallback: post in the ticket channel if it still exists.
+          // Preferred: post in the ticket channel. The support receipt is a
+          // channel event first, so players see the same history as staff.
           if (!delivered && ticket.discordChannelId) {
             try {
               const channel = await client.channels.fetch(ticket.discordChannelId).catch(() => null);
@@ -306,7 +301,19 @@ client.once("ready", () => {
                 delivered = true;
               }
             } catch {
-              // channel gone or no permission — leave undelivered, retry next sweep.
+              // channel gone or no permission — try a direct message below.
+            }
+          }
+
+          // Fallback: DM the opener when the ticket channel is gone or cannot
+          // accept a message. The pending record remains until this succeeds.
+          if (!delivered) {
+            try {
+              const user = await client.users.fetch(ticket.discordUserId);
+              await user.send({ embeds: [embed] });
+              delivered = true;
+            } catch {
+              // DMs closed / user unfetchable — retry on the next sweep.
             }
           }
 

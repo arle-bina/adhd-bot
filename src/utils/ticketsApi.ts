@@ -4,7 +4,7 @@
 // helper here swallows errors and returns undefined on failure so the Discord
 // ticket UX never breaks when the game API is slow or down.
 
-import { apiFetch, apiPost, apiPatch } from "./api-base.js";
+import { apiFetch, apiPost, apiPatch, opsApiFetch } from "./api-base.js";
 
 const TICKETS_ENDPOINT = "/api/discord-bot/tickets";
 
@@ -49,7 +49,18 @@ export interface CreateTicketResponse {
   message?: string;
 }
 
+interface TicketReceiptUrlResponse {
+  receiptUrl: string;
+}
+
 export type UpdateTicketAction = "append" | "status" | "close" | "retriage" | "resolution-delivered";
+
+export interface TicketResolutionPayload {
+  message: string;
+  actions?: string[];
+  followUp?: string;
+  source?: "discord" | "agent" | "ops";
+}
 
 export interface UpdateTicketPayload {
   ticketNumber?: number;
@@ -58,6 +69,8 @@ export interface UpdateTicketPayload {
   message?: TicketApiMessage;
   status?: string;
   closedBy?: string;
+  resolution?: string | TicketResolutionPayload;
+  resolutionDelivered?: boolean;
 }
 
 /** True only when the game API is configured — otherwise we skip the sync silently. */
@@ -94,7 +107,7 @@ export async function createTicket(payload: CreateTicketPayload): Promise<Create
   return undefined;
 }
 
-/** A ticket closed in the ops dashboard with an admin resolution message awaiting delivery. */
+/** A resolved ticket whose player-facing receipt still needs Discord delivery. */
 export interface PendingResolution {
   ticketNumber: number;
   discordUserId: string;
@@ -107,7 +120,7 @@ interface PendingResolutionsResponse {
 }
 
 /**
- * Fetch tickets closed in the ops dashboard whose admin resolution message has
+ * Fetch tickets resolved in the ops dashboard whose player-facing receipt has
  * not yet been delivered to the opener.
  * Non-fatal: logs and returns [] on any failure (including missing config).
  */
@@ -132,6 +145,19 @@ export async function updateTicket(payload: UpdateTicketPayload): Promise<Create
     return await apiPatch<CreateTicketResponse>(TICKETS_ENDPOINT, payload);
   } catch (err) {
     console.error("[ticketsApi] updateTicket sync failed:", err);
+    return undefined;
+  }
+}
+
+/** Mint or retrieve the opaque public receipt URL for a ticket. */
+export async function getTicketReceiptUrl(ticketNumber: number): Promise<string | undefined> {
+  try {
+    const result = await opsApiFetch<TicketReceiptUrlResponse>(
+      `/api/tickets/${encodeURIComponent(String(ticketNumber))}/public-link`,
+    );
+    return result.receiptUrl || undefined;
+  } catch (err) {
+    console.error("[ticketsApi] getTicketReceiptUrl failed:", err);
     return undefined;
   }
 }

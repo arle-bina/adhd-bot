@@ -80,6 +80,28 @@ export async function apiFetch<T>(pathname: string, params?: Record<string, stri
   }
 }
 
+/** Rate-limited GET request to the ops dashboard's machine-only ticket API. */
+export async function opsApiFetch<T>(pathname: string): Promise<T> {
+  const baseUrl = process.env.OPS_DASHBOARD_URL;
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!baseUrl || !token) {
+    throw new Error("Ops dashboard ticket link configuration is missing");
+  }
+  const url = new URL(pathname, baseUrl);
+
+  await acquire();
+  try {
+    const response = await fetch(url.toString(), {
+      headers: { Authorization: `Bot ${token}` },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!response.ok) await throwApiError(response, pathname);
+    return response.json() as Promise<T>;
+  } finally {
+    release();
+  }
+}
+
 /** Rate-limited GET request without auth (public endpoints). */
 export async function apiFetchPublic<T>(pathname: string, params?: Record<string, string>): Promise<T> {
   const url = new URL(pathname, process.env.GAME_API_URL);

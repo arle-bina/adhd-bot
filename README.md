@@ -68,7 +68,7 @@ This repository contains the **Discord bot** — a companion app that connects t
 | --- | --- | --- |
 | `/accept` | Accept the server rules and gain access | — |
 | `/ticket` | Open a support ticket (Bug, Suggestion, or Moderation) | — |
-| `/close-ticket` | Close the current ticket channel (resolution modal; staff must message the opener) | — |
+| `/close-ticket` | Close the current ticket channel (resolution modal; posts a player-facing receipt before archive) | — |
 | `/merge-ticket` | Merge another user's ticket into the current channel (staff only; copies messages, notifies user, deletes source) | `user` (required) |
 | `/ticket-panel` | Post a persistent ticket panel with buttons | — |
 | `/help` | Browse all bot commands via an interactive select menu | — |
