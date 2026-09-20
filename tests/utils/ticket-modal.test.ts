@@ -14,10 +14,14 @@ import {
 } from "../../src/utils/ticketPlatform.js";
 
 type ModalJson = ReturnType<ReturnType<typeof buildTicketModal>["toJSON"]>;
+/** The subset of modal components that wrap an inner component (label components). */
+type LabelComponent = Extract<ModalJson["components"][number], { component: unknown }>;
 
 /** Discord serialises a select inside a modal as a label component wrapping type 3. */
-function platformComponent(json: ModalJson) {
-  return json.components.find((c) => "component" in c && c.component.type === 3);
+function platformComponent(json: ModalJson): LabelComponent | undefined {
+  return json.components.find(
+    (c): c is LabelComponent => "component" in c && c.component.type === 3,
+  );
 }
 
 describe("ticket modal", () => {
