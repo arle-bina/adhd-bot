@@ -602,8 +602,14 @@ async function finalizeTicketClose(
     receiptUrl ? `\n**Support receipt:** ${receiptUrl}` : "",
   ].filter(Boolean).join("\n").slice(0, 1900);
 
-  // Persist the resolution before the channel is removed. A later delivery
-  // sweep can retry the channel/DM path if Discord rejects the message.
+  // Best-effort: mirror the close + resolution onto the backend so the ops
+  // dashboard and the pending-resolutions sweep have the record. This must NOT
+  // block the Discord close. apiUpdateTicket returns undefined when the API is
+  // unconfigured, returns a non-2xx, OR returns a 2xx with an empty body (its
+  // response.json() then throws) — none of which mean the close should fail.
+  // The in-channel receipt and resolution DM below already notify the player,
+  // so a persist miss degrades gracefully instead of trapping staff with a
+  // "something went wrong" they can't clear.
   const persisted = await apiUpdateTicket({
     discordChannelId: channel.id,
     action: "close",
@@ -617,7 +623,10 @@ async function finalizeTicketClose(
     resolutionDelivered: false,
   });
   if (!persisted) {
-    throw new Error("Could not persist the ticket resolution; leaving the Discord channel open");
+    console.warn(
+      `Ticket #${paddedNum} close: backend resolution persist did not confirm — ` +
+        `closing the Discord channel anyway (receipt/DM still attempted below).`,
+    );
   }
 
   let channelReceiptDelivered = false;
