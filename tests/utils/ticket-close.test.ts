@@ -91,15 +91,32 @@ describe("handleTicketCloseModalSubmit", () => {
     expect(ticketsApi.updateTicket).toHaveBeenCalledWith(
       expect.objectContaining({ action: "close" }),
     );
-    // ...but its undefined result did NOT block the close:
-    expect(channel.delete).toHaveBeenCalled();
+    // ...but its undefined result did NOT hide the channel receipt:
+    expect(channel.delete).not.toHaveBeenCalled();
+    expect(channel.send).toHaveBeenCalled();
     expect(ticketStore.removeTicket).toHaveBeenCalledWith("g1", "c1");
 
     // The staff-facing reply is success, never the "something went wrong" regression.
-    expect(interaction.editReply).toHaveBeenCalledWith({ content: "Ticket closed." });
+    expect(interaction.editReply).toHaveBeenCalledWith({
+      content: "Ticket closed. The receipt remains visible in this channel.",
+    });
     const replies = vi.mocked(interaction.editReply).mock.calls.flat();
     for (const call of replies) {
       expect(JSON.stringify(call)).not.toContain("Something went wrong");
     }
+  });
+
+  it("keeps the ticket available for retry when its channel receipt fails", async () => {
+    const { interaction, channel, ticket } = buildScene();
+    vi.mocked(ticketStore.getTicketByChannel).mockReturnValue(ticket as never);
+    vi.mocked(channel.send as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("Discord unavailable"));
+
+    await handleTicketCloseModalSubmit(interaction as never);
+
+    expect(ticketStore.removeTicket).not.toHaveBeenCalled();
+    expect(channel.delete).not.toHaveBeenCalled();
+    expect(interaction.editReply).toHaveBeenCalledWith({
+      content: "The resolution was saved, but the receipt could not be posted in this channel. Please retry the close.",
+    });
   });
 });

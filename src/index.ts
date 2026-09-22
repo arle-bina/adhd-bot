@@ -22,7 +22,6 @@ import {
   emojiMatches as reactionRoleEmojiMatches,
 } from "./utils/reactionRoleStore.js";
 import {
-  fetchAllMessages,
   handleLockReaction,
   TICKET_CLOSE_MODAL_PREFIX,
   handleTicketCloseModalSubmit,
@@ -31,11 +30,10 @@ import {
   TICKET_CLAIM_BUTTON_ID,
   handleClaimTicket,
 } from "./utils/tickets.js";
-import { postTicketClosureLog } from "./utils/ticketClosureLog.js";
 import { getChannelConfig, postWebhookReaction, getPendingPasswordResets, ackPasswordResets, getPendingBroadcastDms, ackBroadcastDms } from "./utils/api-game.js";
 import { getBulkSyncRoles, type SyncRolesBulkUser } from "./utils/api.js";
 import { syncMemberRoles } from "./utils/roles.js";
-import { getTicketByChannel, removeTicket } from "./utils/ticketStore.js";
+import { getTicketByChannel } from "./utils/ticketStore.js";
 import type { TicketCategory } from "./utils/ticketStore.js";
 import { readTicketModalFields, showTicketModal } from "./utils/ticketModal.js";
 import { updateTicket as apiUpdateTicket, getPendingResolutions, getTicketReceiptUrl } from "./utils/ticketsApi.js";
@@ -276,8 +274,8 @@ client.once("ready", () => {
   setInterval(autoSyncRoles, 6 * 60 * 60 * 1000);
 
   // Finish ticket resolution delivery started by agents or admins in the ops
-  // dashboard. A dashboard channel post is a visible fallback, but the bot
-  // owns the final DM/close lifecycle so a resolved ticket cannot remain open.
+  // dashboard. Ops owns channel receipts; the bot sends a DM only for legacy
+  // records that never had a ticket channel.
   const deliverResolutions = async () => {
     try {
       const pending = await getPendingResolutions();
@@ -297,96 +295,24 @@ client.once("ready", () => {
             .setFooter({ text: "Reply by opening a new ticket if you need further help." })
             .setTimestamp();
 
-          let channel: TextChannel | null = null;
-          let channelFetchFailed = false;
+          // Ops is the sole sender when a ticket has a channel. A duplicate
+          // bot post or DM would be invisible to staff or race the Ops retry.
           if (ticket.discordChannelId) {
-            try {
-              const candidate = await client.channels.fetch(ticket.discordChannelId);
-              if (candidate?.isTextBased() && "send" in candidate && "delete" in candidate) {
-                channel = candidate as TextChannel;
-              }
-            } catch (err) {
-              const code = String((err as { code?: unknown })?.code ?? "");
-              // Unknown Channel means it is already closed. Other failures
-              // (permissions/network) must remain retryable.
-              channelFetchFailed = code !== "10003";
-              if (channelFetchFailed) {
-                console.warn(`Resolution channel lookup failed for #${ticket.ticketNumber}:`, err);
-              }
+            if (ticket.channelUpdatePosted && !ticket.deliveredAt) {
+              await apiUpdateTicket({ ticketNumber: ticket.ticketNumber, action: "resolution-delivered" });
             }
+            continue;
           }
 
-          // Prefer a DM so deleting the ticket channel cannot hide the receipt.
-          let delivered = Boolean(ticket.deliveredAt) || Boolean(ticket.channelUpdatePosted);
+          // Legacy records without a channel have no place for a visible
+          // receipt. Keep the existing DM fallback for those only.
           if (plan.needsPlayerDelivery) {
             try {
               const user = await client.users.fetch(ticket.discordUserId);
               await user.send({ embeds: [embed] });
-              delivered = true;
-            } catch {
-              // DMs may be closed; use the already-open channel below.
-            }
-          }
-
-          // If the dashboard did not already post a channel receipt, use the
-          // channel as the final delivery fallback before leaving it pending.
-          if (!delivered && channel && plan.needsPlayerDelivery && !ticket.channelUpdatePosted) {
-            try {
-              await channel.send({
-                content: `<@${ticket.discordUserId}>`,
-                embeds: [embed],
-                allowedMentions: { users: [ticket.discordUserId] },
-              });
-              delivered = true;
-            } catch {
-              // Leave undelivered and retry on the next sweep.
-            }
-          }
-
-          // The dashboard's channel post is a valid fallback when DMs are
-          // closed. It is safe to close only after acknowledging that post.
-          if (!delivered && ticket.channelUpdatePosted) delivered = true;
-
-          if (delivered && !ticket.deliveredAt) {
-            const marked = await apiUpdateTicket({ ticketNumber: ticket.ticketNumber, action: "resolution-delivered" });
-            if (!marked) delivered = false;
-          }
-
-          if (delivered && plan.needsChannelClose) {
-            let closed = false;
-            if (channel) {
-              const storedTicket = getTicketByChannel(channel.guild.id, channel.id);
-              const logPosted = await postTicketClosureLog(channel.guild, {
-                ticketNumber: ticket.ticketNumber,
-                category: storedTicket?.category ?? "bug",
-                userId: storedTicket?.userId ?? ticket.discordUserId,
-                createdAt: storedTicket?.createdAt ?? new Date().toISOString(),
-                subject: storedTicket?.subject,
-                description: storedTicket?.description,
-                closerId: client.user?.id ?? "resolution-bot",
-                resolutionMessage: ticket.message,
-                receiptUrl,
-                messages: await fetchAllMessages(channel, 500),
-              });
-              if (!logPosted) {
-                console.warn(`Ticket #${ticket.ticketNumber} left open because its closure log could not be posted`);
-                continue;
-              }
-              try {
-                await channel.delete(`Resolved ticket #${ticket.ticketNumber}`);
-                closed = true;
-              } catch (err) {
-                console.warn(`Resolution channel close failed for #${ticket.ticketNumber}:`, err);
-              }
-            } else if (!channelFetchFailed) {
-              closed = true;
-            }
-            if (closed) {
-              await apiUpdateTicket({ ticketNumber: ticket.ticketNumber, action: "resolution-channel-closed" });
-              const guildId = channel?.guild?.id || process.env.DISCORD_GUILD_ID;
-              if (guildId && ticket.discordChannelId) {
-                removeTicket(guildId, ticket.discordChannelId);
-              }
+              await apiUpdateTicket({ ticketNumber: ticket.ticketNumber, action: "resolution-delivered" });
+            } catch (err) {
+              console.warn(`Resolution fallback DM failed for #${ticket.ticketNumber}:`, err);
             }
           }
         } catch (err) {

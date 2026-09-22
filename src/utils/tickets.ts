@@ -575,20 +575,6 @@ async function finalizeTicketClose(
     receiptUrl,
   );
 
-  const logChannelId = process.env.TICKET_LOG_CHANNEL_ID ?? "1483974417628270593";
-  if (logChannelId) {
-    const logChannel = guild.channels.cache.get(logChannelId) as TextChannel | undefined;
-    if (logChannel) {
-      const buffer = Buffer.from(transcript, "utf-8");
-      await logChannel
-        .send({
-          embeds: [logEmbed],
-          files: [{ attachment: buffer, name: `ticket-${paddedNum}.txt` }],
-        })
-        .catch((err) => console.error("Failed to post transcript:", err));
-    }
-  }
-
   const playerResolution = resolutionMessage || "Your support report was closed from Discord.";
   const playerFollowUp = "If the issue is still present, open a new support ticket and mention this report.";
   const receiptMessage = [
@@ -607,7 +593,7 @@ async function finalizeTicketClose(
   // block the Discord close. apiUpdateTicket returns undefined when the API is
   // unconfigured, returns a non-2xx, OR returns a 2xx with an empty body (its
   // response.json() then throws) — none of which mean the close should fail.
-  // The in-channel receipt and resolution DM below already notify the player,
+  // The in-channel receipt below notifies the player,
   // so a persist miss degrades gracefully instead of trapping staff with a
   // "something went wrong" they can't clear.
   const persisted = await apiUpdateTicket({
@@ -625,7 +611,7 @@ async function finalizeTicketClose(
   if (!persisted) {
     console.warn(
       `Ticket #${paddedNum} close: backend resolution persist did not confirm — ` +
-        `closing the Discord channel anyway (receipt/DM still attempted below).`,
+        `closing the ticket record anyway (channel receipt still attempted below).`,
     );
   }
 
@@ -644,66 +630,58 @@ async function finalizeTicketClose(
     console.warn("Ticket channel receipt post failed:", err);
   }
 
-  let resolutionDmDelivered = false;
-  if (closer.id !== ticket.userId && resolutionMessage) {
-    try {
-      const opener = await closer.client.users.fetch(ticket.userId);
-      const header = `Your **${config.label}** ticket has been closed by ${closer.user.tag}.\n\n**Resolution**\n`;
-      const maxRes = Math.max(0, 4096 - header.length);
-      const dmEmbed = new EmbedBuilder()
-        .setTitle(`Ticket #${paddedNum} closed`)
-        .setColor(0x95a5a6)
-        .setDescription(
-          `${header}${resolutionMessage.slice(0, maxRes)}${receiptUrl ? `\n\n**Support receipt:** ${receiptUrl}` : ""}`.slice(
-            0,
-            4096,
-          ),
-        )
-        .setFooter({ text: "ahousedividedgame.com" })
-        .setTimestamp();
-
-      if (ticket.subject) {
-        dmEmbed.addFields({ name: "Subject", value: ticket.subject });
+  if (channelReceiptDelivered) {
+    const logChannelId = process.env.TICKET_LOG_CHANNEL_ID ?? "1483974417628270593";
+    if (logChannelId) {
+      const logChannel = guild.channels.cache.get(logChannelId) as TextChannel | undefined;
+      if (logChannel) {
+        const buffer = Buffer.from(transcript, "utf-8");
+        await logChannel
+          .send({
+            embeds: [logEmbed],
+            files: [{ attachment: buffer, name: `ticket-${paddedNum}.txt` }],
+          })
+          .catch((err) => console.error("Failed to post transcript:", err));
       }
-
-      await opener.send({ embeds: [dmEmbed] });
-      resolutionDmDelivered = true;
-    } catch (err) {
-      console.warn("Ticket resolution DM failed:", err);
     }
+
   }
 
-  // Notify openers of merged source tickets that the merged ticket is now closed
-  const mergedFromIds = (ticket.mergedFromUserIds ?? []).filter(
-    (id) => id !== ticket.userId && id !== closer.id,
-  );
-  for (const mergedUserId of mergedFromIds) {
-    try {
-      const mergedUser = await closer.client.users.fetch(mergedUserId);
-      const header = `A ticket your earlier ticket was merged into has been closed by ${closer.user.tag}.\n\n${
-        resolutionMessage ? "**Resolution**\n" : ""
-      }`;
-      const maxRes = Math.max(0, 4096 - header.length);
-      const mergedDm = new EmbedBuilder()
-        .setTitle(`Ticket #${paddedNum} closed`)
-        .setColor(0x95a5a6)
-        .setDescription(
-          `${header}${resolutionMessage ? resolutionMessage.slice(0, maxRes) : ""}${
-            receiptUrl ? `\n\n**Support receipt:** ${receiptUrl}` : ""
-          }`.trim().slice(0, 4096),
-        )
-        .setFooter({ text: "ahousedividedgame.com" })
-        .setTimestamp();
+  if (channelReceiptDelivered) {
+    // Notify openers of merged source tickets that the merged ticket is now closed
+    const mergedFromIds = (ticket.mergedFromUserIds ?? []).filter(
+      (id) => id !== ticket.userId && id !== closer.id,
+    );
+    for (const mergedUserId of mergedFromIds) {
+      try {
+        const mergedUser = await closer.client.users.fetch(mergedUserId);
+        const header = `A ticket your earlier ticket was merged into has been closed by ${closer.user.tag}.\n\n${
+          resolutionMessage ? "**Resolution**\n" : ""
+        }`;
+        const maxRes = Math.max(0, 4096 - header.length);
+        const mergedDm = new EmbedBuilder()
+          .setTitle(`Ticket #${paddedNum} closed`)
+          .setColor(0x95a5a6)
+          .setDescription(
+            `${header}${resolutionMessage ? resolutionMessage.slice(0, maxRes) : ""}${
+              receiptUrl ? `\n\n**Support receipt:** ${receiptUrl}` : ""
+            }`.trim().slice(0, 4096),
+          )
+          .setFooter({ text: "ahousedividedgame.com" })
+          .setTimestamp();
 
-      await mergedUser.send({ embeds: [mergedDm] });
-    } catch (err) {
-      console.warn(`Merged-ticket close DM to ${mergedUserId} failed:`, err);
+        await mergedUser.send({ embeds: [mergedDm] });
+      } catch (err) {
+        console.warn(`Merged-ticket close DM to ${mergedUserId} failed:`, err);
+      }
     }
+
   }
 
-  removeTicket(guild.id, channel.id);
-  await channel.delete(`Ticket #${paddedNum} closed by ${closer.user.tag}`).catch(() => {});
-  return resolutionDmDelivered || channelReceiptDelivered;
+  // Keep the channel visible so staff and the reporter can read the receipt.
+  // The ticket store still marks it closed and prevents another close action.
+  if (channelReceiptDelivered) removeTicket(guild.id, channel.id);
+  return channelReceiptDelivered;
 }
 
 export async function handleClaimTicket(
@@ -814,13 +792,10 @@ export async function handleTicketCloseModalSubmit(interaction: ModalSubmitInter
   await interaction.deferReply({ ephemeral: true });
 
   try {
-    const dmDelivered = await finalizeTicketClose(textChannel, closer, ticket, resolutionMessage);
-    let reply = "Ticket closed.";
-    if (staffClosingOther && resolutionMessage) {
-      reply += dmDelivered
-        ? " The opener was sent a player-facing resolution update."
-        : " The player-facing resolution could not be delivered; it will be retried by the backend sweep.";
-    }
+    const channelDelivered = await finalizeTicketClose(textChannel, closer, ticket, resolutionMessage);
+    let reply = channelDelivered
+      ? "Ticket closed. The receipt remains visible in this channel."
+      : "The resolution was saved, but the receipt could not be posted in this channel. Please retry the close.";
     await interaction.editReply({ content: reply });
   } catch (err) {
     console.error("Ticket close finalize error:", err);
