@@ -432,6 +432,21 @@ export async function createTicket(
         if (res?.ticketNumber != null) {
           addTicket(guild.id, { ...ticketRecord, apiTicketNumber: res.ticketNumber });
 
+          let receiptUrl: string | undefined;
+          for (const delayMs of [0, 1000, 3000]) {
+            if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
+            receiptUrl = await getTicketReceiptUrl(res.ticketNumber);
+            if (receiptUrl) break;
+          }
+          if (receiptUrl) {
+            await channel.send(`Your support receipt: ${receiptUrl}`).catch((err) => {
+              console.error(`Failed to post ticket #${res.ticketNumber} receipt in its channel:`, err);
+            });
+          } else {
+            console.error(`Receipt link unavailable for newly created ticket #${res.ticketNumber}`);
+            await alertSyncFailure(guild, channel.id, ticketNumber, category, username);
+          }
+
           // The backend persists the number we sent, so res.ticketNumber should
           // equal `ticketNumber` and the channel/embed already show it — no rename.
           // A mismatch means the backend already had that number for a different
