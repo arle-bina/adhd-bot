@@ -13,6 +13,12 @@ describe("resolution delivery plan", () => {
     ).toEqual({ needsPlayerDelivery: false, needsChannelClose: false });
   });
 
+  it("waits for Ops when a channel receipt is still pending", () => {
+    expect(
+      resolutionDeliveryPlan({ discordChannelId: "channel-1", deliveredAt: null }),
+    ).toEqual({ needsPlayerDelivery: false, needsChannelClose: false });
+  });
+
   it("keeps a delivered ticket channel visible", () => {
     expect(
       resolutionDeliveryPlan({
