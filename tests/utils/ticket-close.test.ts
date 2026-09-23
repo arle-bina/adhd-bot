@@ -4,7 +4,12 @@ import { ChannelType } from "discord.js";
 vi.mock("../../src/utils/ticketsApi.js", () => ({
   updateTicket: vi.fn(async (payload: { action: string }) =>
     payload.action === "close"
-      ? { ok: true, channelUpdatePosted: false, resolutionDelivered: false }
+      ? {
+          ok: true,
+          channelUpdatePosted: false,
+          resolutionDelivered: false,
+          resolutionVersion: Date.parse("2026-09-22T10:00:00.000Z"),
+        }
       : { ok: true },
   ),
   getTicketReceiptUrl: vi.fn(
@@ -130,7 +135,7 @@ describe("handleTicketCloseModalSubmit", () => {
         content: expect.stringContaining(
           "https://ops.example/receipt/test-ticket",
         ),
-        nonce: "tr-42",
+        nonce: `tr-42-${Date.parse("2026-09-22T10:00:00.000Z").toString(36)}`,
         enforceNonce: true,
       }),
     );
@@ -153,7 +158,7 @@ describe("handleTicketCloseModalSubmit", () => {
             }),
           }),
         ],
-        nonce: "td-42",
+        nonce: `td-42-${Date.parse("2026-09-22T10:00:00.000Z").toString(36)}`,
         enforceNonce: true,
       }),
     );

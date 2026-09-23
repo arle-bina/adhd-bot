@@ -48,6 +48,7 @@ import {
   beginTicketResolutionDelivery,
   endTicketResolutionDelivery,
   appendReceiptLink,
+  ticketResolutionNonce,
 } from "./ticketResolutionDelivery.js";
 
 const CATEGORY_CONFIG: Record<
@@ -829,14 +830,20 @@ async function finalizeTicketCloseImpl(
   playerResolution = persisted.finalOutcome || playerResolution;
 
   let channelReceiptDelivered = Boolean(persisted.channelUpdatePosted);
+  let channelReceiptMessageId: string | undefined;
   if (!channelReceiptDelivered) {
     try {
-      await channel.send({
+      const channelReceipt = await channel.send({
         content: receiptMessage,
         allowedMentions: { users: [ticket.userId] },
-        nonce: `tr-${apiTicketNumber}`,
+        nonce: ticketResolutionNonce(
+          "tr",
+          apiTicketNumber,
+          persisted.resolutionVersion,
+        ),
         enforceNonce: true,
       });
+      channelReceiptMessageId = channelReceipt.id;
       channelReceiptDelivered = true;
     } catch (err) {
       console.warn("Ticket channel receipt post failed:", err);
@@ -857,6 +864,9 @@ async function finalizeTicketCloseImpl(
     const channelReceiptRecorded = await apiUpdateTicket({
       discordChannelId: channel.id,
       action: "resolution-channel-delivered",
+      ...(channelReceiptMessageId
+        ? { messageId: channelReceiptMessageId }
+        : {}),
     });
     if (!channelReceiptRecorded) {
       console.warn(
@@ -932,7 +942,11 @@ async function finalizeTicketCloseImpl(
 
       await opener.send({
         embeds: [dmEmbed],
-        nonce: `td-${apiTicketNumber}`,
+        nonce: ticketResolutionNonce(
+          "td",
+          apiTicketNumber,
+          persisted.resolutionVersion,
+        ),
         enforceNonce: true,
       });
       dmDelivered = true;

@@ -56,6 +56,7 @@ export interface UpdateTicketResponse {
   channelUpdatePosted?: boolean;
   resolutionDelivered?: boolean;
   finalOutcome?: string;
+  resolutionVersion?: string | number | null;
 }
 
 interface TicketReceiptUrlResponse {
@@ -76,6 +77,7 @@ export interface UpdateTicketPayload {
   discordChannelId?: string;
   action: UpdateTicketAction;
   message?: TicketApiMessage;
+  messageId?: string;
   status?: string;
   closedBy?: string;
   resolution?: string;
@@ -130,6 +132,7 @@ export interface PendingResolution {
   discordUserId: string;
   discordChannelId?: string;
   message: string;
+  resolutionVersion?: string | number;
   channelUpdatePosted?: boolean;
   mergedFromUserIds?: string[];
 }

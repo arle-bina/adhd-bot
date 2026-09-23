@@ -4,6 +4,7 @@ import {
   endTicketResolutionDelivery,
   appendReceiptLink,
   resolutionDeliveryPlan,
+  ticketResolutionNonce,
 } from "../../src/utils/ticketResolutionDelivery.js";
 
 describe("resolution delivery plan", () => {
@@ -62,6 +63,18 @@ describe("appendReceiptLink", () => {
     const result = appendReceiptLink("x".repeat(200), url, 100);
     expect(result).toHaveLength(100);
     expect(result.endsWith(`**Support receipt:** ${url}`)).toBe(true);
+  });
+});
+
+describe("ticketResolutionNonce", () => {
+  it("reuses a nonce for retries and changes it for a corrected resolution", () => {
+    const first = ticketResolutionNonce("td", 42, "2026-09-22T10:00:00.000Z");
+    expect(ticketResolutionNonce("td", 42, "2026-09-22T10:00:00.000Z")).toBe(
+      first,
+    );
+    expect(
+      ticketResolutionNonce("td", 42, "2026-09-23T10:00:00.000Z"),
+    ).not.toBe(first);
   });
 });
 

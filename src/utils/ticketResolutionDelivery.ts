@@ -21,6 +21,24 @@ export function appendReceiptLink(
   return `${prefix}${receipt}`;
 }
 
+/** Use one Discord idempotency key per resolution version. */
+export function ticketResolutionNonce(
+  prefix: string,
+  ticketNumber: number,
+  resolutionVersion: unknown,
+): string {
+  const versionTime =
+    resolutionVersion instanceof Date
+      ? resolutionVersion.getTime()
+      : typeof resolutionVersion === "number"
+        ? resolutionVersion
+        : Date.parse(String(resolutionVersion ?? ""));
+  const version = Number.isFinite(versionTime)
+    ? versionTime.toString(36)
+    : "legacy";
+  return `${prefix}-${ticketNumber}-${version}`;
+}
+
 export function resolutionDeliveryPlan(state: ResolutionDeliveryState): {
   needsPlayerDelivery: boolean;
   needsChannelReceipt: boolean;

@@ -55,6 +55,7 @@ import {
   beginTicketResolutionDelivery,
   endTicketResolutionDelivery,
   resolutionDeliveryPlan,
+  ticketResolutionNonce,
 } from "./utils/ticketResolutionDelivery.js";
 import { checkMessage } from "./utils/filter.js";
 import { isBotEnabled } from "./utils/botState.js";
@@ -360,15 +361,20 @@ client.once("ready", () => {
               receiptUrl,
               1900,
             );
-            await ticketChannel.send({
+            const channelReceipt = await ticketChannel.send({
               content,
               allowedMentions: { users: [ticket.discordUserId] },
-              nonce: `tr-${ticket.ticketNumber}`,
+              nonce: ticketResolutionNonce(
+                "tr",
+                ticket.ticketNumber,
+                ticket.resolutionVersion,
+              ),
               enforceNonce: true,
             });
             const channelMarker = await apiUpdateTicket({
               ticketNumber: ticket.ticketNumber,
               action: "resolution-channel-delivered",
+              messageId: channelReceipt.id,
             });
             if (!channelMarker) {
               console.warn(
@@ -413,7 +419,11 @@ client.once("ready", () => {
             const user = await client.users.fetch(ticket.discordUserId);
             await user.send({
               embeds: [embed],
-              nonce: `td-${ticket.ticketNumber}`,
+              nonce: ticketResolutionNonce(
+                "td",
+                ticket.ticketNumber,
+                ticket.resolutionVersion,
+              ),
               enforceNonce: true,
             });
             const dmMarker = await apiUpdateTicket({
