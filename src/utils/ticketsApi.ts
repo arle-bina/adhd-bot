@@ -9,7 +9,8 @@ import { apiFetch, apiPost, apiPatch, opsApiFetch } from "./api-base.js";
 const TICKETS_ENDPOINT = "/api/discord-bot/tickets";
 
 /** Backend ticket category enum. */
-export type GameTicketCategory = "bug" | "moderation" | "account" | "gameplay" | "other";
+export type GameTicketCategory =
+  "bug" | "moderation" | "account" | "gameplay" | "other";
 
 export interface TicketApiMessage {
   discordMessageId?: string;
@@ -49,6 +50,15 @@ export interface CreateTicketResponse {
   message?: string;
 }
 
+export interface UpdateTicketResponse {
+  ok?: boolean;
+  alreadyClosed?: boolean;
+  channelUpdatePosted?: boolean;
+  resolutionDelivered?: boolean;
+  finalOutcome?: string;
+  resolutionVersion?: string | number | null;
+}
+
 interface TicketReceiptUrlResponse {
   receiptUrl: string;
 }
@@ -59,24 +69,18 @@ export type UpdateTicketAction =
   | "close"
   | "retriage"
   | "resolution-delivered"
-  | "resolution-channel-closed";
-
-export interface TicketResolutionPayload {
-  message: string;
-  actions?: string[];
-  followUp?: string;
-  source?: "discord" | "agent" | "ops";
-}
+  | "resolution-dm-delivered"
+  | "resolution-channel-delivered";
 
 export interface UpdateTicketPayload {
   ticketNumber?: number;
   discordChannelId?: string;
   action: UpdateTicketAction;
   message?: TicketApiMessage;
+  messageId?: string;
   status?: string;
   closedBy?: string;
-  resolution?: string | TicketResolutionPayload;
-  resolutionDelivered?: boolean;
+  resolution?: string;
 }
 
 /** True only when the game API is configured — otherwise we skip the sync silently. */
@@ -97,7 +101,9 @@ function sleep(ms: number): Promise<void> {
  * and returns undefined after all attempts fail. Callers should treat a final
  * undefined as a real sync failure worth surfacing to staff, not a routine no-op.
  */
-export async function createTicket(payload: CreateTicketPayload): Promise<CreateTicketResponse | undefined> {
+export async function createTicket(
+  payload: CreateTicketPayload,
+): Promise<CreateTicketResponse | undefined> {
   if (!apiConfigured()) return undefined;
   let lastErr: unknown;
   for (let attempt = 1; attempt <= CREATE_TICKET_RETRIES; attempt++) {
@@ -105,11 +111,18 @@ export async function createTicket(payload: CreateTicketPayload): Promise<Create
       return await apiPost<CreateTicketResponse>(TICKETS_ENDPOINT, payload);
     } catch (err) {
       lastErr = err;
-      console.error(`[ticketsApi] createTicket sync failed (attempt ${attempt}/${CREATE_TICKET_RETRIES}):`, err);
-      if (attempt < CREATE_TICKET_RETRIES) await sleep(CREATE_TICKET_RETRY_DELAY_MS * attempt);
+      console.error(
+        `[ticketsApi] createTicket sync failed (attempt ${attempt}/${CREATE_TICKET_RETRIES}):`,
+        err,
+      );
+      if (attempt < CREATE_TICKET_RETRIES)
+        await sleep(CREATE_TICKET_RETRY_DELAY_MS * attempt);
     }
   }
-  console.error("[ticketsApi] createTicket sync exhausted retries, giving up:", lastErr);
+  console.error(
+    "[ticketsApi] createTicket sync exhausted retries, giving up:",
+    lastErr,
+  );
   return undefined;
 }
 
@@ -119,11 +132,9 @@ export interface PendingResolution {
   discordUserId: string;
   discordChannelId?: string;
   message: string;
-  deliveredAt?: string | null;
-  channelClosedAt?: string | null;
+  resolutionVersion?: string | number;
   channelUpdatePosted?: boolean;
-  needsDelivery?: boolean;
-  needsChannelClose?: boolean;
+  mergedFromUserIds?: string[];
 }
 
 interface PendingResolutionsResponse {
@@ -138,7 +149,9 @@ interface PendingResolutionsResponse {
 export async function getPendingResolutions(): Promise<PendingResolution[]> {
   if (!apiConfigured()) return [];
   try {
-    const res = await apiFetch<PendingResolutionsResponse>(`${TICKETS_ENDPOINT}/pending-resolutions`);
+    const res = await apiFetch<PendingResolutionsResponse>(
+      `${TICKETS_ENDPOINT}/pending-resolutions`,
+    );
     return res.tickets ?? [];
   } catch (err) {
     console.error("[ticketsApi] getPendingResolutions failed:", err);
@@ -150,10 +163,12 @@ export async function getPendingResolutions(): Promise<PendingResolution[]> {
  * Mirror a follow-up message / status change / close onto an existing ticket.
  * Non-fatal: logs and returns undefined on any failure (including missing config).
  */
-export async function updateTicket(payload: UpdateTicketPayload): Promise<CreateTicketResponse | undefined> {
+export async function updateTicket(
+  payload: UpdateTicketPayload,
+): Promise<UpdateTicketResponse | undefined> {
   if (!apiConfigured()) return undefined;
   try {
-    return await apiPatch<CreateTicketResponse>(TICKETS_ENDPOINT, payload);
+    return await apiPatch<UpdateTicketResponse>(TICKETS_ENDPOINT, payload);
   } catch (err) {
     console.error("[ticketsApi] updateTicket sync failed:", err);
     return undefined;
@@ -161,7 +176,9 @@ export async function updateTicket(payload: UpdateTicketPayload): Promise<Create
 }
 
 /** Mint or retrieve the opaque public receipt URL for a ticket. */
-export async function getTicketReceiptUrl(ticketNumber: number): Promise<string | undefined> {
+export async function getTicketReceiptUrl(
+  ticketNumber: number,
+): Promise<string | undefined> {
   try {
     const result = await opsApiFetch<TicketReceiptUrlResponse>(
       `/api/tickets/${encodeURIComponent(String(ticketNumber))}/public-link`,

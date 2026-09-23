@@ -7,6 +7,7 @@ import {
   ActivityType,
   Partials,
   TextChannel,
+  ChannelType,
 } from "discord.js";
 import { readdirSync } from "fs";
 import { fileURLToPath } from "url";
@@ -29,19 +30,40 @@ import {
   mergeTickets,
   TICKET_CLAIM_BUTTON_ID,
   handleClaimTicket,
+  closeTicketChannel,
 } from "./utils/tickets.js";
-import { getChannelConfig, postWebhookReaction, getPendingPasswordResets, ackPasswordResets, getPendingBroadcastDms, ackBroadcastDms } from "./utils/api-game.js";
+import {
+  getChannelConfig,
+  postWebhookReaction,
+  getPendingPasswordResets,
+  ackPasswordResets,
+  getPendingBroadcastDms,
+  ackBroadcastDms,
+} from "./utils/api-game.js";
 import { getBulkSyncRoles, type SyncRolesBulkUser } from "./utils/api.js";
 import { syncMemberRoles } from "./utils/roles.js";
-import { getTicketByChannel } from "./utils/ticketStore.js";
+import { getTicketByChannel, removeTicket } from "./utils/ticketStore.js";
 import type { TicketCategory } from "./utils/ticketStore.js";
 import { readTicketModalFields, showTicketModal } from "./utils/ticketModal.js";
-import { updateTicket as apiUpdateTicket, getPendingResolutions, getTicketReceiptUrl } from "./utils/ticketsApi.js";
-import { resolutionDeliveryPlan } from "./utils/ticketResolutionDelivery.js";
+import {
+  updateTicket as apiUpdateTicket,
+  getPendingResolutions,
+  getTicketReceiptUrl,
+} from "./utils/ticketsApi.js";
+import {
+  appendReceiptLink,
+  beginTicketResolutionDelivery,
+  endTicketResolutionDelivery,
+  resolutionDeliveryPlan,
+  ticketResolutionNonce,
+} from "./utils/ticketResolutionDelivery.js";
 import { checkMessage } from "./utils/filter.js";
 import { isBotEnabled } from "./utils/botState.js";
 import { isChannelBanned } from "./utils/channelBans.js";
-import { SUGGEST_MODAL_PREFIX, handleSuggestModal } from "./commands/suggest.js";
+import {
+  SUGGEST_MODAL_PREFIX,
+  handleSuggestModal,
+} from "./commands/suggest.js";
 import {
   pruneAllExpired,
   getActiveStrikes,
@@ -103,14 +125,16 @@ async function refreshChannelConfig() {
     const config = await getChannelConfig();
     newsChannelId = config.newsChannelId;
     suggestionsChannelId = config.suggestionsChannelId;
-    console.log(`Channel config loaded — news: ${newsChannelId ?? "none"}, suggestions: ${suggestionsChannelId ?? "none"}`);
+    console.log(
+      `Channel config loaded — news: ${newsChannelId ?? "none"}, suggestions: ${suggestionsChannelId ?? "none"}`,
+    );
   } catch (err) {
     console.error("Failed to load channel config from game API:", err);
   }
 }
 
 const commandFiles = readdirSync(join(__dirname, "commands")).filter(
-  (f) => f.endsWith(".js") || f.endsWith(".ts")
+  (f) => f.endsWith(".js") || f.endsWith(".ts"),
 );
 
 for (const file of commandFiles) {
@@ -126,7 +150,9 @@ for (const file of commandFiles) {
 }
 
 client.once("ready", () => {
-  console.log(`Bot ready as ${client.user?.tag} — ${commands.size} commands loaded`);
+  console.log(
+    `Bot ready as ${client.user?.tag} — ${commands.size} commands loaded`,
+  );
 
   // Set bot presence
   client.user?.setPresence({
@@ -173,11 +199,15 @@ client.once("ready", () => {
         try {
           const user = await client.users.fetch(userId);
           const reasons = items
-            .map((i, idx) => `**${idx + 1}.** ${i.strike.reason || "(no reason)"}`)
+            .map(
+              (i, idx) => `**${idx + 1}.** ${i.strike.reason || "(no reason)"}`,
+            )
             .join("\n")
             .slice(0, 1024);
           const embed = new EmbedBuilder()
-            .setTitle(`Strike${items.length > 1 ? "s" : ""} expired in ${guild.name}`)
+            .setTitle(
+              `Strike${items.length > 1 ? "s" : ""} expired in ${guild.name}`,
+            )
             .setColor(0x57f287)
             .setDescription(
               items.length > 1
@@ -191,7 +221,9 @@ client.once("ready", () => {
                 value: `${remainingActive}/${STRIKE_THRESHOLD}`,
               },
             )
-            .setFooter({ text: `Strikes expire ${STRIKE_DURATION_DAYS} days after they're issued` })
+            .setFooter({
+              text: `Strikes expire ${STRIKE_DURATION_DAYS} days after they're issued`,
+            })
             .setTimestamp();
           await user.send({ embeds: [embed] }).catch(() => {
             // DMs closed — nothing more we can do.
@@ -211,7 +243,9 @@ client.once("ready", () => {
   const remindUnverified = async () => {
     for (const guild of client.guilds.cache.values()) {
       try {
-        const channel = guild.channels.cache.get(process.env.WELCOME_CHANNEL_ID!) as TextChannel | undefined;
+        const channel = guild.channels.cache.get(
+          process.env.WELCOME_CHANNEL_ID!,
+        ) as TextChannel | undefined;
         if (!channel?.isTextBased()) continue;
 
         const embed = new EmbedBuilder()
@@ -273,50 +307,142 @@ client.once("ready", () => {
   };
   setInterval(autoSyncRoles, 6 * 60 * 60 * 1000);
 
-  // Finish ticket resolution delivery started by agents or admins in the ops
-  // dashboard. Ops owns channel receipts; the bot sends a DM only for legacy
-  // records that never had a ticket channel.
+  // Finish ticket resolutions started by Ops. Channel delivery and the final
+  // player DM have separate markers, so this can keep both visible and close
+  // the channel without sending the same receipt twice.
+  let resolutionSweepRunning = false;
   const deliverResolutions = async () => {
+    if (resolutionSweepRunning) return;
+    resolutionSweepRunning = true;
     try {
       const pending = await getPendingResolutions();
       if (pending.length === 0) return;
 
       for (const ticket of pending) {
+        if (!beginTicketResolutionDelivery(ticket.ticketNumber)) continue;
         try {
           const plan = resolutionDeliveryPlan(ticket);
           const receiptUrl = await getTicketReceiptUrl(ticket.ticketNumber);
-          const embed = new EmbedBuilder()
-            .setTitle(`Your ticket #${ticket.ticketNumber} has been resolved`)
-            .setDescription([
-              ticket.message || "Your ticket has been resolved.",
-              receiptUrl ? `\nSupport receipt: ${receiptUrl}` : "",
-            ].filter(Boolean).join("\n"))
-            .setColor(0x57f287)
-            .setFooter({ text: "Reply by opening a new ticket if you need further help." })
-            .setTimestamp();
+          if (!receiptUrl)
+            throw new Error(
+              "Support receipt link is unavailable; resolution delivery will retry.",
+            );
+          let ticketChannel: TextChannel | null = null;
 
-          // Ops is the sole sender when a ticket has a channel. A duplicate
-          // bot post or DM would be invisible to staff or race the Ops retry.
           if (ticket.discordChannelId) {
-            if (ticket.channelUpdatePosted && !ticket.deliveredAt) {
-              await apiUpdateTicket({ ticketNumber: ticket.ticketNumber, action: "resolution-delivered" });
+            let candidate = null;
+            try {
+              candidate = await client.channels.fetch(ticket.discordChannelId);
+            } catch (error) {
+              const code =
+                error && typeof error === "object" && "code" in error
+                  ? error.code
+                  : undefined;
+              if (code !== 10003) throw error;
             }
-            continue;
+            if (candidate?.type === ChannelType.GuildText) {
+              ticketChannel = candidate as TextChannel;
+            }
           }
 
-          // Legacy records without a channel have no place for a visible
-          // receipt. Keep the existing DM fallback for those only.
+          if (ticketChannel && plan.needsChannelReceipt) {
+            const outcome =
+              ticket.message || "Your support report has been resolved.";
+            const content = appendReceiptLink(
+              [
+                `<@${ticket.discordUserId}>`,
+                "",
+                "**Your support report has been resolved.**",
+                "",
+                outcome,
+              ]
+                .filter(Boolean)
+                .join("\n"),
+              receiptUrl,
+              1900,
+            );
+            const channelReceipt = await ticketChannel.send({
+              content,
+              allowedMentions: { users: [ticket.discordUserId] },
+              nonce: ticketResolutionNonce(
+                "tr",
+                ticket.ticketNumber,
+                ticket.resolutionVersion,
+              ),
+              enforceNonce: true,
+            });
+            const channelMarker = await apiUpdateTicket({
+              ticketNumber: ticket.ticketNumber,
+              action: "resolution-channel-delivered",
+              messageId: channelReceipt.id,
+            });
+            if (!channelMarker) {
+              console.warn(
+                `Ticket #${ticket.ticketNumber} channel receipt marker did not persist.`,
+              );
+            }
+          }
+
+          if (ticketChannel && plan.needsChannelClose) {
+            await closeTicketChannel(
+              ticketChannel,
+              [ticket.discordUserId, ...(ticket.mergedFromUserIds ?? [])],
+              ticket.ticketNumber,
+            );
+            if (getTicketByChannel(ticketChannel.guild.id, ticketChannel.id)) {
+              removeTicket(ticketChannel.guild.id, ticketChannel.id);
+            }
+          }
+
           if (plan.needsPlayerDelivery) {
-            try {
-              const user = await client.users.fetch(ticket.discordUserId);
-              await user.send({ embeds: [embed] });
-              await apiUpdateTicket({ ticketNumber: ticket.ticketNumber, action: "resolution-delivered" });
-            } catch (err) {
-              console.warn(`Resolution fallback DM failed for #${ticket.ticketNumber}:`, err);
+            const embed = new EmbedBuilder()
+              .setTitle(`Your ticket #${ticket.ticketNumber} has been resolved`)
+              .setDescription(
+                appendReceiptLink(
+                  [
+                    ticket.message || "Your ticket has been resolved.",
+                    "",
+                    "If the issue is still present, open a new support ticket and mention this report.",
+                  ]
+                    .filter(Boolean)
+                    .join("\n"),
+                  receiptUrl,
+                  4096,
+                ),
+              )
+              .setColor(0x57f287)
+              .setFooter({
+                text: "Reply by opening a new ticket if you need further help.",
+              })
+              .setTimestamp();
+
+            const user = await client.users.fetch(ticket.discordUserId);
+            await user.send({
+              embeds: [embed],
+              nonce: ticketResolutionNonce(
+                "td",
+                ticket.ticketNumber,
+                ticket.resolutionVersion,
+              ),
+              enforceNonce: true,
+            });
+            const dmMarker = await apiUpdateTicket({
+              ticketNumber: ticket.ticketNumber,
+              action: "resolution-dm-delivered",
+            });
+            if (!dmMarker) {
+              console.warn(
+                `Ticket #${ticket.ticketNumber} DM was sent, but its delivery marker did not persist.`,
+              );
             }
           }
         } catch (err) {
-          console.error(`Resolution delivery error for ticket #${ticket.ticketNumber}:`, err);
+          console.error(
+            `Resolution delivery error for ticket #${ticket.ticketNumber}:`,
+            err,
+          );
+        } finally {
+          endTicketResolutionDelivery(ticket.ticketNumber);
         }
 
         // Small delay between sends to respect Discord rate limits.
@@ -324,6 +450,8 @@ client.once("ready", () => {
       }
     } catch (err) {
       console.error("Resolution delivery sweep error:", err);
+    } finally {
+      resolutionSweepRunning = false;
     }
   };
   setTimeout(deliverResolutions, 30 * 1000);
@@ -340,13 +468,15 @@ client.once("ready", () => {
       const delivered: string[] = [];
       for (const reset of pending) {
         try {
-          const expiresUnix = Math.floor(new Date(reset.expiresAt).getTime() / 1000);
+          const expiresUnix = Math.floor(
+            new Date(reset.expiresAt).getTime() / 1000,
+          );
           const embed = new EmbedBuilder()
             .setTitle("Password reset requested")
             .setDescription(
               `A password reset was requested for your A House Divided account.\n\n` +
-              `[Reset your password](${reset.url})\n\n` +
-              `The link expires <t:${expiresUnix}:R>. If you did not request this, you can ignore this message; your password is unchanged.`
+                `[Reset your password](${reset.url})\n\n` +
+                `The link expires <t:${expiresUnix}:R>. If you did not request this, you can ignore this message; your password is unchanged.`,
             )
             .setColor(0x5865f2)
             .setFooter({ text: "ahousedividedgame.com" })
@@ -409,7 +539,9 @@ client.once("ready", () => {
 
       await ackBroadcastDms(delivered, failed);
       if (delivered.length > 0 || failed.length > 0) {
-        console.log(`Broadcast DMs: ${delivered.length} delivered, ${failed.length} failed`);
+        console.log(
+          `Broadcast DMs: ${delivered.length} delivered, ${failed.length} failed`,
+        );
       }
     } catch (err) {
       console.error("Broadcast DM delivery sweep error:", err);
@@ -425,8 +557,10 @@ client.on("messageCreate", async (message) => {
   void handleAskContinuation(message);
   // Add 👍/👎 to webhook posts in the configured news/suggestions channels
   if (message.webhookId && message.guild) {
-    if ((newsChannelId && message.channelId === newsChannelId) ||
-        (suggestionsChannelId && message.channelId === suggestionsChannelId)) {
+    if (
+      (newsChannelId && message.channelId === newsChannelId) ||
+      (suggestionsChannelId && message.channelId === suggestionsChannelId)
+    ) {
       try {
         await message.react("👍");
         await message.react("👎");
@@ -452,25 +586,43 @@ client.on("messageCreate", async (message) => {
       await message.delete();
 
       // Notify the user via DM (ephemeral-like)
-      await message.author.send({
-        content: `Your message in **${message.guild.name}** was removed because it contained a disallowed term. Please review the server rules.`,
-      }).catch(() => {
-        // If DMs are disabled, silently fail
-      });
+      await message.author
+        .send({
+          content: `Your message in **${message.guild.name}** was removed because it contained a disallowed term. Please review the server rules.`,
+        })
+        .catch(() => {
+          // If DMs are disabled, silently fail
+        });
 
       // Log to moderation channel
       const logChannelId = process.env.FILTER_LOG_CHANNEL_ID;
       if (logChannelId) {
-        const logChannel = message.guild.channels.cache.get(logChannelId) as TextChannel | undefined;
+        const logChannel = message.guild.channels.cache.get(logChannelId) as
+          TextChannel | undefined;
         if (logChannel?.isTextBased()) {
           const embed = new EmbedBuilder()
             .setTitle("Content Filter Triggered & Deleted")
             .setColor(0xff6b6b)
             .addFields(
-              { name: "User", value: `${message.author} (${message.author.tag})`, inline: true },
-              { name: "Channel", value: `<#${message.channel.id}>`, inline: true },
-              { name: "Matched Term", value: `\`${matchedTerm}\``, inline: true },
-              { name: "Message Content", value: message.content.slice(0, 1000) || "(empty)" }
+              {
+                name: "User",
+                value: `${message.author} (${message.author.tag})`,
+                inline: true,
+              },
+              {
+                name: "Channel",
+                value: `<#${message.channel.id}>`,
+                inline: true,
+              },
+              {
+                name: "Matched Term",
+                value: `\`${matchedTerm}\``,
+                inline: true,
+              },
+              {
+                name: "Message Content",
+                value: message.content.slice(0, 1000) || "(empty)",
+              },
             )
             .setTimestamp();
           await logChannel.send({ embeds: [embed] });
@@ -515,7 +667,11 @@ client.on("messageReactionAdd", async (reaction, user) => {
     const fullUser = user.partial ? await user.fetch() : user;
 
     // Ticket lock reaction (🔒)
-    await handleLockReaction(fullReaction, fullUser, fullReaction.message.guild);
+    await handleLockReaction(
+      fullReaction,
+      fullUser,
+      fullReaction.message.guild,
+    );
 
     // Starboard
     await handleStarboardReaction(fullReaction, fullReaction.message.guild);
@@ -525,11 +681,15 @@ client.on("messageReactionAdd", async (reaction, user) => {
     {
       const binding = getReactionRoleBinding(fullReaction.message.id);
       if (binding && reactionRoleEmojiMatches(binding, fullReaction.emoji)) {
-        const member = await fullReaction.message.guild.members.fetch(fullUser.id).catch(() => null);
+        const member = await fullReaction.message.guild.members
+          .fetch(fullUser.id)
+          .catch(() => null);
         if (member && !member.roles.cache.has(binding.roleId)) {
-          await member.roles.add(binding.roleId, "Reaction role opt-in").catch((e) =>
-            console.error("reaction-role add failed:", e?.message ?? e),
-          );
+          await member.roles
+            .add(binding.roleId, "Reaction role opt-in")
+            .catch((e) =>
+              console.error("reaction-role add failed:", e?.message ?? e),
+            );
         }
       }
     }
@@ -538,8 +698,10 @@ client.on("messageReactionAdd", async (reaction, user) => {
     const emoji = fullReaction.emoji.name;
     if (emoji === "👍" || emoji === "👎") {
       const channelId = fullReaction.message.channelId;
-      if ((newsChannelId && channelId === newsChannelId) ||
-          (suggestionsChannelId && channelId === suggestionsChannelId)) {
+      if (
+        (newsChannelId && channelId === newsChannelId) ||
+        (suggestionsChannelId && channelId === suggestionsChannelId)
+      ) {
         const channelType = channelId === newsChannelId ? "news" : "suggestion";
         postWebhookReaction({
           discordUserId: fullUser.id,
@@ -566,13 +728,21 @@ client.on("messageReactionRemove", async (reaction, user) => {
 
     // Reaction roles: only remove the role if the binding opts into it.
     const binding = getReactionRoleBinding(fullReaction.message.id);
-    if (binding && binding.removeOnUnreact && reactionRoleEmojiMatches(binding, fullReaction.emoji)) {
+    if (
+      binding &&
+      binding.removeOnUnreact &&
+      reactionRoleEmojiMatches(binding, fullReaction.emoji)
+    ) {
       const fullUser = user.partial ? await user.fetch() : user;
-      const member = await fullReaction.message.guild.members.fetch(fullUser.id).catch(() => null);
+      const member = await fullReaction.message.guild.members
+        .fetch(fullUser.id)
+        .catch(() => null);
       if (member && member.roles.cache.has(binding.roleId)) {
-        await member.roles.remove(binding.roleId, "Reaction role opt-out").catch((e) =>
-          console.error("reaction-role remove failed:", e?.message ?? e),
-        );
+        await member.roles
+          .remove(binding.roleId, "Reaction role opt-out")
+          .catch((e) =>
+            console.error("reaction-role remove failed:", e?.message ?? e),
+          );
       }
     }
   } catch (error) {
@@ -588,7 +758,11 @@ client.on("messageDelete", async (message) => {
     if (!message.guild) return;
 
     // Skip excluded channels (e.g., dev/test channels)
-    if (process.env.DEV_CHANNEL_ID && message.channelId === process.env.DEV_CHANNEL_ID) return;
+    if (
+      process.env.DEV_CHANNEL_ID &&
+      message.channelId === process.env.DEV_CHANNEL_ID
+    )
+      return;
 
     // Skip if this deletion was triggered by the content filter (already logged separately)
     if (filterDeletedMessageIds.has(message.id)) {
@@ -597,38 +771,54 @@ client.on("messageDelete", async (message) => {
     }
 
     // Check audit log to determine who deleted the message
-    const auditLogs = await message.guild.fetchAuditLogs({ type: 72, limit: 1 }); // 72 = MessageDelete
+    const auditLogs = await message.guild.fetchAuditLogs({
+      type: 72,
+      limit: 1,
+    }); // 72 = MessageDelete
     const deleteLog = auditLogs.entries.first();
-    const deletedBySomeoneElse = deleteLog
-      && deleteLog.target?.id === message.author?.id
-      && deleteLog.executor?.id !== message.author?.id
-      && Date.now() - deleteLog.createdTimestamp < 5000;
+    const deletedBySomeoneElse =
+      deleteLog &&
+      deleteLog.target?.id === message.author?.id &&
+      deleteLog.executor?.id !== message.author?.id &&
+      Date.now() - deleteLog.createdTimestamp < 5000;
 
     const deletedByLabel = deletedBySomeoneElse
       ? `${deleteLog.executor} (${deleteLog.executor?.tag ?? "Unknown"})`
       : "Self";
 
-    const logChannel = message.guild.channels.cache.get(process.env.FILTER_LOG_CHANNEL_ID!) as TextChannel | undefined;
+    const logChannel = message.guild.channels.cache.get(
+      process.env.FILTER_LOG_CHANNEL_ID!,
+    ) as TextChannel | undefined;
     if (!logChannel?.isTextBased()) return;
 
     // Find first image attachment for embed
-    const imageAttachment = message.attachments?.find((a) =>
-      a.contentType?.startsWith("image/") || /\.(png|jpe?g|gif|webp)$/i.test(a.name ?? "")
+    const imageAttachment = message.attachments?.find(
+      (a) =>
+        a.contentType?.startsWith("image/") ||
+        /\.(png|jpe?g|gif|webp)$/i.test(a.name ?? ""),
     );
 
     // Collect any non-image attachment URLs to list
     const otherAttachments = [...(message.attachments?.values() ?? [])].filter(
-      (a) => a !== imageAttachment
+      (a) => a !== imageAttachment,
     );
 
     const embed = new EmbedBuilder()
       .setTitle("Message Deleted")
       .setColor(0x808080)
       .addFields(
-        { name: "User", value: `${message.author} (${message.author?.tag ?? "Unknown"})`, inline: true },
+        {
+          name: "User",
+          value: `${message.author} (${message.author?.tag ?? "Unknown"})`,
+          inline: true,
+        },
         { name: "Channel", value: `<#${message.channel.id}>`, inline: true },
         { name: "Deleted By", value: deletedByLabel, inline: true },
-        { name: "Message Content", value: message.content?.slice(0, 1000) || "(empty or attachment-only)" }
+        {
+          name: "Message Content",
+          value:
+            message.content?.slice(0, 1000) || "(empty or attachment-only)",
+        },
       )
       .setTimestamp();
 
@@ -639,7 +829,10 @@ client.on("messageDelete", async (message) => {
     if (otherAttachments.length > 0) {
       embed.addFields({
         name: "Other Attachments",
-        value: otherAttachments.map((a) => `[${a.name}](${a.url})`).join("\n").slice(0, 1024),
+        value: otherAttachments
+          .map((a) => `[${a.name}](${a.url})`)
+          .join("\n")
+          .slice(0, 1024),
       });
     }
 
@@ -655,13 +848,19 @@ client.on("messageUpdate", async (oldMessage, newMessage) => {
     const wasUncached = oldMessage.partial;
 
     // Always fetch the new message if needed to confirm this is a real edit
-    const newMsg = newMessage.partial ? await newMessage.fetch().catch(() => null) : newMessage;
+    const newMsg = newMessage.partial
+      ? await newMessage.fetch().catch(() => null)
+      : newMessage;
     if (!newMsg) return;
     if (newMsg.author?.bot) return;
     if (!newMsg.guild) return;
 
     // Skip excluded channels (e.g., dev/test channels)
-    if (process.env.DEV_CHANNEL_ID && newMsg.channelId === process.env.DEV_CHANNEL_ID) return;
+    if (
+      process.env.DEV_CHANNEL_ID &&
+      newMsg.channelId === process.env.DEV_CHANNEL_ID
+    )
+      return;
 
     // Ignore link-unfurl / embed-load events that aren't real user edits
     if (!newMsg.editedAt) return;
@@ -669,7 +868,8 @@ client.on("messageUpdate", async (oldMessage, newMessage) => {
     // If the old message was cached, we can compare; otherwise we just log "(not cached)"
     let before: string;
     if (wasUncached) {
-      before = "(message wasn't cached — bot may have been offline when it was sent)";
+      before =
+        "(message wasn't cached — bot may have been offline when it was sent)";
     } else {
       const oldContent = oldMessage.content ?? "";
       const newContent = newMsg.content ?? "";
@@ -677,7 +877,9 @@ client.on("messageUpdate", async (oldMessage, newMessage) => {
       before = oldContent || "(empty)";
     }
 
-    const logChannel = newMsg.guild.channels.cache.get(process.env.FILTER_LOG_CHANNEL_ID!) as TextChannel | undefined;
+    const logChannel = newMsg.guild.channels.cache.get(
+      process.env.FILTER_LOG_CHANNEL_ID!,
+    ) as TextChannel | undefined;
     if (!logChannel?.isTextBased()) return;
 
     const after = (newMsg.content || "(empty)").slice(0, 1024);
@@ -687,11 +889,15 @@ client.on("messageUpdate", async (oldMessage, newMessage) => {
       .setColor(0x3498db)
       .setURL(newMsg.url)
       .addFields(
-        { name: "User", value: `${newMsg.author} (${newMsg.author?.tag ?? "Unknown"})`, inline: true },
+        {
+          name: "User",
+          value: `${newMsg.author} (${newMsg.author?.tag ?? "Unknown"})`,
+          inline: true,
+        },
         { name: "Channel", value: `<#${newMsg.channel.id}>`, inline: true },
         { name: "Jump", value: `[Message](${newMsg.url})`, inline: true },
         { name: "Before", value: before.slice(0, 1024) },
-        { name: "After", value: after }
+        { name: "After", value: after },
       )
       .setTimestamp();
 
@@ -706,13 +912,15 @@ client.on("guildMemberAdd", async (member) => {
     // Assign unverified role
     await member.roles.add(process.env.UNVERIFIED_ROLE_ID!);
 
-    const channel = member.guild.channels.cache.get(process.env.WELCOME_CHANNEL_ID!);
+    const channel = member.guild.channels.cache.get(
+      process.env.WELCOME_CHANNEL_ID!,
+    );
     if (!channel?.isTextBased()) return;
 
     const embed = new EmbedBuilder()
       .setTitle("Welcome to the server!")
       .setDescription(
-        `Hey ${member}! 👋\n\nWelcome to **${member.guild.name}**.\n\nPlease read the rules in <#${process.env.RULES_CHANNEL_ID}>, then run \`/accept\` in this channel to gain access to the rest of the server.`
+        `Hey ${member}! 👋\n\nWelcome to **${member.guild.name}**.\n\nPlease read the rules in <#${process.env.RULES_CHANNEL_ID}>, then run \`/accept\` in this channel to gain access to the rest of the server.`,
       )
       .setColor(0x5865f2)
       .setThumbnail(member.user.displayAvatarURL());
@@ -723,7 +931,9 @@ client.on("guildMemberAdd", async (member) => {
     // still has active strikes so they're not caught off-guard.
     const activeStrikes = getActiveStrikes(member.guild.id, member.id);
     if (activeStrikes.length > 0) {
-      const logChannel = member.guild.channels.cache.get(process.env.FILTER_LOG_CHANNEL_ID!) as TextChannel | undefined;
+      const logChannel = member.guild.channels.cache.get(
+        process.env.FILTER_LOG_CHANNEL_ID!,
+      ) as TextChannel | undefined;
       if (logChannel?.isTextBased()) {
         const atMax = activeStrikes.length >= STRIKE_THRESHOLD;
         const newest = activeStrikes.reduce((a, b) =>
@@ -733,28 +943,50 @@ client.on("guildMemberAdd", async (member) => {
           new Date(a.expiresAt) < new Date(b.expiresAt) ? a : b,
         );
         const newestTs = Math.floor(new Date(newest.addedAt).getTime() / 1000);
-        const expiryTs = Math.floor(new Date(oldestExpiry.expiresAt).getTime() / 1000);
+        const expiryTs = Math.floor(
+          new Date(oldestExpiry.expiresAt).getTime() / 1000,
+        );
 
         const strikeEmbed = new EmbedBuilder()
-          .setTitle(atMax ? "Returning member — AT STRIKE THRESHOLD" : "Returning member with active strikes")
+          .setTitle(
+            atMax
+              ? "Returning member — AT STRIKE THRESHOLD"
+              : "Returning member with active strikes",
+          )
           .setColor(atMax ? 0xed4245 : 0xffa500)
           .setThumbnail(member.user.displayAvatarURL())
           .addFields(
-            { name: "User", value: `${member} (${member.user.tag} · ${member.id})` },
-            { name: "Active strikes", value: `${activeStrikes.length}/${STRIKE_THRESHOLD}`, inline: true },
-            { name: "Most recent strike", value: `<t:${newestTs}:R>`, inline: true },
+            {
+              name: "User",
+              value: `${member} (${member.user.tag} · ${member.id})`,
+            },
+            {
+              name: "Active strikes",
+              value: `${activeStrikes.length}/${STRIKE_THRESHOLD}`,
+              inline: true,
+            },
+            {
+              name: "Most recent strike",
+              value: `<t:${newestTs}:R>`,
+              inline: true,
+            },
             { name: "Next expiry", value: `<t:${expiryTs}:R>`, inline: true },
-            { name: "Latest reason", value: (newest.reason || "(no reason)").slice(0, 1024) },
+            {
+              name: "Latest reason",
+              value: (newest.reason || "(no reason)").slice(0, 1024),
+            },
           )
           .setFooter({ text: "Use /strike info to see the full list" })
           .setTimestamp();
 
         const modRoleRaw = process.env.SERVER_MODERATOR_ID?.trim();
-        const modRoleId = modRoleRaw && modRoleRaw.length > 0 ? modRoleRaw : undefined;
+        const modRoleId =
+          modRoleRaw && modRoleRaw.length > 0 ? modRoleRaw : undefined;
         await logChannel.send({
           content: atMax && modRoleId ? `<@&${modRoleId}>` : undefined,
           embeds: [strikeEmbed],
-          allowedMentions: atMax && modRoleId ? { roles: [modRoleId] } : { parse: [] },
+          allowedMentions:
+            atMax && modRoleId ? { roles: [modRoleId] } : { parse: [] },
         });
       }
     }
@@ -766,22 +998,35 @@ client.on("guildMemberAdd", async (member) => {
 // Moderation logging: member leave/kick
 client.on("guildMemberRemove", async (member) => {
   try {
-    const logChannel = member.guild.channels.cache.get(process.env.FILTER_LOG_CHANNEL_ID!) as TextChannel | undefined;
+    const logChannel = member.guild.channels.cache.get(
+      process.env.FILTER_LOG_CHANNEL_ID!,
+    ) as TextChannel | undefined;
     if (!logChannel?.isTextBased()) return;
 
     // Check audit log for kick
     const auditLogs = await member.guild.fetchAuditLogs({ type: 20, limit: 1 }); // 20 = MemberKick
     const kickLog = auditLogs.entries.first();
-    const wasKicked = kickLog && kickLog.target?.id === member.id && Date.now() - kickLog.createdTimestamp < 5000;
+    const wasKicked =
+      kickLog &&
+      kickLog.target?.id === member.id &&
+      Date.now() - kickLog.createdTimestamp < 5000;
 
     if (wasKicked) {
       const embed = new EmbedBuilder()
         .setTitle("Member Kicked")
         .setColor(0xffa500)
         .addFields(
-          { name: "User", value: `${member.user.tag} (${member.id})`, inline: true },
-          { name: "Kicked By", value: `${kickLog.executor?.tag ?? "Unknown"}`, inline: true },
-          { name: "Reason", value: kickLog.reason || "No reason provided" }
+          {
+            name: "User",
+            value: `${member.user.tag} (${member.id})`,
+            inline: true,
+          },
+          {
+            name: "Kicked By",
+            value: `${kickLog.executor?.tag ?? "Unknown"}`,
+            inline: true,
+          },
+          { name: "Reason", value: kickLog.reason || "No reason provided" },
         )
         .setThumbnail(member.user.displayAvatarURL())
         .setTimestamp();
@@ -791,8 +1036,18 @@ client.on("guildMemberRemove", async (member) => {
         .setTitle("Member Left")
         .setColor(0x808080)
         .addFields(
-          { name: "User", value: `${member.user.tag} (${member.id})`, inline: true },
-          { name: "Joined", value: member.joinedAt ? `<t:${Math.floor(member.joinedAt.getTime() / 1000)}:R>` : "Unknown", inline: true }
+          {
+            name: "User",
+            value: `${member.user.tag} (${member.id})`,
+            inline: true,
+          },
+          {
+            name: "Joined",
+            value: member.joinedAt
+              ? `<t:${Math.floor(member.joinedAt.getTime() / 1000)}:R>`
+              : "Unknown",
+            inline: true,
+          },
         )
         .setThumbnail(member.user.displayAvatarURL())
         .setTimestamp();
@@ -806,21 +1061,31 @@ client.on("guildMemberRemove", async (member) => {
 // Moderation logging: ban
 client.on("guildBanAdd", async (ban) => {
   try {
-    const logChannel = ban.guild.channels.cache.get(process.env.FILTER_LOG_CHANNEL_ID!) as TextChannel | undefined;
+    const logChannel = ban.guild.channels.cache.get(
+      process.env.FILTER_LOG_CHANNEL_ID!,
+    ) as TextChannel | undefined;
     if (!logChannel?.isTextBased()) return;
 
     // Check audit log for ban details
     const auditLogs = await ban.guild.fetchAuditLogs({ type: 22, limit: 1 }); // 22 = MemberBanAdd
     const banLog = auditLogs.entries.first();
-    const executor = banLog?.target?.id === ban.user.id ? banLog.executor : null;
+    const executor =
+      banLog?.target?.id === ban.user.id ? banLog.executor : null;
 
     const embed = new EmbedBuilder()
       .setTitle("Member Banned")
       .setColor(0xff0000)
       .addFields(
-        { name: "User", value: `${ban.user.tag} (${ban.user.id})`, inline: true },
+        {
+          name: "User",
+          value: `${ban.user.tag} (${ban.user.id})`,
+          inline: true,
+        },
         { name: "Banned By", value: executor?.tag ?? "Unknown", inline: true },
-        { name: "Reason", value: ban.reason || banLog?.reason || "No reason provided" }
+        {
+          name: "Reason",
+          value: ban.reason || banLog?.reason || "No reason provided",
+        },
       )
       .setThumbnail(ban.user.displayAvatarURL())
       .setTimestamp();
@@ -833,25 +1098,45 @@ client.on("guildBanAdd", async (ban) => {
 // Moderation logging: timeout
 client.on("guildMemberUpdate", async (oldMember, newMember) => {
   try {
-    const wasTimedOut = !oldMember.communicationDisabledUntil && newMember.communicationDisabledUntil;
+    const wasTimedOut =
+      !oldMember.communicationDisabledUntil &&
+      newMember.communicationDisabledUntil;
     if (!wasTimedOut) return;
 
-    const logChannel = newMember.guild.channels.cache.get(process.env.FILTER_LOG_CHANNEL_ID!) as TextChannel | undefined;
+    const logChannel = newMember.guild.channels.cache.get(
+      process.env.FILTER_LOG_CHANNEL_ID!,
+    ) as TextChannel | undefined;
     if (!logChannel?.isTextBased()) return;
 
     // Check audit log for timeout details
-    const auditLogs = await newMember.guild.fetchAuditLogs({ type: 24, limit: 1 }); // 24 = MemberUpdate
+    const auditLogs = await newMember.guild.fetchAuditLogs({
+      type: 24,
+      limit: 1,
+    }); // 24 = MemberUpdate
     const timeoutLog = auditLogs.entries.first();
-    const executor = timeoutLog?.target?.id === newMember.id ? timeoutLog.executor : null;
+    const executor =
+      timeoutLog?.target?.id === newMember.id ? timeoutLog.executor : null;
 
     const embed = new EmbedBuilder()
       .setTitle("Member Timed Out")
       .setColor(0xffcc00)
       .addFields(
-        { name: "User", value: `${newMember.user.tag} (${newMember.id})`, inline: true },
-        { name: "Timed Out By", value: executor?.tag ?? "Unknown", inline: true },
-        { name: "Until", value: `<t:${Math.floor(newMember.communicationDisabledUntil.getTime() / 1000)}:R>`, inline: true },
-        { name: "Reason", value: timeoutLog?.reason || "No reason provided" }
+        {
+          name: "User",
+          value: `${newMember.user.tag} (${newMember.id})`,
+          inline: true,
+        },
+        {
+          name: "Timed Out By",
+          value: executor?.tag ?? "Unknown",
+          inline: true,
+        },
+        {
+          name: "Until",
+          value: `<t:${Math.floor(newMember.communicationDisabledUntil.getTime() / 1000)}:R>`,
+          inline: true,
+        },
+        { name: "Reason", value: timeoutLog?.reason || "No reason provided" },
       )
       .setThumbnail(newMember.user.displayAvatarURL())
       .setTimestamp();
@@ -862,15 +1147,24 @@ client.on("guildMemberUpdate", async (oldMember, newMember) => {
 });
 
 client.on("interactionCreate", async (interaction) => {
-  if (interaction.isStringSelectMenu() && interaction.customId === "help_category") {
+  if (
+    interaction.isStringSelectMenu() &&
+    interaction.customId === "help_category"
+  ) {
     const embed = buildCategoryEmbed(interaction.values[0]);
     if (!embed) return;
-    await interaction.update({ embeds: [embed], components: [buildSelectMenu()] });
+    await interaction.update({
+      embeds: [embed],
+      components: [buildSelectMenu()],
+    });
     return;
   }
 
   // Ticket panel buttons → show modal
-  if (interaction.isButton() && interaction.customId.startsWith("ticket_panel_")) {
+  if (
+    interaction.isButton() &&
+    interaction.customId.startsWith("ticket_panel_")
+  ) {
     try {
       const category = interaction.customId.replace("ticket_panel_", "");
 
@@ -893,7 +1187,10 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   // Suggest modal submission
-  if (interaction.isModalSubmit() && interaction.customId.startsWith(SUGGEST_MODAL_PREFIX)) {
+  if (
+    interaction.isModalSubmit() &&
+    interaction.customId.startsWith(SUGGEST_MODAL_PREFIX)
+  ) {
     try {
       await handleSuggestModal(interaction);
     } catch (error) {
@@ -903,7 +1200,10 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   // Ticket close — resolution modal (/close-ticket, Close button, or 🔒 flow)
-  if (interaction.isModalSubmit() && interaction.customId.startsWith(TICKET_CLOSE_MODAL_PREFIX)) {
+  if (
+    interaction.isModalSubmit() &&
+    interaction.customId.startsWith(TICKET_CLOSE_MODAL_PREFIX)
+  ) {
     try {
       await handleTicketCloseModalSubmit(interaction);
     } catch (error) {
@@ -913,60 +1213,111 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   // Ticket merge modal submission
-  if (interaction.isModalSubmit() && interaction.customId.startsWith(TICKET_MERGE_MODAL_PREFIX)) {
+  if (
+    interaction.isModalSubmit() &&
+    interaction.customId.startsWith(TICKET_MERGE_MODAL_PREFIX)
+  ) {
     try {
       if (!interaction.guild) {
-        await interaction.reply({ content: "This can only be used inside a server.", ephemeral: true });
+        await interaction.reply({
+          content: "This can only be used inside a server.",
+          ephemeral: true,
+        });
         return;
       }
 
       // Parse channel IDs from customId: ticket_merge_modal_<sourceChannelId>:<targetChannelId>
-      const payload = interaction.customId.slice(TICKET_MERGE_MODAL_PREFIX.length);
+      const payload = interaction.customId.slice(
+        TICKET_MERGE_MODAL_PREFIX.length,
+      );
       const [sourceChannelId, targetChannelId] = payload.split(":");
-      const reason = interaction.fields.getTextInputValue("merge_reason").trim();
+      const reason = interaction.fields
+        .getTextInputValue("merge_reason")
+        .trim();
 
-      const sourceChannel = interaction.guild.channels.cache.get(sourceChannelId) as TextChannel | undefined;
-      const targetChannel = interaction.guild.channels.cache.get(targetChannelId) as TextChannel | undefined;
+      const sourceChannel = interaction.guild.channels.cache.get(
+        sourceChannelId,
+      ) as TextChannel | undefined;
+      const targetChannel = interaction.guild.channels.cache.get(
+        targetChannelId,
+      ) as TextChannel | undefined;
 
       if (!sourceChannel || !targetChannel) {
-        await interaction.reply({ content: "One of the ticket channels no longer exists.", ephemeral: true });
+        await interaction.reply({
+          content: "One of the ticket channels no longer exists.",
+          ephemeral: true,
+        });
         return;
       }
 
-      const sourceTicket = getTicketByChannel(interaction.guild.id, sourceChannelId);
-      const targetTicket = getTicketByChannel(interaction.guild.id, targetChannelId);
+      const sourceTicket = getTicketByChannel(
+        interaction.guild.id,
+        sourceChannelId,
+      );
+      const targetTicket = getTicketByChannel(
+        interaction.guild.id,
+        targetChannelId,
+      );
 
       if (!sourceTicket || !targetTicket) {
-        await interaction.reply({ content: "One of the tickets could not be found (may have been closed already).", ephemeral: true });
+        await interaction.reply({
+          content:
+            "One of the tickets could not be found (may have been closed already).",
+          ephemeral: true,
+        });
         return;
       }
 
-      const member = interaction.guild.members.cache.get(interaction.user.id)
-        ?? await interaction.guild.members.fetch(interaction.user.id);
+      const member =
+        interaction.guild.members.cache.get(interaction.user.id) ??
+        (await interaction.guild.members.fetch(interaction.user.id));
 
       await interaction.deferReply({ ephemeral: true });
 
-      const result = await mergeTickets(sourceChannel, targetChannel, sourceTicket, targetTicket, member, reason);
+      const result = await mergeTickets(
+        sourceChannel,
+        targetChannel,
+        sourceTicket,
+        targetTicket,
+        member,
+        reason,
+      );
       if (result.success) {
-        await interaction.editReply({ content: "Ticket merged successfully. The source ticket channel has been deleted." });
+        await interaction.editReply({
+          content:
+            "Ticket merged successfully. The source ticket channel has been deleted.",
+        });
       } else {
-        await interaction.editReply({ content: `Merge failed: ${result.reason}` });
+        await interaction.editReply({
+          content: `Merge failed: ${result.reason}`,
+        });
       }
     } catch (error) {
       console.error("Ticket merge modal error:", error);
       try {
         if (interaction.replied || interaction.deferred) {
-          await interaction.followUp({ content: "Something went wrong while merging the ticket.", ephemeral: true });
+          await interaction.followUp({
+            content: "Something went wrong while merging the ticket.",
+            ephemeral: true,
+          });
         } else {
-          await interaction.reply({ content: "Something went wrong while merging the ticket.", ephemeral: true });
+          await interaction.reply({
+            content: "Something went wrong while merging the ticket.",
+            ephemeral: true,
+          });
         }
-      } catch { /* nothing */ }
+      } catch {
+        /* nothing */
+      }
     }
     return;
   }
 
   // Ticket modal submission (from both /ticket and panel buttons)
-  if (interaction.isModalSubmit() && interaction.customId.startsWith("ticket_modal_")) {
+  if (
+    interaction.isModalSubmit() &&
+    interaction.customId.startsWith("ticket_modal_")
+  ) {
     try {
       const category = interaction.customId.replace("ticket_modal_", "");
       // Only handle panel-triggered modals here; /ticket handles its own via awaitModalSubmit
@@ -997,7 +1348,9 @@ client.on("interactionCreate", async (interaction) => {
       );
 
       if (result.success) {
-        await interaction.editReply({ content: `Ticket created: <#${result.channelId}>` });
+        await interaction.editReply({
+          content: `Ticket created: <#${result.channelId}>`,
+        });
       } else {
         await interaction.editReply({ content: result.reason });
       }
@@ -1008,11 +1361,15 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   // Ticket claim button
-  if (interaction.isButton() && interaction.customId === TICKET_CLAIM_BUTTON_ID) {
+  if (
+    interaction.isButton() &&
+    interaction.customId === TICKET_CLAIM_BUTTON_ID
+  ) {
     try {
       await interaction.deferUpdate();
-      const member = interaction.guild?.members.cache.get(interaction.user.id)
-        ?? await interaction.guild?.members.fetch(interaction.user.id);
+      const member =
+        interaction.guild?.members.cache.get(interaction.user.id) ??
+        (await interaction.guild?.members.fetch(interaction.user.id));
       if (member && interaction.channel instanceof TextChannel) {
         await handleClaimTicket(interaction.channel, member, interaction);
       }
@@ -1026,8 +1383,9 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.isButton() && interaction.customId === "ticket_close") {
     try {
       const { closeTicket } = await import("./utils/tickets.js");
-      const member = interaction.guild?.members.cache.get(interaction.user.id)
-        ?? await interaction.guild?.members.fetch(interaction.user.id);
+      const member =
+        interaction.guild?.members.cache.get(interaction.user.id) ??
+        (await interaction.guild?.members.fetch(interaction.user.id));
       if (member && interaction.channel) {
         if (interaction.channel instanceof TextChannel) {
           await closeTicket(interaction.channel, member, interaction);
@@ -1045,7 +1403,10 @@ client.on("interactionCreate", async (interaction) => {
       try {
         await acCommand.autocomplete(interaction);
       } catch (error) {
-        console.error(`Autocomplete error for /${interaction.commandName}:`, error);
+        console.error(
+          `Autocomplete error for /${interaction.commandName}:`,
+          error,
+        );
       }
     }
     return;
@@ -1059,8 +1420,9 @@ client.on("interactionCreate", async (interaction) => {
   // Block non-admin users when bot is disabled
   const ADMIN_ONLY_BYPASS = ["enable-bot", "disable-bot", "accept"];
   if (!isBotEnabled() && !ADMIN_ONLY_BYPASS.includes(interaction.commandName)) {
-    const member = interaction.guild?.members.cache.get(interaction.user.id)
-      ?? await interaction.guild?.members.fetch(interaction.user.id);
+    const member =
+      interaction.guild?.members.cache.get(interaction.user.id) ??
+      (await interaction.guild?.members.fetch(interaction.user.id));
     if (!member?.permissions.has("Administrator")) {
       await interaction.reply({
         content: "The bot is currently disabled. Please try again later.",
@@ -1076,8 +1438,9 @@ client.on("interactionCreate", async (interaction) => {
     interaction.commandName !== "ban-bot-channel-usage" &&
     isChannelBanned(interaction.guild.id, interaction.channelId)
   ) {
-    const member = interaction.guild.members.cache.get(interaction.user.id)
-      ?? await interaction.guild.members.fetch(interaction.user.id);
+    const member =
+      interaction.guild.members.cache.get(interaction.user.id) ??
+      (await interaction.guild.members.fetch(interaction.user.id));
     if (!member?.permissions.has("Administrator")) {
       await interaction.reply({
         content: "Bot commands are not allowed in this channel.",
@@ -1090,7 +1453,7 @@ client.on("interactionCreate", async (interaction) => {
   const remaining = checkCooldown(
     interaction.user.id,
     interaction.commandName,
-    command.cooldown ?? 3
+    command.cooldown ?? 3,
   );
   if (remaining > 0) {
     await interaction.reply({

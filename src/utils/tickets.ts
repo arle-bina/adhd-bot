@@ -25,13 +25,10 @@ import {
   removeTicket,
   claimTicket,
   getTicketByChannel,
-  getTicketByNumber,
-  findOpenTicket,
   getNextTicketNumber,
   getCategoryId,
   setCategoryId,
   isPanel,
-  countOpenTicketsByUserCategory,
   getTickets,
   MAX_TICKETS_PER_CATEGORY,
 } from "./ticketStore.js";
@@ -47,8 +44,17 @@ import {
   updateTicket as apiUpdateTicket,
   type GameTicketCategory,
 } from "./ticketsApi.js";
+import {
+  beginTicketResolutionDelivery,
+  endTicketResolutionDelivery,
+  appendReceiptLink,
+  ticketResolutionNonce,
+} from "./ticketResolutionDelivery.js";
 
-const CATEGORY_CONFIG: Record<TicketCategory, { label: string; emoji: string; color: number }> = {
+const CATEGORY_CONFIG: Record<
+  TicketCategory,
+  { label: string; emoji: string; color: number }
+> = {
   bug: { label: "Bug Report", emoji: "🐛", color: 0xed4245 },
   suggestion: { label: "Suggestion", emoji: "💡", color: 0x57f287 },
   moderation: { label: "Moderation Issue", emoji: "🛡️", color: 0xfee75c },
@@ -95,11 +101,16 @@ function moderatorRoleId(): string | undefined {
  * Manage Channels on this channel or at guild level, ModerateMembers, Administrator).
  * Guild-level `permissions` alone misses channel-only overwrites and the dev/mod roles.
  */
-function memberCanActAsTicketStaff(member: GuildMember, channel: TextChannel): boolean {
+function memberCanActAsTicketStaff(
+  member: GuildMember,
+  channel: TextChannel,
+): boolean {
   if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
   if (member.permissions.has(PermissionFlagsBits.ManageChannels)) return true;
   if (member.permissions.has(PermissionFlagsBits.ModerateMembers)) return true;
-  const inChannel = channel.permissionsFor(member)?.has(PermissionFlagsBits.ManageChannels) ?? false;
+  const inChannel =
+    channel.permissionsFor(member)?.has(PermissionFlagsBits.ManageChannels) ??
+    false;
   if (inChannel) return true;
   const devId = devTeamRoleId();
   if (devId && member.roles.cache.has(devId)) return true;
@@ -108,7 +119,11 @@ function memberCanActAsTicketStaff(member: GuildMember, channel: TextChannel): b
   return false;
 }
 
-function canCloseTicket(member: GuildMember, channel: TextChannel, ticketOpenerId: string): boolean {
+function canCloseTicket(
+  member: GuildMember,
+  channel: TextChannel,
+  ticketOpenerId: string,
+): boolean {
   if (member.id === ticketOpenerId) return true;
   return memberCanActAsTicketStaff(member, channel);
 }
@@ -119,12 +134,16 @@ function isStaffClosingSomeoneElsesTicket(
   channel: TextChannel,
   ticketOpenerId: string,
 ): boolean {
-  return closer.id !== ticketOpenerId && memberCanActAsTicketStaff(closer, channel);
+  return (
+    closer.id !== ticketOpenerId && memberCanActAsTicketStaff(closer, channel)
+  );
 }
 
 export const TICKET_CLAIM_BUTTON_ID = "ticket_claim";
 
-function buildTicketActionRow(claimed: boolean): ActionRowBuilder<ButtonBuilder> {
+function buildTicketActionRow(
+  claimed: boolean,
+): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(TICKET_CLAIM_BUTTON_ID)
@@ -156,11 +175,17 @@ function buildTicketCloseModal(channelId: string): ModalBuilder {
   return new ModalBuilder()
     .setCustomId(`${TICKET_CLOSE_MODAL_PREFIX}${channelId}`)
     .setTitle("Close ticket")
-    .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(resolutionInput));
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(resolutionInput),
+    );
 }
 
 /** Best-effort server display name for the opener; falls back to the username. */
-function sanitizeDisplayName(guild: Guild, userId: string, username: string): string {
+function sanitizeDisplayName(
+  guild: Guild,
+  userId: string,
+  username: string,
+): string {
   return guild.members.cache.get(userId)?.displayName ?? username;
 }
 
@@ -217,8 +242,10 @@ async function alertSyncFailure(
   category: TicketCategory,
   username: string,
 ): Promise<void> {
-  const logChannelId = process.env.TICKET_LOG_CHANNEL_ID ?? "1483974417628270593";
-  const logChannel = guild.channels.cache.get(logChannelId) as TextChannel | undefined;
+  const logChannelId =
+    process.env.TICKET_LOG_CHANNEL_ID ?? "1483974417628270593";
+  const logChannel = guild.channels.cache.get(logChannelId) as
+    TextChannel | undefined;
   const paddedNum = String(localTicketNumber).padStart(4, "0");
   const modRoleId = moderatorRoleId();
   const ping = modRoleId ? `<@&${modRoleId}> ` : "";
@@ -227,7 +254,9 @@ async function alertSyncFailure(
       `${ping}⚠️ Backend sync failed for ${category} ticket #${paddedNum} (${username}, <#${channelId}>) — ` +
         `it will NOT appear in the support MCP/ops dashboard. Please triage from Discord directly or re-run the sync.`,
     )
-    .catch((err) => console.error("Failed to post ticket sync-failure alert:", err));
+    .catch((err) =>
+      console.error("Failed to post ticket sync-failure alert:", err),
+    );
 }
 
 export async function createTicket(
@@ -236,10 +265,16 @@ export async function createTicket(
   username: string,
   category: TicketCategory,
   details?: TicketDetails,
-): Promise<{ success: true; channelId: string } | { success: false; reason: string; existingChannelId?: string }> {
+): Promise<
+  | { success: true; channelId: string }
+  | { success: false; reason: string; existingChannelId?: string }
+> {
   const lockKey = `${guild.id}:${userId}:${category}`;
   if (creationLocks.has(lockKey)) {
-    return { success: false, reason: "Your ticket is already being created. Please wait." };
+    return {
+      success: false,
+      reason: "Your ticket is already being created. Please wait.",
+    };
   }
 
   creationLocks.add(lockKey);
@@ -247,11 +282,13 @@ export async function createTicket(
     // Check bot permissions
     const botMember = guild.members.me;
     if (!botMember?.permissions.has(PermissionFlagsBits.ManageChannels)) {
-      return { success: false, reason: "I need the **Manage Channels** permission to create tickets." };
+      return {
+        success: false,
+        reason: "I need the **Manage Channels** permission to create tickets.",
+      };
     }
 
     // Per-category limit (with stale cleanup)
-    const openTickets = countOpenTicketsByUserCategory(guild.id, userId, category);
     // Clean up stale tickets (channels that no longer exist)
     let activeCount = 0;
     let firstActiveChannelId: string | undefined;
@@ -354,11 +391,19 @@ export async function createTicket(
       .addFields(
         { name: "Opened by", value: `<@${userId}>`, inline: true },
         { name: "Category", value: config.label, inline: true },
-        { name: "Created", value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
+        {
+          name: "Created",
+          value: `<t:${Math.floor(Date.now() / 1000)}:R>`,
+          inline: true,
+        },
       );
 
     if (details?.platform) {
-      embed.addFields({ name: "Platform", value: formatTicketPlatform(details.platform), inline: true });
+      embed.addFields({
+        name: "Platform",
+        value: formatTicketPlatform(details.platform),
+        inline: true,
+      });
     }
     if (details?.subject) {
       embed.addFields({ name: "Subject", value: details.subject });
@@ -369,13 +414,20 @@ export async function createTicket(
 
     embed.setFooter({ text: "ahousedividedgame.com" }).setTimestamp();
 
-    const embedMessage = await channel.send({ embeds: [embed], components: [buildTicketActionRow(false)] });
+    const embedMessage = await channel.send({
+      embeds: [embed],
+      components: [buildTicketActionRow(false)],
+    });
 
     // Moderation pings mods, bug reports ping the dev team. Mechanics-help
     // tickets ping nobody — staff still have channel access via the overwrites
     // above, so they can answer, but the opener just gets a space to ask.
     const pingRoleId =
-      category === "moderation" ? modRoleId : category === "bug" ? devTeamRoleId : undefined;
+      category === "moderation"
+        ? modRoleId
+        : category === "bug"
+          ? devTeamRoleId
+          : undefined;
     if (pingRoleId) {
       await channel.send(`<@&${pingRoleId}>`).catch(() => {});
     }
@@ -409,11 +461,15 @@ export async function createTicket(
     const openerName = sanitizeDisplayName(guild, userId, username);
     const title = (details?.subject?.trim() || `${config.label}`).slice(0, 200);
     const body =
-      details?.description?.trim() || details?.subject?.trim() || "No description provided.";
+      details?.description?.trim() ||
+      details?.subject?.trim() ||
+      "No description provided.";
     // The backend ticket schema has no platform field, so the answer rides in the
     // description, which is what the ops dashboard, support MCP and triage read.
     const description = (
-      details?.platform ? `Platform: ${formatTicketPlatform(details.platform)}\n\n${body}` : body
+      details?.platform
+        ? `Platform: ${formatTicketPlatform(details.platform)}\n\n${body}`
+        : body
     ).slice(0, 5000);
     apiCreateTicket({
       category: toGameCategory(category),
@@ -430,21 +486,38 @@ export async function createTicket(
     })
       .then(async (res) => {
         if (res?.ticketNumber != null) {
-          addTicket(guild.id, { ...ticketRecord, apiTicketNumber: res.ticketNumber });
+          addTicket(guild.id, {
+            ...ticketRecord,
+            apiTicketNumber: res.ticketNumber,
+          });
 
           let receiptUrl: string | undefined;
           for (const delayMs of [0, 1000, 3000]) {
-            if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
+            if (delayMs)
+              await new Promise((resolve) => setTimeout(resolve, delayMs));
             receiptUrl = await getTicketReceiptUrl(res.ticketNumber);
             if (receiptUrl) break;
           }
           if (receiptUrl) {
-            await channel.send(`Your support receipt: ${receiptUrl}`).catch((err) => {
-              console.error(`Failed to post ticket #${res.ticketNumber} receipt in its channel:`, err);
-            });
+            await channel
+              .send(`Your support receipt: ${receiptUrl}`)
+              .catch((err) => {
+                console.error(
+                  `Failed to post ticket #${res.ticketNumber} receipt in its channel:`,
+                  err,
+                );
+              });
           } else {
-            console.error(`Receipt link unavailable for newly created ticket #${res.ticketNumber}`);
-            await alertSyncFailure(guild, channel.id, ticketNumber, category, username);
+            console.error(
+              `Receipt link unavailable for newly created ticket #${res.ticketNumber}`,
+            );
+            await alertSyncFailure(
+              guild,
+              channel.id,
+              ticketNumber,
+              category,
+              username,
+            );
           }
 
           // The backend persists the number we sent, so res.ticketNumber should
@@ -456,18 +529,36 @@ export async function createTicket(
             console.error(
               `Ticket #${paddedNum} sync mismatch: backend returned #${res.ticketNumber} for channel ${channel.id}`,
             );
-            await alertSyncFailure(guild, channel.id, ticketNumber, category, username);
+            await alertSyncFailure(
+              guild,
+              channel.id,
+              ticketNumber,
+              category,
+              username,
+            );
           }
         } else {
           // apiCreateTicket already retried internally; a final undefined here means
           // this ticket never made it into the backend and won't show up in the
           // support MCP/ops dashboard at all unless someone notices and re-syncs it.
-          await alertSyncFailure(guild, channel.id, ticketNumber, category, username);
+          await alertSyncFailure(
+            guild,
+            channel.id,
+            ticketNumber,
+            category,
+            username,
+          );
         }
       })
       .catch(async (err) => {
         console.error("Unexpected error mirroring ticket to backend:", err);
-        await alertSyncFailure(guild, channel.id, ticketNumber, category, username);
+        await alertSyncFailure(
+          guild,
+          channel.id,
+          ticketNumber,
+          category,
+          username,
+        );
       });
 
     return { success: true, channelId: channel.id };
@@ -476,7 +567,10 @@ export async function createTicket(
   }
 }
 
-export async function fetchAllMessages(channel: TextChannel, cap: number): Promise<Message[]> {
+export async function fetchAllMessages(
+  channel: TextChannel,
+  cap: number,
+): Promise<Message[]> {
   const all: Message[] = [];
   let lastId: string | undefined;
 
@@ -495,7 +589,14 @@ export async function fetchAllMessages(channel: TextChannel, cap: number): Promi
 }
 
 function buildTranscriptText(
-  ticket: { ticketNumber: number; category: TicketCategory; userId: string; createdAt: string; subject?: string; description?: string },
+  ticket: {
+    ticketNumber: number;
+    category: TicketCategory;
+    userId: string;
+    createdAt: string;
+    subject?: string;
+    description?: string;
+  },
   closerId: string,
   messages: Message[],
   resolutionMessage?: string,
@@ -528,13 +629,79 @@ function buildTranscriptText(
   return lines.join("\n");
 }
 
-/** Deliver the player-facing resolution before the Discord ticket channel is removed. */
+/** Lock a closed ticket channel while keeping its history and receipt readable. */
+export async function closeTicketChannel(
+  channel: TextChannel,
+  reporterIds: string[],
+  ticketNumber: number,
+): Promise<void> {
+  for (const reporterId of new Set(reporterIds.filter(Boolean))) {
+    const overwrite = channel.permissionOverwrites.cache.get(reporterId);
+    if (
+      !overwrite?.deny.has(PermissionFlagsBits.SendMessages) ||
+      !overwrite?.deny.has(PermissionFlagsBits.AddReactions)
+    ) {
+      await channel.permissionOverwrites.edit(reporterId, {
+        SendMessages: false,
+        AddReactions: false,
+      });
+    }
+  }
+
+  if (!channel.name.startsWith("closed-")) {
+    await channel.setName(
+      `closed-${channel.name}`.slice(0, 100),
+      `Ticket #${ticketNumber} closed`,
+    );
+  }
+}
+
+interface TicketCloseResult {
+  ticketUpdated: boolean;
+  receiptLinkAvailable: boolean;
+  channelReceiptDelivered: boolean;
+  channelClosed: boolean;
+  dmDelivered: boolean;
+  alreadyInProgress?: boolean;
+}
+
+/** Avoid racing the periodic resolution sweep against a staff close click. */
 async function finalizeTicketClose(
   channel: TextChannel,
   closer: GuildMember,
   ticket: NonNullable<ReturnType<typeof getTicketByChannel>>,
   resolutionMessage: string,
-): Promise<boolean> {
+): Promise<TicketCloseResult> {
+  const ticketNumber = ticket.apiTicketNumber ?? ticket.ticketNumber;
+  if (!beginTicketResolutionDelivery(ticketNumber)) {
+    return {
+      ticketUpdated: false,
+      receiptLinkAvailable: false,
+      channelReceiptDelivered: false,
+      channelClosed: false,
+      dmDelivered: false,
+      alreadyInProgress: true,
+    };
+  }
+
+  try {
+    return await finalizeTicketCloseImpl(
+      channel,
+      closer,
+      ticket,
+      resolutionMessage,
+    );
+  } finally {
+    endTicketResolutionDelivery(ticketNumber);
+  }
+}
+
+async function finalizeTicketCloseImpl(
+  channel: TextChannel,
+  closer: GuildMember,
+  ticket: NonNullable<ReturnType<typeof getTicketByChannel>>,
+  resolutionMessage: string,
+): Promise<TicketCloseResult> {
   const guild = channel.guild;
   const messages = await fetchAllMessages(channel, 500);
   const truncated = messages.length >= 500;
@@ -544,7 +711,10 @@ async function finalizeTicketClose(
   const apiTicketNumber = ticket.apiTicketNumber ?? ticket.ticketNumber;
   const created = new Date(ticket.createdAt);
   const duration = Math.floor((Date.now() - created.getTime()) / 60000);
-  const durationStr = duration < 60 ? `${duration}m` : `${Math.floor(duration / 60)}h ${duration % 60}m`;
+  const durationStr =
+    duration < 60
+      ? `${duration}m`
+      : `${Math.floor(duration / 60)}h ${duration % 60}m`;
 
   // Build log embed with original ticket details
   const logFields: { name: string; value: string; inline?: boolean }[] = [
@@ -556,21 +726,45 @@ async function finalizeTicketClose(
   ];
 
   if (ticket.subject) {
-    logFields.push({ name: "Subject", value: ticket.subject.length > 1024 ? `${ticket.subject.slice(0, 1021)}...` : ticket.subject });
+    logFields.push({
+      name: "Subject",
+      value:
+        ticket.subject.length > 1024
+          ? `${ticket.subject.slice(0, 1021)}...`
+          : ticket.subject,
+    });
   }
   if (ticket.description) {
-    const descValue = ticket.description.length > 1024 ? `${ticket.description.slice(0, 1021)}...` : ticket.description;
+    const descValue =
+      ticket.description.length > 1024
+        ? `${ticket.description.slice(0, 1021)}...`
+        : ticket.description;
     logFields.push({ name: "Description", value: descValue });
   }
   if (resolutionMessage) {
     logFields.push({
       name: "Resolution",
-      value: resolutionMessage.length > 1024 ? `${resolutionMessage.slice(0, 1021)}...` : resolutionMessage,
+      value:
+        resolutionMessage.length > 1024
+          ? `${resolutionMessage.slice(0, 1021)}...`
+          : resolutionMessage,
     });
   }
   const receiptUrl = await getTicketReceiptUrl(apiTicketNumber);
+  if (!receiptUrl) {
+    return {
+      ticketUpdated: false,
+      receiptLinkAvailable: false,
+      channelReceiptDelivered: false,
+      channelClosed: false,
+      dmDelivered: false,
+    };
+  }
   if (receiptUrl) {
-    logFields.push({ name: "Receipt", value: `[View player receipt](${receiptUrl})` });
+    logFields.push({
+      name: "Receipt",
+      value: `[View player receipt](${receiptUrl})`,
+    });
   }
 
   const logEmbed = new EmbedBuilder()
@@ -578,7 +772,9 @@ async function finalizeTicketClose(
     .setColor(0x95a5a6)
     .addFields(logFields)
     .setFooter({
-      text: truncated ? "Transcript truncated at 500 messages · ahousedividedgame.com" : "ahousedividedgame.com",
+      text: truncated
+        ? "Transcript truncated at 500 messages · ahousedividedgame.com"
+        : "ahousedividedgame.com",
     })
     .setTimestamp();
 
@@ -590,65 +786,101 @@ async function finalizeTicketClose(
     receiptUrl,
   );
 
-  const playerResolution = resolutionMessage || "Your support report was closed from Discord.";
-  const playerFollowUp = "If the issue is still present, open a new support ticket and mention this report.";
-  const receiptMessage = [
-    `<@${ticket.userId}>`,
-    "",
-    "**Your support report has been resolved.**",
-    "",
-    playerResolution,
-    "",
-    playerFollowUp,
-    receiptUrl ? `\n**Support receipt:** ${receiptUrl}` : "",
-  ].filter(Boolean).join("\n").slice(0, 1900);
+  let playerResolution =
+    resolutionMessage || "The ticket was closed by the reporter.";
+  const playerFollowUp =
+    "If the issue is still present, open a new support ticket and mention this report.";
+  const receiptMessage = appendReceiptLink(
+    [
+      `<@${ticket.userId}>`,
+      "",
+      "**Your support report has been resolved.**",
+      "",
+      playerResolution,
+      "",
+      playerFollowUp,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    receiptUrl,
+    1900,
+  );
 
-  // Best-effort: mirror the close + resolution onto the backend so the ops
-  // dashboard and the pending-resolutions sweep have the record. This must NOT
-  // block the Discord close. apiUpdateTicket returns undefined when the API is
-  // unconfigured, returns a non-2xx, OR returns a 2xx with an empty body (its
-  // response.json() then throws) — none of which mean the close should fail.
-  // The in-channel receipt below notifies the player,
-  // so a persist miss degrades gracefully instead of trapping staff with a
-  // "something went wrong" they can't clear.
+  // Persist the final outcome before sending it. The backend stores the DM
+  // delivery marker separately from the channel receipt marker.
   const persisted = await apiUpdateTicket({
     discordChannelId: channel.id,
     action: "close",
     closedBy: closer.id,
-    resolution: {
-      message: playerResolution,
-      actions: [],
-      followUp: playerFollowUp,
-      source: "discord",
-    },
-    resolutionDelivered: false,
+    resolution: playerResolution,
   });
   if (!persisted) {
     console.warn(
       `Ticket #${paddedNum} close: backend resolution persist did not confirm — ` +
-        `closing the ticket record anyway (channel receipt still attempted below).`,
+        `the channel was left open so the ticket record can be retried.`,
     );
+    return {
+      ticketUpdated: false,
+      receiptLinkAvailable: true,
+      channelReceiptDelivered: false,
+      channelClosed: false,
+      dmDelivered: false,
+    };
+  }
+  playerResolution = persisted.finalOutcome || playerResolution;
+
+  let channelReceiptDelivered = Boolean(persisted.channelUpdatePosted);
+  let channelReceiptMessageId: string | undefined;
+  if (!channelReceiptDelivered) {
+    try {
+      const channelReceipt = await channel.send({
+        content: receiptMessage,
+        allowedMentions: { users: [ticket.userId] },
+        nonce: ticketResolutionNonce(
+          "tr",
+          apiTicketNumber,
+          persisted.resolutionVersion,
+        ),
+        enforceNonce: true,
+      });
+      channelReceiptMessageId = channelReceipt.id;
+      channelReceiptDelivered = true;
+    } catch (err) {
+      console.warn("Ticket channel receipt post failed:", err);
+    }
   }
 
-  let channelReceiptDelivered = false;
-  try {
-    await channel.send({
-      content: receiptMessage,
-      allowedMentions: { users: [ticket.userId] },
-    });
-    channelReceiptDelivered = true;
-    await apiUpdateTicket({
+  if (!channelReceiptDelivered) {
+    return {
+      ticketUpdated: true,
+      receiptLinkAvailable: true,
+      channelReceiptDelivered: false,
+      channelClosed: false,
+      dmDelivered: false,
+    };
+  }
+
+  if (!persisted.channelUpdatePosted) {
+    const channelReceiptRecorded = await apiUpdateTicket({
       discordChannelId: channel.id,
-      action: "resolution-delivered",
+      action: "resolution-channel-delivered",
+      ...(channelReceiptMessageId
+        ? { messageId: channelReceiptMessageId }
+        : {}),
     });
-  } catch (err) {
-    console.warn("Ticket channel receipt post failed:", err);
+    if (!channelReceiptRecorded) {
+      console.warn(
+        `Ticket #${paddedNum} channel receipt marker did not persist; the resolution sweep may retry it.`,
+      );
+    }
   }
 
   if (channelReceiptDelivered) {
-    const logChannelId = process.env.TICKET_LOG_CHANNEL_ID ?? "1483974417628270593";
+    const logChannelId =
+      process.env.TICKET_LOG_CHANNEL_ID ?? "1483974417628270593";
     if (logChannelId) {
-      const logChannel = guild.channels.cache.get(logChannelId) as TextChannel | undefined;
+      const logChannel = guild.channels.cache.get(logChannelId) as
+        TextChannel | undefined;
       if (logChannel) {
         const buffer = Buffer.from(transcript, "utf-8");
         await logChannel
@@ -659,10 +891,83 @@ async function finalizeTicketClose(
           .catch((err) => console.error("Failed to post transcript:", err));
       }
     }
-
   }
 
-  if (channelReceiptDelivered) {
+  let channelClosed = false;
+  try {
+    await closeTicketChannel(
+      channel,
+      [ticket.userId, ...(ticket.mergedFromUserIds ?? [])],
+      ticket.ticketNumber,
+    );
+    channelClosed = true;
+  } catch (err) {
+    console.warn(
+      `Ticket #${paddedNum} receipt is visible, but the channel could not be locked:`,
+      err,
+    );
+    return {
+      ticketUpdated: true,
+      receiptLinkAvailable: true,
+      channelReceiptDelivered,
+      channelClosed: false,
+      dmDelivered: false,
+    };
+  }
+
+  let dmDelivered = Boolean(persisted.resolutionDelivered);
+  try {
+    if (!dmDelivered) {
+      const opener = await closer.client.users.fetch(ticket.userId);
+      const header = `Your **${config.label}** ticket has been closed by ${closer.user.tag}.`;
+      const dmDescription = appendReceiptLink(
+        [header, "", "**Final outcome**", playerResolution, "", playerFollowUp]
+          .filter(Boolean)
+          .join("\n"),
+        receiptUrl,
+        4096,
+      );
+      const dmEmbed = new EmbedBuilder()
+        .setTitle(`Ticket #${paddedNum} closed`)
+        .setColor(0x95a5a6)
+        .setDescription(dmDescription)
+        .setFooter({ text: "ahousedividedgame.com" })
+        .setTimestamp();
+      if (ticket.subject) {
+        dmEmbed.addFields({
+          name: "Subject",
+          value: ticket.subject.slice(0, 1024),
+        });
+      }
+
+      await opener.send({
+        embeds: [dmEmbed],
+        nonce: ticketResolutionNonce(
+          "td",
+          apiTicketNumber,
+          persisted.resolutionVersion,
+        ),
+        enforceNonce: true,
+      });
+      dmDelivered = true;
+      const dmMarker = await apiUpdateTicket({
+        discordChannelId: channel.id,
+        action: "resolution-dm-delivered",
+      });
+      if (!dmMarker) {
+        console.warn(
+          `Ticket #${paddedNum} DM was sent, but its delivery marker did not persist.`,
+        );
+      }
+    }
+  } catch (err) {
+    console.warn(
+      `Ticket #${paddedNum} final resolution DM failed; the bot will retry it:`,
+      err,
+    );
+  }
+
+  if (channelClosed) {
     // Notify openers of merged source tickets that the merged ticket is now closed
     const mergedFromIds = (ticket.mergedFromUserIds ?? []).filter(
       (id) => id !== ticket.userId && id !== closer.id,
@@ -678,9 +983,11 @@ async function finalizeTicketClose(
           .setTitle(`Ticket #${paddedNum} closed`)
           .setColor(0x95a5a6)
           .setDescription(
-            `${header}${resolutionMessage ? resolutionMessage.slice(0, maxRes) : ""}${
-              receiptUrl ? `\n\n**Support receipt:** ${receiptUrl}` : ""
-            }`.trim().slice(0, 4096),
+            appendReceiptLink(
+              `${header}${resolutionMessage ? resolutionMessage.slice(0, maxRes) : ""}`.trim(),
+              receiptUrl,
+              4096,
+            ),
           )
           .setFooter({ text: "ahousedividedgame.com" })
           .setTimestamp();
@@ -690,13 +997,18 @@ async function finalizeTicketClose(
         console.warn(`Merged-ticket close DM to ${mergedUserId} failed:`, err);
       }
     }
-
   }
 
-  // Keep the channel visible so staff and the reporter can read the receipt.
-  // The ticket store still marks it closed and prevents another close action.
-  if (channelReceiptDelivered) removeTicket(guild.id, channel.id);
-  return channelReceiptDelivered;
+  // Keep the channel readable for the receipt and transcript, but prevent
+  // reporters from continuing to post after closure.
+  if (channelClosed) removeTicket(guild.id, channel.id);
+  return {
+    ticketUpdated: true,
+    receiptLinkAvailable: true,
+    channelReceiptDelivered,
+    channelClosed,
+    dmDelivered,
+  };
 }
 
 export async function handleClaimTicket(
@@ -709,21 +1021,24 @@ export async function handleClaimTicket(
 
   if (!ticket) {
     const msg = "This channel is not a ticket.";
-    if (interaction.replied || interaction.deferred) await interaction.followUp({ content: msg, ephemeral: true });
+    if (interaction.replied || interaction.deferred)
+      await interaction.followUp({ content: msg, ephemeral: true });
     else await interaction.reply({ content: msg, ephemeral: true });
     return;
   }
 
   if (!memberCanActAsTicketStaff(claimer, channel)) {
     const msg = "Only moderators and admins can claim tickets.";
-    if (interaction.replied || interaction.deferred) await interaction.followUp({ content: msg, ephemeral: true });
+    if (interaction.replied || interaction.deferred)
+      await interaction.followUp({ content: msg, ephemeral: true });
     else await interaction.reply({ content: msg, ephemeral: true });
     return;
   }
 
   if (ticket.claimedByUserId) {
     const msg = `This ticket is already claimed by <@${ticket.claimedByUserId}>.`;
-    if (interaction.replied || interaction.deferred) await interaction.followUp({ content: msg, ephemeral: true });
+    if (interaction.replied || interaction.deferred)
+      await interaction.followUp({ content: msg, ephemeral: true });
     else await interaction.reply({ content: msg, ephemeral: true });
     return;
   }
@@ -735,7 +1050,9 @@ export async function handleClaimTicket(
   if ("message" in interaction && interaction.message) {
     embedMessage = interaction.message as Message;
   } else if (ticket.embedMessageId) {
-    embedMessage = await channel.messages.fetch(ticket.embedMessageId).catch(() => undefined);
+    embedMessage = await channel.messages
+      .fetch(ticket.embedMessageId)
+      .catch(() => undefined);
   }
 
   if (embedMessage?.embeds[0]) {
@@ -744,7 +1061,9 @@ export async function handleClaimTicket(
       value: `<@${claimer.id}>`,
       inline: true,
     });
-    await embedMessage.edit({ embeds: [updated], components: [buildTicketActionRow(true)] }).catch(() => {});
+    await embedMessage
+      .edit({ embeds: [updated], components: [buildTicketActionRow(true)] })
+      .catch(() => {});
   }
 
   // Surface the claim in the channel so everyone in the ticket can see who claimed it
@@ -758,21 +1077,34 @@ export async function handleClaimTicket(
   }
 }
 
-export async function handleTicketCloseModalSubmit(interaction: ModalSubmitInteraction): Promise<void> {
+export async function handleTicketCloseModalSubmit(
+  interaction: ModalSubmitInteraction,
+): Promise<void> {
   if (!interaction.guild || !interaction.channelId) {
-    await interaction.reply({ content: "This can only be used inside a server ticket channel.", ephemeral: true });
+    await interaction.reply({
+      content: "This can only be used inside a server ticket channel.",
+      ephemeral: true,
+    });
     return;
   }
 
-  const channelId = interaction.customId.slice(TICKET_CLOSE_MODAL_PREFIX.length);
+  const channelId = interaction.customId.slice(
+    TICKET_CLOSE_MODAL_PREFIX.length,
+  );
   if (channelId !== interaction.channelId) {
-    await interaction.reply({ content: "This form does not match the current channel.", ephemeral: true });
+    await interaction.reply({
+      content: "This form does not match the current channel.",
+      ephemeral: true,
+    });
     return;
   }
 
   const channel = interaction.guild.channels.cache.get(channelId);
   if (!channel?.isTextBased() || channel.type !== ChannelType.GuildText) {
-    await interaction.reply({ content: "Ticket channel not found.", ephemeral: true });
+    await interaction.reply({
+      content: "Ticket channel not found.",
+      ephemeral: true,
+    });
     return;
   }
   const textChannel = channel as TextChannel;
@@ -784,21 +1116,34 @@ export async function handleTicketCloseModalSubmit(interaction: ModalSubmitInter
 
   const ticket = getTicketByChannel(interaction.guild.id, channelId);
   if (!ticket) {
-    await interaction.reply({ content: "This ticket is already closed or is not a ticket channel.", ephemeral: true });
+    await interaction.reply({
+      content: "This ticket is already closed or is not a ticket channel.",
+      ephemeral: true,
+    });
     return;
   }
 
   if (!canCloseTicket(closer, textChannel, ticket.userId)) {
-    await interaction.reply({ content: "You don't have permission to close this ticket.", ephemeral: true });
+    await interaction.reply({
+      content: "You don't have permission to close this ticket.",
+      ephemeral: true,
+    });
     return;
   }
 
-  const resolutionRaw = interaction.fields.getTextInputValue("ticket_resolution_message");
+  const resolutionRaw = interaction.fields.getTextInputValue(
+    "ticket_resolution_message",
+  );
   const resolutionMessage = resolutionRaw.trim();
-  const staffClosingOther = isStaffClosingSomeoneElsesTicket(closer, textChannel, ticket.userId);
+  const staffClosingOther = isStaffClosingSomeoneElsesTicket(
+    closer,
+    textChannel,
+    ticket.userId,
+  );
   if (staffClosingOther && !resolutionMessage) {
     await interaction.reply({
-      content: "Staff must enter a resolution message so the ticket opener can be notified.",
+      content:
+        "Staff must enter a resolution message so the ticket opener can be notified.",
       ephemeral: true,
     });
     return;
@@ -807,14 +1152,40 @@ export async function handleTicketCloseModalSubmit(interaction: ModalSubmitInter
   await interaction.deferReply({ ephemeral: true });
 
   try {
-    const channelDelivered = await finalizeTicketClose(textChannel, closer, ticket, resolutionMessage);
-    let reply = channelDelivered
-      ? "Ticket closed. The receipt remains visible in this channel."
-      : "The resolution was saved, but the receipt could not be posted in this channel. Please retry the close.";
+    const result = await finalizeTicketClose(
+      textChannel,
+      closer,
+      ticket,
+      resolutionMessage,
+    );
+    let reply: string;
+    if (result.alreadyInProgress) {
+      reply = "This ticket is already being closed.";
+    } else if (!result.receiptLinkAvailable) {
+      reply =
+        "The support receipt link is unavailable, so the ticket was left open. Please retry shortly.";
+    } else if (!result.ticketUpdated) {
+      reply =
+        "The ticket record could not be updated, so the channel was left open. Please retry shortly.";
+    } else if (!result.channelReceiptDelivered) {
+      reply =
+        "The ticket was saved as closed. The bot will retry the channel receipt and final DM.";
+    } else if (!result.channelClosed) {
+      reply =
+        "The receipt is visible, but the channel could not be locked. Please retry closing it.";
+    } else if (!result.dmDelivered) {
+      reply =
+        "Ticket closed. The receipt remains visible in this channel. The opener's final DM will be retried.";
+    } else {
+      reply =
+        "Ticket closed. The receipt remains visible in this channel, and the opener was sent a final DM.";
+    }
     await interaction.editReply({ content: reply });
   } catch (err) {
     console.error("Ticket close finalize error:", err);
-    await interaction.editReply({ content: "Something went wrong while closing the ticket. Check the logs." });
+    await interaction.editReply({
+      content: "Something went wrong while closing the ticket. Check the logs.",
+    });
   }
 }
 
@@ -829,7 +1200,8 @@ export async function closeTicket(
   if (!ticket) {
     const msg = "This channel is not a ticket.";
     if (interaction) {
-      if (interaction.replied || interaction.deferred) await interaction.followUp({ content: msg, ephemeral: true });
+      if (interaction.replied || interaction.deferred)
+        await interaction.followUp({ content: msg, ephemeral: true });
       else await interaction.reply({ content: msg, ephemeral: true });
     } else {
       await channel.send(msg).catch(() => {});
@@ -840,7 +1212,8 @@ export async function closeTicket(
   if (!canCloseTicket(closer, channel, ticket.userId)) {
     const msg = "You don't have permission to close this ticket.";
     if (interaction) {
-      if (interaction.replied || interaction.deferred) await interaction.followUp({ content: msg, ephemeral: true });
+      if (interaction.replied || interaction.deferred)
+        await interaction.followUp({ content: msg, ephemeral: true });
       else await interaction.reply({ content: msg, ephemeral: true });
     } else {
       await channel.send(msg).catch(() => {});
@@ -857,7 +1230,9 @@ export async function closeTicket(
   // 🔒 reaction path — confirm in channel, then modal
   const confirmEmbed = new EmbedBuilder()
     .setTitle("Close Ticket?")
-    .setDescription("Are you sure you want to close this ticket? A transcript will be saved. You will be asked for a resolution message next.")
+    .setDescription(
+      "Are you sure you want to close this ticket? A transcript will be saved. You will be asked for a resolution message next.",
+    )
     .setColor(0xed4245);
 
   const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -871,7 +1246,10 @@ export async function closeTicket(
       .setStyle(ButtonStyle.Secondary),
   );
 
-  const confirmMsg = await channel.send({ embeds: [confirmEmbed], components: [confirmRow] });
+  const confirmMsg = await channel.send({
+    embeds: [confirmEmbed],
+    components: [confirmRow],
+  });
 
   const collector = confirmMsg.createMessageComponentCollector({
     componentType: ComponentType.Button,
@@ -899,7 +1277,9 @@ export async function closeTicket(
         .setTitle("Close Ticket?")
         .setDescription("Close timed out.")
         .setColor(0x5865f2);
-      confirmMsg.edit({ embeds: [timedOutEmbed], components: [] }).catch(() => {});
+      confirmMsg
+        .edit({ embeds: [timedOutEmbed], components: [] })
+        .catch(() => {});
     }
   });
 }
@@ -947,7 +1327,10 @@ export async function mergeTickets(
       .setTimestamp();
 
     if (sourceTicket.subject) {
-      headerEmbed.addFields({ name: "Original Subject", value: sourceTicket.subject });
+      headerEmbed.addFields({
+        name: "Original Subject",
+        value: sourceTicket.subject,
+      });
     }
 
     await targetChannel.send({ embeds: [headerEmbed] });
@@ -956,14 +1339,17 @@ export async function mergeTickets(
     const lines: string[] = [];
     for (const msg of messages) {
       if (msg.author.bot && msg.embeds.length > 0) continue; // skip bot embeds (initial ticket embed, etc.)
-      if (!msg.content && msg.embeds.length === 0 && msg.attachments.size === 0) continue;
+      if (!msg.content && msg.embeds.length === 0 && msg.attachments.size === 0)
+        continue;
 
       const ts = msg.createdAt.toISOString().slice(0, 19).replace("T", " ");
       // Use the user's tag/username instead of mention to avoid pings
       const author = msg.author.tag ?? msg.author.username ?? msg.author.id;
       let content = msg.content || "";
       if (msg.attachments.size > 0) {
-        const attachLinks = [...msg.attachments.values()].map((a) => a.url).join(" ");
+        const attachLinks = [...msg.attachments.values()]
+          .map((a) => a.url)
+          .join(" ");
         content = content ? `${content}\n${attachLinks}` : attachLinks;
       }
       lines.push(`**[${ts}] ${author}:** ${content}`);
@@ -985,13 +1371,19 @@ export async function mergeTickets(
 
       for (let i = 0; i < chunks.length; i++) {
         const transcriptEmbed = new EmbedBuilder()
-          .setTitle(chunks.length > 1 ? `Transcript (${i + 1}/${chunks.length})` : "Transcript")
+          .setTitle(
+            chunks.length > 1
+              ? `Transcript (${i + 1}/${chunks.length})`
+              : "Transcript",
+          )
           .setDescription(chunks[i])
           .setColor(sourceConfig.color);
-        await targetChannel.send({
-          embeds: [transcriptEmbed],
-          allowedMentions: { parse: [] },
-        }).catch(() => {});
+        await targetChannel
+          .send({
+            embeds: [transcriptEmbed],
+            allowedMentions: { parse: [] },
+          })
+          .catch(() => {});
       }
     }
 
@@ -1014,7 +1406,10 @@ export async function mergeTickets(
         .setTimestamp();
 
       if (sourceTicket.subject) {
-        dmEmbed.addFields({ name: "Your Original Subject", value: sourceTicket.subject });
+        dmEmbed.addFields({
+          name: "Your Original Subject",
+          value: sourceTicket.subject,
+        });
       }
 
       await sourceUser.send({ embeds: [dmEmbed] });
@@ -1023,15 +1418,25 @@ export async function mergeTickets(
     }
 
     // 5. Log the merge
-    const logChannelId = process.env.TICKET_LOG_CHANNEL_ID ?? "1483974417628270593";
-    const logChannel = guild.channels.cache.get(logChannelId) as TextChannel | undefined;
+    const logChannelId =
+      process.env.TICKET_LOG_CHANNEL_ID ?? "1483974417628270593";
+    const logChannel = guild.channels.cache.get(logChannelId) as
+      TextChannel | undefined;
     if (logChannel) {
       const mergeEmbed = new EmbedBuilder()
         .setTitle(`📎 Ticket Merged — #${sourcePadded} → #${targetPadded}`)
         .setColor(0x5865f2)
         .addFields(
-          { name: "Source", value: `#${sourcePadded} (${sourceConfig.label}) — <@${sourceTicket.userId}>`, inline: true },
-          { name: "Target", value: `#${targetPadded} (${targetConfig.label})`, inline: true },
+          {
+            name: "Source",
+            value: `#${sourcePadded} (${sourceConfig.label}) — <@${sourceTicket.userId}>`,
+            inline: true,
+          },
+          {
+            name: "Target",
+            value: `#${targetPadded} (${targetConfig.label})`,
+            inline: true,
+          },
           { name: "Merged by", value: `<@${staffMember.id}>`, inline: true },
           { name: "Reason", value: reason },
         )
@@ -1039,7 +1444,10 @@ export async function mergeTickets(
         .setTimestamp();
 
       if (sourceTicket.subject) {
-        mergeEmbed.addFields({ name: "Original Subject", value: sourceTicket.subject });
+        mergeEmbed.addFields({
+          name: "Original Subject",
+          value: sourceTicket.subject,
+        });
       }
 
       await logChannel.send({ embeds: [mergeEmbed] }).catch(() => {});
@@ -1061,12 +1469,19 @@ export async function mergeTickets(
 
     // 7. Remove source ticket from store and delete channel
     removeTicket(guild.id, sourceTicket.channelId);
-    await sourceChannel.delete(`Ticket #${sourcePadded} merged into #${targetPadded} by ${staffMember.user.tag}`).catch(() => {});
+    await sourceChannel
+      .delete(
+        `Ticket #${sourcePadded} merged into #${targetPadded} by ${staffMember.user.tag}`,
+      )
+      .catch(() => {});
 
     return { success: true };
   } catch (error) {
     console.error("Error merging tickets:", error);
-    return { success: false, reason: "An unexpected error occurred while merging the tickets." };
+    return {
+      success: false,
+      reason: "An unexpected error occurred while merging the tickets.",
+    };
   }
 }
 
@@ -1089,7 +1504,9 @@ export async function handlePanelReaction(
   // Notify via DM (reactions can't reply ephemerally)
   try {
     if (result.success) {
-      await user.send(`Your ${category} ticket has been created: <#${result.channelId}>`);
+      await user.send(
+        `Your ${category} ticket has been created: <#${result.channelId}>`,
+      );
     } else {
       await user.send(result.reason);
     }
@@ -1108,7 +1525,8 @@ export async function handleLockReaction(
   const ticket = getTicketByChannel(guild.id, reaction.message.channel.id);
   if (!ticket) return;
 
-  const member = guild.members.cache.get(user.id) ?? await guild.members.fetch(user.id);
+  const member =
+    guild.members.cache.get(user.id) ?? (await guild.members.fetch(user.id));
   if (!member) return;
 
   await closeTicket(reaction.message.channel as TextChannel, member);
