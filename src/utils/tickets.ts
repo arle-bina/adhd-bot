@@ -938,7 +938,7 @@ async function finalizeTicketCloseImpl(
       dmDelivered = true;
       const dmMarker = await apiUpdateTicket({
         discordChannelId: channel.id,
-        action: "resolution-delivered",
+        action: "resolution-dm-delivered",
       });
       if (!dmMarker) {
         console.warn(

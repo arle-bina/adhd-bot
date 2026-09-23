@@ -418,7 +418,7 @@ client.once("ready", () => {
             });
             const dmMarker = await apiUpdateTicket({
               ticketNumber: ticket.ticketNumber,
-              action: "resolution-delivered",
+              action: "resolution-dm-delivered",
             });
             if (!dmMarker) {
               console.warn(

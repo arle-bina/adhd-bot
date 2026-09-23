@@ -122,7 +122,7 @@ describe("handleTicketCloseModalSubmit", () => {
       expect.objectContaining({ action: "resolution-channel-delivered" }),
     );
     expect(ticketsApi.updateTicket).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "resolution-delivered" }),
+      expect.objectContaining({ action: "resolution-dm-delivered" }),
     );
     expect(channel.delete).not.toHaveBeenCalled();
     expect(channel.send).toHaveBeenCalledWith(
@@ -238,7 +238,7 @@ describe("handleTicketCloseModalSubmit", () => {
     expect(opener.send).not.toHaveBeenCalled();
     expect(ticketStore.removeTicket).not.toHaveBeenCalled();
     expect(ticketsApi.updateTicket).not.toHaveBeenCalledWith(
-      expect.objectContaining({ action: "resolution-delivered" }),
+      expect.objectContaining({ action: "resolution-dm-delivered" }),
     );
     expect(interaction.editReply).toHaveBeenCalledWith({
       content:

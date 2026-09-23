@@ -68,6 +68,7 @@ export type UpdateTicketAction =
   | "close"
   | "retriage"
   | "resolution-delivered"
+  | "resolution-dm-delivered"
   | "resolution-channel-delivered";
 
 export interface UpdateTicketPayload {
