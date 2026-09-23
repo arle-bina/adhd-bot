@@ -2,6 +2,7 @@ import {
   Guild,
   GuildMember,
   ChannelType,
+  OverwriteType,
   PermissionFlagsBits,
   EmbedBuilder,
   ActionRowBuilder,
@@ -641,10 +642,17 @@ export async function closeTicketChannel(
       !overwrite?.deny.has(PermissionFlagsBits.SendMessages) ||
       !overwrite?.deny.has(PermissionFlagsBits.AddReactions)
     ) {
-      await channel.permissionOverwrites.edit(reporterId, {
-        SendMessages: false,
-        AddReactions: false,
-      });
+      await channel.permissionOverwrites.edit(
+        reporterId,
+        {
+          SendMessages: false,
+          AddReactions: false,
+        },
+        {
+          type: OverwriteType.Member,
+          reason: `Ticket #${ticketNumber} closed`,
+        },
+      );
     }
   }
 

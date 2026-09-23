@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { ChannelType } from "discord.js";
+import { ChannelType, OverwriteType } from "discord.js";
 
 vi.mock("../../src/utils/ticketsApi.js", () => ({
   updateTicket: vi.fn(async (payload: { action: string }) =>
@@ -139,10 +139,14 @@ describe("handleTicketCloseModalSubmit", () => {
         enforceNonce: true,
       }),
     );
-    expect(permissionOverwrites.edit).toHaveBeenCalledWith("u1", {
-      SendMessages: false,
-      AddReactions: false,
-    });
+    expect(permissionOverwrites.edit).toHaveBeenCalledWith(
+      "u1",
+      {
+        SendMessages: false,
+        AddReactions: false,
+      },
+      { type: OverwriteType.Member, reason: "Ticket #42 closed" },
+    );
     expect(channel.setName).toHaveBeenCalledWith(
       "closed-ticket-0042",
       "Ticket #42 closed",
