@@ -26,6 +26,7 @@ import {
   handleLockReaction,
   TICKET_CLOSE_MODAL_PREFIX,
   handleTicketCloseModalSubmit,
+  closeLegacyNamedTicketChannel,
   TICKET_MERGE_MODAL_PREFIX,
   mergeTickets,
   TICKET_CLAIM_BUTTON_ID,
@@ -164,6 +165,36 @@ client.once("ready", () => {
   refreshChannelConfig();
   // Re-sync hourly in case the admin updates webhook URLs
   setInterval(refreshChannelConfig, 60 * 60 * 1000);
+
+  const cleanUpLegacyClosedTickets = async () => {
+    for (const guild of client.guilds.cache.values()) {
+      try {
+        const channels = await guild.channels.fetch();
+        for (const channel of channels.values()) {
+          if (
+            channel?.type !== ChannelType.GuildText ||
+            !channel.name.startsWith("closed-ticket-")
+          )
+            continue;
+          try {
+            await closeLegacyNamedTicketChannel(channel);
+          } catch (error) {
+            console.error(
+              `Could not remove legacy closed ticket channel ${channel.id}:`,
+              error,
+            );
+          }
+        }
+      } catch (error) {
+        console.error(
+          `Could not inspect legacy closed tickets in guild ${guild.id}:`,
+          error,
+        );
+      }
+    }
+  };
+  setTimeout(cleanUpLegacyClosedTickets, 30 * 1000);
+  setInterval(cleanUpLegacyClosedTickets, 10 * 60 * 1000);
 
   // Snapshot member counts on startup and every hour
   const snapshotMembers = () => {
@@ -380,10 +411,7 @@ client.once("ready", () => {
           }
 
           if (ticketChannel && plan.needsChannelClose) {
-            await closeTicketChannel(
-              ticketChannel,
-              ticket.ticketNumber,
-            );
+            await closeTicketChannel(ticketChannel, ticket.ticketNumber);
             if (getTicketByChannel(ticketChannel.guild.id, ticketChannel.id)) {
               removeTicket(ticketChannel.guild.id, ticketChannel.id);
             }

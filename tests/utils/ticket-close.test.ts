@@ -26,6 +26,7 @@ vi.mock("../../src/utils/ticketStore.js", async (importActual) => {
 
 import {
   closeTicket,
+  closeLegacyNamedTicketChannel,
   handleTicketCloseModalSubmit,
   TICKET_CLOSE_MODAL_PREFIX,
 } from "../../src/utils/tickets.js";
@@ -37,7 +38,12 @@ function buildScene() {
   const channelId = "c1";
   const opener = {
     id: "u1",
-    permissions: { has: vi.fn((permission: bigint) => permission === PermissionFlagsBits.Administrator) },
+    permissions: {
+      has: vi.fn(
+        (permission: bigint) =>
+          permission === PermissionFlagsBits.Administrator,
+      ),
+    },
     user: { id: "u1", tag: "opener#0001" },
     send: vi.fn(async () => undefined),
     client: { users: { fetch: vi.fn() } },
@@ -162,8 +168,7 @@ describe("handleTicketCloseModalSubmit", () => {
 
     // The staff-facing reply confirms both channels of delivery and actual closure.
     expect(interaction.editReply).toHaveBeenCalledWith({
-      content:
-        "Ticket closed. The opener was sent the final outcome via DM.",
+      content: "Ticket closed. The opener was sent the final outcome via DM.",
     });
     const replies = vi.mocked(interaction.editReply).mock.calls.flat();
     for (const call of replies) {
@@ -197,7 +202,9 @@ describe("handleTicketCloseModalSubmit", () => {
 
     await closeTicket(channel as never, opener as never, interaction as never);
 
-    expect(channel.delete).toHaveBeenCalledWith("Finish closing a legacy ticket channel");
+    expect(channel.delete).toHaveBeenCalledWith(
+      "Finish closing a legacy ticket channel",
+    );
     expect(interaction.reply).toHaveBeenCalledWith({
       content: "Ticket channel closed.",
       ephemeral: true,
@@ -254,8 +261,7 @@ describe("handleTicketCloseModalSubmit", () => {
     expect(channel.send).not.toHaveBeenCalled();
     expect(opener.send).toHaveBeenCalledOnce();
     expect(interaction.editReply).toHaveBeenCalledWith({
-      content:
-        "Ticket closed. The opener was sent the final outcome via DM.",
+      content: "Ticket closed. The opener was sent the final outcome via DM.",
     });
   });
 
@@ -278,5 +284,46 @@ describe("handleTicketCloseModalSubmit", () => {
       content:
         "The channel could not be closed. Please retry; the staff transcript records the outcome.",
     });
+  });
+});
+
+describe("legacy renamed ticket cleanup", () => {
+  it("archives the channel before deleting it", async () => {
+    const { channel, guild } = buildScene();
+    channel.name = "closed-ticket-mechanics-reporter-1343";
+    const log = {
+      type: ChannelType.GuildText,
+      send: vi.fn(async () => undefined),
+    };
+    Object.assign(guild.channels, { fetch: vi.fn(async () => log) });
+
+    expect(await closeLegacyNamedTicketChannel(channel as never)).toBe(true);
+    expect(log.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        files: [expect.objectContaining({ name: "ticket-1343-legacy.txt" })],
+      }),
+    );
+    expect(channel.delete).toHaveBeenCalledWith("Ticket #1343 closed");
+    expect(log.send.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(channel.delete).mock.invocationCallOrder[0],
+    );
+  });
+
+  it("leaves the channel in place if its transcript cannot be archived", async () => {
+    const { channel, guild } = buildScene();
+    channel.name = "closed-ticket-mechanics-reporter-1343";
+    Object.assign(guild.channels, {
+      fetch: vi.fn(async () => ({
+        type: ChannelType.GuildText,
+        send: vi.fn(async () => {
+          throw new Error("log unavailable");
+        }),
+      })),
+    });
+
+    await expect(
+      closeLegacyNamedTicketChannel(channel as never),
+    ).rejects.toThrow("log unavailable");
+    expect(channel.delete).not.toHaveBeenCalled();
   });
 });
