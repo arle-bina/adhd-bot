@@ -637,6 +637,50 @@ export async function closeTicketChannel(
   await channel.delete(`Ticket #${ticketNumber} closed`);
 }
 
+/** Archive and remove channels left behind by the old rename-only close flow. */
+export async function closeLegacyNamedTicketChannel(
+  channel: TextChannel,
+): Promise<boolean> {
+  const match = /^closed-ticket-[a-z0-9-]+-(\d+)$/i.exec(channel.name);
+  if (!match) return false;
+
+  const ticketNumber = Number(match[1]);
+  const messages = await fetchAllMessages(channel, 500);
+  const transcript = [
+    `Legacy closed ticket #${ticketNumber}`,
+    `Channel: ${channel.name} (${channel.id})`,
+    `Messages: ${messages.length}`,
+    "---",
+    ...messages.map((message) =>
+      [
+        `[${message.createdAt.toISOString()}] ${message.author.displayName} (${message.author.id}): ${message.content || "[embed/attachment]"}`,
+        ...message.attachments.map((attachment) => attachment.url),
+        ...message.embeds.map((embed) => embed.description).filter(Boolean),
+      ].join("\n"),
+    ),
+  ].join("\n");
+  const logChannelId =
+    process.env.TICKET_LOG_CHANNEL_ID ?? "1483974417628270593";
+  const logChannel = await channel.guild.channels.fetch(logChannelId);
+  if (logChannel?.type !== ChannelType.GuildText) {
+    throw new Error(`Ticket log channel ${logChannelId} is unavailable`);
+  }
+  await logChannel.send({
+    content: `Archived legacy closed ticket #${ticketNumber} before removing its channel.`,
+    files: [
+      {
+        attachment: Buffer.from(transcript, "utf-8"),
+        name: `ticket-${ticketNumber}-legacy.txt`,
+      },
+    ],
+  });
+  await closeTicketChannel(channel, ticketNumber);
+  if (getTicketByChannel(channel.guild.id, channel.id)) {
+    removeTicket(channel.guild.id, channel.id);
+  }
+  return true;
+}
+
 interface TicketCloseResult {
   ticketUpdated: boolean;
   receiptLinkAvailable: boolean;
@@ -794,7 +838,8 @@ async function finalizeTicketCloseImpl(
       name: "Backend sync",
       value: "Unavailable; reconcile from this transcript",
     });
-    transcript += "\nBackend sync: unavailable at close; reconcile this ticket from the transcript.";
+    transcript +=
+      "\nBackend sync: unavailable at close; reconcile this ticket from the transcript.";
   }
   playerResolution = persisted?.finalOutcome || playerResolution;
 
@@ -824,7 +869,9 @@ async function finalizeTicketCloseImpl(
       const channelReceiptRecorded = await apiUpdateTicket({
         discordChannelId: channel.id,
         action: "resolution-channel-delivered",
-        ...(channelReceiptMessageId ? { messageId: channelReceiptMessageId } : {}),
+        ...(channelReceiptMessageId
+          ? { messageId: channelReceiptMessageId }
+          : {}),
       });
       if (!channelReceiptRecorded) {
         console.warn(
@@ -834,9 +881,11 @@ async function finalizeTicketCloseImpl(
     }
   }
 
-  const logChannelId = process.env.TICKET_LOG_CHANNEL_ID ?? "1483974417628270593";
+  const logChannelId =
+    process.env.TICKET_LOG_CHANNEL_ID ?? "1483974417628270593";
   if (logChannelId) {
-    const logChannel = guild.channels.cache.get(logChannelId) as TextChannel | undefined;
+    const logChannel = guild.channels.cache.get(logChannelId) as
+      TextChannel | undefined;
     if (logChannel) {
       const buffer = Buffer.from(transcript, "utf-8");
       await logChannel
@@ -850,10 +899,7 @@ async function finalizeTicketCloseImpl(
 
   let channelClosed = false;
   try {
-    await closeTicketChannel(
-      channel,
-      ticket.ticketNumber,
-    );
+    await closeTicketChannel(channel, ticket.ticketNumber);
     channelClosed = true;
   } catch (err) {
     console.warn(
@@ -874,7 +920,14 @@ async function finalizeTicketCloseImpl(
     if (!dmDelivered) {
       const opener = await closer.client.users.fetch(ticket.userId);
       const header = `Your **${config.label}** ticket has been closed by ${closer.user.tag}.`;
-      const dmText = [header, "", "**Final outcome**", playerResolution, "", playerFollowUp]
+      const dmText = [
+        header,
+        "",
+        "**Final outcome**",
+        playerResolution,
+        "",
+        playerFollowUp,
+      ]
         .filter(Boolean)
         .join("\n");
       const dmDescription = receiptUrl
@@ -1124,11 +1177,9 @@ export async function handleTicketCloseModalSubmit(
       reply =
         "Ticket closed in Discord. Backend sync failed and the staff transcript is flagged for reconciliation.";
     } else if (!result.dmDelivered) {
-      reply =
-        "Ticket closed. The opener's final DM will be retried.";
+      reply = "Ticket closed. The opener's final DM will be retried.";
     } else {
-      reply =
-        "Ticket closed. The opener was sent the final outcome via DM.";
+      reply = "Ticket closed. The opener was sent the final outcome via DM.";
     }
     await interaction.editReply({ content: reply });
   } catch (err) {
@@ -1150,12 +1201,22 @@ export async function closeTicket(
   if (!ticket) {
     // Older releases renamed closed channels and removed their local ticket
     // record. Staff can finish closing these orphaned channels.
-    if (channel.name.startsWith("closed-ticket-") && memberCanActAsTicketStaff(closer, channel)) {
+    if (
+      channel.name.startsWith("closed-ticket-") &&
+      memberCanActAsTicketStaff(closer, channel)
+    ) {
       await channel.delete("Finish closing a legacy ticket channel");
       if (interaction) {
         if (interaction.replied || interaction.deferred)
-          await interaction.followUp({ content: "Ticket channel closed.", ephemeral: true });
-        else await interaction.reply({ content: "Ticket channel closed.", ephemeral: true });
+          await interaction.followUp({
+            content: "Ticket channel closed.",
+            ephemeral: true,
+          });
+        else
+          await interaction.reply({
+            content: "Ticket channel closed.",
+            ephemeral: true,
+          });
       }
       return;
     }
