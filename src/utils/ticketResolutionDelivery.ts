@@ -21,6 +21,17 @@ export function appendReceiptLink(
   return `${prefix}${receipt}`;
 }
 
+/** A receipt lookup failure never blocks delivering or closing a ticket. */
+export function appendOptionalReceiptLink(
+  content: string,
+  receiptUrl: string | undefined,
+  maxLength: number,
+): string {
+  return receiptUrl
+    ? appendReceiptLink(content, receiptUrl, maxLength)
+    : content.slice(0, maxLength);
+}
+
 /** Use one Discord idempotency key per resolution version. */
 export function ticketResolutionNonce(
   prefix: string,

@@ -51,7 +51,7 @@ import {
   getTicketReceiptUrl,
 } from "./utils/ticketsApi.js";
 import {
-  appendReceiptLink,
+  appendOptionalReceiptLink,
   beginTicketResolutionDelivery,
   endTicketResolutionDelivery,
   resolutionDeliveryPlan,
@@ -323,10 +323,6 @@ client.once("ready", () => {
         try {
           const plan = resolutionDeliveryPlan(ticket);
           const receiptUrl = await getTicketReceiptUrl(ticket.ticketNumber);
-          if (!receiptUrl)
-            throw new Error(
-              "Support receipt link is unavailable; resolution delivery will retry.",
-            );
           let ticketChannel: TextChannel | null = null;
 
           if (ticket.discordChannelId) {
@@ -348,7 +344,7 @@ client.once("ready", () => {
           if (ticketChannel && plan.needsChannelReceipt) {
             const outcome =
               ticket.message || "Your support report has been resolved.";
-            const content = appendReceiptLink(
+            const content = appendOptionalReceiptLink(
               [
                 `<@${ticket.discordUserId}>`,
                 "",
@@ -386,7 +382,6 @@ client.once("ready", () => {
           if (ticketChannel && plan.needsChannelClose) {
             await closeTicketChannel(
               ticketChannel,
-              [ticket.discordUserId, ...(ticket.mergedFromUserIds ?? [])],
               ticket.ticketNumber,
             );
             if (getTicketByChannel(ticketChannel.guild.id, ticketChannel.id)) {
@@ -398,7 +393,7 @@ client.once("ready", () => {
             const embed = new EmbedBuilder()
               .setTitle(`Your ticket #${ticket.ticketNumber} has been resolved`)
               .setDescription(
-                appendReceiptLink(
+                appendOptionalReceiptLink(
                   [
                     ticket.message || "Your ticket has been resolved.",
                     "",
