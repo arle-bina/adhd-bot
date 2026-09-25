@@ -259,6 +259,32 @@ async function alertSyncFailure(
     );
 }
 
+/**
+ * Visible filing-time follow-up for the missing-context questions the game
+ * backend flagged at creation (Track1 companion to AHDGame #2393). Pure so it
+ * is unit-testable. Posted as its own channel message AFTER the direct
+ * receipt post in createTicket, so the link is delivered exactly once and the
+ * questions are never silent.
+ */
+export function buildFilingQuestionsMessage(
+  contextQuestions?: string[],
+): string | null {
+  const questions = (contextQuestions ?? [])
+    .map((q) => q.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+  if (!questions.length) return null;
+  return [
+    "We need one more detail to work this report:",
+    "",
+    ...questions.map((q) => `- ${q}`),
+    "",
+    "Reply here with the missing link or details and we will continue.",
+  ]
+    .join("\n")
+    .slice(0, 1900);
+}
+
 export async function createTicket(
   guild: Guild,
   userId: string,
@@ -536,6 +562,23 @@ export async function createTicket(
               category,
               username,
             );
+          }
+
+          // Filing-time context prompt: the backend may flag missing context
+          // at creation — ask visibly NOW while the reporter is still in the
+          // channel. Questions only; the receipt link above already posted, so
+          // it is never duplicated here. Still posted when the receipt lookup
+          // failed.
+          const questionsMessage = buildFilingQuestionsMessage(
+            res.contextQuestions,
+          );
+          if (questionsMessage) {
+            await channel.send(questionsMessage).catch((err) => {
+              console.error(
+                `Failed to post filing questions for ticket #${res.ticketNumber}:`,
+                err,
+              );
+            });
           }
         } else {
           // apiCreateTicket already retried internally; a final undefined here means

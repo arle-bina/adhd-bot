@@ -48,6 +48,11 @@ export interface CreateTicketResponse {
   ticketNumber: number;
   reviewAfter?: string;
   message?: string;
+  /** Missing-context details flagged by the game backend at creation. */
+  contextNeeded?: string[];
+  contextKey?: string | null;
+  /** Player-facing questions to post in the channel immediately. */
+  contextQuestions?: string[];
 }
 
 export interface UpdateTicketResponse {
