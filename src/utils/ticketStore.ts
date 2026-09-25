@@ -105,7 +105,6 @@ export const MAX_TICKETS_PER_CATEGORY = 3;
 
 export function findOpenTicket(guildId: string, userId: string, category: TicketCategory): Ticket | undefined {
   const tickets = getTickets(guildId);
-  const guildChannels = new Set<string>(); // caller should check channel existence separately
   return Object.values(tickets).find((t) => t.userId === userId && t.category === category);
 }
 

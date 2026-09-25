@@ -7,7 +7,6 @@ import {
   parseEmoji,
 } from "discord.js";
 import { setBinding } from "../utils/reactionRoleStore.js";
-import { replyWithError } from "../utils/helpers.js";
 
 const NEUTRAL_COLOR = 0x5865f2;
 const DEFAULT_EMOJI = "✅";

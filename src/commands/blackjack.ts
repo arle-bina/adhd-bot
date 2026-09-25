@@ -179,9 +179,6 @@ function buildResultEmbed(params: {
 
   let payoutLine: string;
   if (params.kind === "win") {
-    const amount = payoutConverted ?? cvt(Math.round(params.wagerDisplay ? 0 : 0)); // fallback
-    // Recalculate: if payout is raw native value, convert it
-    const rawPayout = payout != null ? payout : Math.round(params.naturalWin ? 1.5 : 1); // multiplier only, not used directly
     const displayPayout = payoutConverted ?? 0;
     payoutLine = `💰 **Payout:** ${fmt(displayPayout)}`;
   } else if (params.kind === "push") {
@@ -233,10 +230,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   if (sub === "pool") {
     await interaction.deferReply();
     try {
-      const [fund, rates] = await Promise.all([
-        getBlackjackFund(),
-        fetchForexRates(),
-      ]);
+      const fund = await getBlackjackFund();
       if (!fund.found) {
         await interaction.editReply({
           content: "The blackjack prize pool has not been initialized yet.",

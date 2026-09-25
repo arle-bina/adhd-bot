@@ -15,7 +15,7 @@ import {
   getTicketByNumber,
   getTickets,
 } from "../utils/ticketStore.js";
-import { mergeTickets, TICKET_MERGE_MODAL_PREFIX } from "../utils/tickets.js";
+import { TICKET_MERGE_MODAL_PREFIX } from "../utils/tickets.js";
 
 export const data = new SlashCommandBuilder()
   .setName("merge-ticket")

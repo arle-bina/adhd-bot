@@ -4,7 +4,7 @@ import {
   AutocompleteInteraction,
   EmbedBuilder,
 } from "discord.js";
-import { lookupByName, lookupByDiscordId, getAutocomplete, type CharacterResult } from "../utils/api.js";
+import { lookupByName, getAutocomplete, type CharacterResult } from "../utils/api.js";
 import { hexToInt, replyWithError } from "../utils/helpers.js";
 import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, symbolFor, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
 import { renderVersus, compactMoney, compactNumber, type VersusMetric } from "../utils/viz/index.js";
