@@ -143,33 +143,33 @@ export async function syncSupporterRole(
 
   // Remove roles that shouldn't be present
   if (regularRole && member.roles.cache.has(regularRole.id) && tier !== "regular" && tier !== "plus") {
-    await member.roles.remove(regularRole.id, "supporter remove").catch(() => {});
+    await member.roles.remove(regularRole.id, "supporter remove");
     removed.push(regularRole.name);
   }
   if (plusRole && member.roles.cache.has(plusRole.id) && tier !== "plus") {
-    await member.roles.remove(plusRole.id, "supporter remove").catch(() => {});
+    await member.roles.remove(plusRole.id, "supporter remove");
     removed.push(plusRole.name);
   }
 
   // Add the appropriate role
   if (tier === "plus" && plusRole) {
     if (!member.roles.cache.has(plusRole.id)) {
-      await member.roles.add(plusRole.id, "supporter add plus").catch(() => {});
+      await member.roles.add(plusRole.id, "supporter add plus");
       added.push(plusRole.name);
     }
     // Ensure regular is removed when plus is added
     if (regularRole && member.roles.cache.has(regularRole.id)) {
-      await member.roles.remove(regularRole.id, "supporter upgrade to plus").catch(() => {});
+      await member.roles.remove(regularRole.id, "supporter upgrade to plus");
       removed.push(regularRole.name);
     }
   } else if (tier === "regular" && regularRole) {
     if (!member.roles.cache.has(regularRole.id)) {
-      await member.roles.add(regularRole.id, "supporter add regular").catch(() => {});
+      await member.roles.add(regularRole.id, "supporter add regular");
       added.push(regularRole.name);
     }
     // Ensure plus is removed when regular is set
     if (plusRole && member.roles.cache.has(plusRole.id)) {
-      await member.roles.remove(plusRole.id, "supporter downgrade to regular").catch(() => {});
+      await member.roles.remove(plusRole.id, "supporter downgrade to regular");
       removed.push(plusRole.name);
     }
   }

@@ -6,7 +6,11 @@ import {
   GuildMember,
 } from "discord.js";
 import { getSupporters, type SupporterFeedTier } from "../utils/api.js";
-import { feedTierToRoleTier, getSupporterRoleIds, syncSupporterRole } from "./supporter.js";
+import {
+  feedTierToRoleTier,
+  getSupporterRoleIds,
+  syncSupporterRole,
+} from "./supporter.js";
 
 const DRY_COLOR = 0x5865f2;
 const APPLY_COLOR = 0x57f287;
@@ -18,13 +22,17 @@ const CONCURRENCY = 5;
 
 export const data = new SlashCommandBuilder()
   .setName("sync-supporters")
-  .setDescription("Sync supporter roles from game supporter status (admin only)")
+  .setDescription(
+    "Sync supporter roles from game supporter status (admin only)",
+  )
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
   .setDMPermission(false)
   .addBooleanOption((opt) =>
     opt
       .setName("apply")
-      .setDescription("Apply changes. Leave off for a dry run that only reports what would change."),
+      .setDescription(
+        "Apply changes. Leave off for a dry run that only reports what would change.",
+      ),
   );
 
 interface Planned {
@@ -32,6 +40,16 @@ interface Planned {
   label: string;
   member: GuildMember;
   tier: SupporterFeedTier | null; // null = remove
+}
+
+export function supporterRoleNeedsChange(
+  heldRoleIds: ReadonlySet<string>,
+  tier: "regular" | "plus",
+  roleIds: { regular: string; plus: string },
+): boolean {
+  const desired = tier === "plus" ? roleIds.plus : roleIds.regular;
+  const other = tier === "plus" ? roleIds.regular : roleIds.plus;
+  return !heldRoleIds.has(desired) || heldRoleIds.has(other);
 }
 
 function buildList(items: string[]): string {
@@ -76,6 +94,20 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     // Supporter role IDs (regular / plus) as configured for this guild.
     const roleIds = await getSupporterRoleIds(interaction.guild.id);
+    if (!roleIds.regular || !roleIds.plus) {
+      throw new Error(
+        "Both supporter role IDs must be configured before bulk sync.",
+      );
+    }
+    const configuredRoleIds = { regular: roleIds.regular, plus: roleIds.plus };
+    if (
+      !interaction.guild.roles.cache.has(roleIds.regular) ||
+      !interaction.guild.roles.cache.has(roleIds.plus)
+    ) {
+      throw new Error(
+        "Configured supporter roles must exist in this guild before bulk sync.",
+      );
+    }
     const supporterRoleIds = [roleIds.regular, roleIds.plus].filter(
       (id): id is string => !!id,
     );
@@ -99,12 +131,18 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       const feedTier = supporterTierById.get(member.id);
 
       if (feedTier) {
-        // grant / upgrade
-        toGrant.push({
-          label: `<@${member.id}> → ${feedTier}`,
-          member,
-          tier: feedTier,
-        });
+        const held = new Set(
+          supporterRoleIds.filter((id) => member.roles.cache.has(id)),
+        );
+        if (
+          supporterRoleNeedsChange(held, feedTierToRoleTier(feedTier), configuredRoleIds)
+        ) {
+          toGrant.push({
+            label: `<@${member.id}> → ${feedTier}`,
+            member,
+            tier: feedTier,
+          });
+        }
         continue;
       }
 
