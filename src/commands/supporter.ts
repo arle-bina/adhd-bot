@@ -109,7 +109,7 @@ async function resolveTarget(
   return null;
 }
 
-async function getSupporterRoleIds(guildId: string): Promise<{ regular?: string; plus?: string }> {
+async function getSupporterRoleIds(_guildId: string): Promise<{ regular?: string; plus?: string }> {
   return {
     regular: process.env.SUPPORTER_ROLE_ID || undefined,
     plus: process.env.SUPPORTER_PLUS_ROLE_ID || undefined,

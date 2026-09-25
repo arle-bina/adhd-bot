@@ -9,7 +9,7 @@ import {
   type StockListing,
   type CorporationResponse,
 } from "../utils/api.js";
-import { replyWithError } from "../utils/helpers.js";
+import { replyWithError, normalizeGameUrl } from "../utils/helpers.js";
 import {
   formatCurrency,
   formatSharePrice,
@@ -18,6 +18,7 @@ import {
   currencyFor,
   CURRENCY_CHOICES,
 } from "../utils/currency.js";
+
 
 // ---------------------------------------------------------------------------
 // Types
@@ -91,7 +92,7 @@ function scorePick(
 
   return {
     name: listing.name,
-    corpUrl: corp.corporation?.corpUrl ?? null,
+    corpUrl: corp.corporation?.corpUrl ? normalizeGameUrl(corp.corporation.corpUrl) : null,
     countryId: corp.corporation?.countryId,
     liquidCurrencyCode: corp.corporation?.liquidCurrencyCode ?? listing.liquidCurrencyCode ?? null,
     sharePrice: listing.sharePrice,

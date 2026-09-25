@@ -11,7 +11,7 @@ import {
   type CorporationData,
   type CorporationFinancials,
 } from "../utils/api.js";
-import { hexToInt, replyWithError } from "../utils/helpers.js";
+import { replyWithError } from "../utils/helpers.js";
 import {
   formatCurrency,
   formatSharePrice,
@@ -62,10 +62,11 @@ function getMetricValue(corp: CorporationData | undefined, financials: Corporati
     case "marketCap": return corp?.marketCapitalization ?? 0;
     case "revenue": return financials?.totalRevenue ?? 0;
     case "income": return financials?.income ?? 0;
-    case "profitMargin": 
+    case "profitMargin": {
       const revenue = financials?.totalRevenue ?? 0;
       const income = financials?.income ?? 0;
       return revenue > 0 ? income / revenue : 0;
+    }
     case "sharePrice": return corp?.sharePrice ?? 0;
     case "liquidCapital": return corp?.liquidCapital ?? 0;
     case "sectorCount": return 0; // Would need sectors data

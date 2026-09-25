@@ -92,7 +92,6 @@ export const SUGGEST_MODAL_PREFIX = "suggest_modal_";
 export async function handleSuggestModal(interaction: import("discord.js").ModalSubmitInteraction) {
   // Parse category + gameSystem out of the customId
   const payload = interaction.customId.slice(SUGGEST_MODAL_PREFIX.length);
-  const underscoreIdx = payload.indexOf("_");
   // category values use underscores too, so split on the known game system values
   // customId format: suggest_modal_{category}_{gameSystem}
   // We encoded them as `${category}_${gameSystem}` — walk the game systems to find the split

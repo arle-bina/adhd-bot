@@ -9,7 +9,7 @@ import {
   ComponentType,
 } from "discord.js";
 import { getLeaderboard, LeaderboardCharacter, LeaderboardMetric } from "../utils/api.js";
-import { replyWithError } from "../utils/helpers.js";
+import { replyWithError, normalizeGameUrl } from "../utils/helpers.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 import { COUNTRY_NAMES } from "../utils/formatting.js";
 import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, symbolFor, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
@@ -147,8 +147,14 @@ function buildLeaderboardEmbed(
   /*
    * The chart ranks these players with their office, state and metric value, so
    * this is a link run to each profile rather than a second copy of the table.
+   * Profile URLs go through normalizeGameUrl: the API can return stale origins.
    */
-  const links = linkList(slice.map((char) => ({ label: char.name, url: char.profileUrl })));
+  const links = linkList(
+    slice.map((char) => ({
+      label: char.name,
+      url: char.profileUrl ? normalizeGameUrl(char.profileUrl) : null,
+    })),
+  );
 
   const leader = slice[0];
   const leaderValue = (() => {
