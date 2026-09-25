@@ -13,7 +13,7 @@ const ERRORS_PER_PAGE = 3;
 
 export const SITE_FOOTER = "ahousedividedgame.com";
 
-import { forexSuffix, type ForexData, fetchForexData } from "./currency.js";
+import { forexSuffix } from "./currency.js";
 import { FETCH_TIMEOUT_MS } from "./api-base.js";
 
 /**
