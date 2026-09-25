@@ -305,7 +305,7 @@ describe("legacy renamed ticket cleanup", () => {
     );
     expect(channel.delete).toHaveBeenCalledWith("Ticket #1343 closed");
     expect(log.send.mock.invocationCallOrder[0]).toBeLessThan(
-      vi.mocked(channel.delete).mock.invocationCallOrder[0],
+      vi.mocked(channel.delete as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0],
     );
   });
 
