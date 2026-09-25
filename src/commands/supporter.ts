@@ -5,7 +5,13 @@ import {
   PermissionFlagsBits,
   GuildMember,
 } from "discord.js";
-import { postSupporter, deleteSupporter, lookupByName, lookupByDiscordId } from "../utils/api.js";
+import {
+  postSupporter,
+  deleteSupporter,
+  lookupByName,
+  lookupByDiscordId,
+  type SupporterFeedTier,
+} from "../utils/api.js";
 import { replyWithError } from "../utils/helpers.js";
 
 const OK_COLOR = 0x57f287;
@@ -107,6 +113,14 @@ async function resolveTarget(
   }
 
   return null;
+}
+
+/**
+ * Map a game supporter-feed tier onto the Discord role tier that
+ * syncSupporterRole understands. Both plus tiers grant the plus role.
+ */
+export function feedTierToRoleTier(tier: SupporterFeedTier): "regular" | "plus" {
+  return tier === "supporter" ? "regular" : "plus";
 }
 
 export async function getSupporterRoleIds(_guildId: string): Promise<{ regular?: string; plus?: string }> {

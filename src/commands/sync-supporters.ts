@@ -6,7 +6,7 @@ import {
   GuildMember,
 } from "discord.js";
 import { getSupporters, type SupporterFeedTier } from "../utils/api.js";
-import { getSupporterRoleIds, syncSupporterRole } from "./supporter.js";
+import { feedTierToRoleTier, getSupporterRoleIds, syncSupporterRole } from "./supporter.js";
 
 const DRY_COLOR = 0x5865f2;
 const APPLY_COLOR = 0x57f287;
@@ -15,12 +15,6 @@ const ERROR_COLOR = 0xed4245;
 // Discord embed field values cap at 1024 chars. Keep list previews well under.
 const FIELD_CAP = 1000;
 const CONCURRENCY = 5;
-
-// Feed tiers map onto the role tiers that syncSupporterRole understands
-// ("regular" / "plus"). Both plus tiers grant the plus Discord role.
-function feedTierToRoleTier(tier: SupporterFeedTier): "regular" | "plus" {
-  return tier === "supporter" ? "regular" : "plus";
-}
 
 export const data = new SlashCommandBuilder()
   .setName("sync-supporters")
