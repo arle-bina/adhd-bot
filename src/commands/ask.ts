@@ -114,10 +114,6 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       scopeId: interaction.id,
       placeholder,
       more: payload => interaction.followUp({ ...safePayload(payload), ephemeral: isPrivate }),
-      privateSink: isPrivate ? null : () => ({
-        first: payload => interaction.followUp({ ...safePayload(payload), ephemeral: true }),
-        more: payload => interaction.followUp({ ...safePayload(payload), ephemeral: true }),
-      }),
     });
   } finally {
     gate.release();

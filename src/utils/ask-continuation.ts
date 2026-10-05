@@ -65,12 +65,6 @@ export async function handleAskContinuation(message: Message): Promise<void> {
         scopeId: message.id,
         placeholder: payload => thinking.edit(safePayload(payload)),
         more: send,
-        // No ephemeral messages outside interactions: a staff-access answer
-        // to a follow-up goes by DM.
-        privateSink: () => ({
-          first: payload => message.author.send(safePayload(payload)),
-          more: payload => message.author.send(safePayload(payload)),
-        }),
       });
     } finally {
       gate.release();

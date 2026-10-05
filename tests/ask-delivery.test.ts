@@ -1,15 +1,7 @@
 import { EventEmitter } from "events";
 import type { Message } from "discord.js";
 import { describe, expect, it } from "vitest";
-import {
-  PRIVATE_NOTICE,
-  PRIVATE_UNAVAILABLE,
-  askFooterText,
-  deliverAskAnswer,
-  type AskMessagePayload,
-  type AskResponse,
-  type AskSink,
-} from "../src/utils/ask-runtime.js";
+import { askFooterText, deliverAskAnswer, type AskMessagePayload, type AskResponse } from "../src/utils/ask-runtime.js";
 
 function fakeMessage(): Message {
   return {
@@ -19,52 +11,20 @@ function fakeMessage(): Message {
   } as unknown as Message;
 }
 
-function recordingSink(log: AskMessagePayload[]): AskSink {
-  return {
-    first: async payload => { log.push(payload); return fakeMessage(); },
-    more: async payload => { log.push(payload); },
-  };
-}
-
 const base: AskResponse = { answer: "Divisions: 4,210 at the front.", model: "m" };
 
-function target(publicLog: AskMessagePayload[], privateLog: AskMessagePayload[] | null) {
-  return {
-    scopeId: "s1", userId: "u1", username: "u", question: "q",
-    sink: recordingSink(publicLog), isPrivate: false,
-    privateSink: privateLog ? () => recordingSink(privateLog) : null,
-  };
-}
-
-describe("staff-access answers", () => {
-  it("go only to the asker, and the channel gets a notice without the content", async () => {
-    const publicLog: AskMessagePayload[] = [];
-    const privateLog: AskMessagePayload[] = [];
-    await deliverAskAnswer(target(publicLog, privateLog), { ...base, moderator: true });
-    expect(privateLog[0].content).toContain("4,210");
-    expect(publicLog).toHaveLength(1);
-    expect(publicLog[0].content).toBe(PRIVATE_NOTICE);
-    expect(JSON.stringify(publicLog)).not.toContain("4,210");
-  });
-
-  it("are withheld entirely when no private route exists", async () => {
-    const publicLog: AskMessagePayload[] = [];
-    const delivered = await deliverAskAnswer(target(publicLog, null), { ...base, moderator: true });
-    expect(delivered).toBeNull();
-    expect(publicLog.map(p => p.content)).toEqual([PRIVATE_UNAVAILABLE]);
-  });
-
-  it("are withheld when private delivery fails (closed DMs)", async () => {
-    const publicLog: AskMessagePayload[] = [];
-    const failing = () => ({ first: async () => { throw new Error("Cannot send messages to this user"); }, more: async () => undefined });
-    await deliverAskAnswer({ ...target(publicLog, null), privateSink: failing }, { ...base, moderator: true });
-    expect(publicLog.map(p => p.content)).toEqual([PRIVATE_UNAVAILABLE]);
-  });
-
-  it("ordinary answers post publicly as before", async () => {
-    const publicLog: AskMessagePayload[] = [];
-    await deliverAskAnswer(target(publicLog, []), { ...base, moderator: false });
-    expect(publicLog[0].content).toContain("4,210");
+describe("answer delivery", () => {
+  it("posts the answer and spills long answers into follow-ups", async () => {
+    const log: AskMessagePayload[] = [];
+    await deliverAskAnswer({
+      scopeId: "s1", userId: "u1", username: "u", question: "q",
+      sink: {
+        first: async payload => { log.push(payload); return fakeMessage(); },
+        more: async payload => { log.push(payload); },
+      },
+    }, { ...base, answer: `${"word ".repeat(600)}end` });
+    expect(log.length).toBeGreaterThan(1);
+    expect(log[0].embeds).toHaveLength(1);
   });
 });
 

@@ -36,10 +36,6 @@ export class AskProgressState {
   private readonly maxItems: number;
   private items: ProgressItem[] = [];
   private answer = "";
-  // Fail closed: partial answer text is only shown once the engine has said
-  // this answer is not using staff access. A staff answer can carry data the
-  // public guard withholds, and a channel preview would publish it.
-  private reveal = false;
 
   constructor(maxItems = 6) {
     this.maxItems = Math.max(2, maxItems);
@@ -48,13 +44,7 @@ export class AskProgressState {
   status(label: string): void { this.push("status", label); }
   action(label: string): void { this.push("action", label); }
   /** Accumulate streamed answer text; once any arrives, it takes the stage. */
-  delta(piece: string): void {
-    const first = !this.answer.trim();
-    this.answer += String(piece || "");
-    if (first && this.answer.trim() && !this.reveal) this.push("status", "Writing the answer");
-  }
-  /** The engine confirmed a non-staff answer, so a live preview is safe. */
-  allowPreview(): void { this.reveal = true; }
+  delta(piece: string): void { this.answer += String(piece || ""); }
 
   private push(kind: ProgressKind, label: string): void {
     const clean = cleanLabel(label);
@@ -64,7 +54,7 @@ export class AskProgressState {
   }
 
   render(): string {
-    if (this.answer.trim() && this.reveal) return previewFrom(this.answer);
+    if (this.answer.trim()) return previewFrom(this.answer);
     if (!this.items.length) return "Working on it…";
     return ["Working on it…", ...this.items.map((item, index) =>
       `${index === this.items.length - 1 ? "•" : "✓"} ${item.label}${index === this.items.length - 1 ? "…" : ""}`,
@@ -117,7 +107,6 @@ export class AskProgressReporter {
   status(label: string): void { this.state.status(label); this.queue(); }
   action(label: string): void { this.state.action(label); this.queue(); }
   delta(piece: string): void { this.state.delta(piece); this.queue(); }
-  allowPreview(): void { this.state.allowPreview(); }
 
   private queue(): void {
     if (this.stopped || this.timer) return;

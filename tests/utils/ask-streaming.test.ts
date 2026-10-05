@@ -11,23 +11,12 @@ describe("streamed answer preview", () => {
     const state = new AskProgressState();
     state.status("Vector-searching code & docs…");
     expect(state.render()).toContain("Working on it…");
-    state.allowPreview();
     state.delta("Cloture needs three fifths ");
     state.delta("of votes cast.");
     const preview = state.render();
     expect(preview).toContain("Cloture needs three fifths of votes cast.");
     expect(preview).toContain("▍");
     expect(preview).not.toContain("Working on it…");
-  });
-
-  it("never previews answer text until the engine confirms a non-staff answer", () => {
-    const state = new AskProgressState();
-    state.delta("Staff-only figure: 4,210 divisions.");
-    const concealed = state.render();
-    expect(concealed).not.toContain("4,210");
-    expect(concealed).toContain("Writing the answer");
-    state.allowPreview();
-    expect(state.render()).toContain("4,210");
   });
 
   it("hides machine markers and raw visualization sources, closes dangling fences", () => {

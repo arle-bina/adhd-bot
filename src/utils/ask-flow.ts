@@ -2,7 +2,7 @@ import type { Message, MessageComponentInteraction, User } from "discord.js";
 import { resolveAskIdentity, type AskIdentity } from "./ask-context.js";
 import { registerAskAnswer } from "./ask-continuation-store.js";
 import { AskProgressReporter } from "./ask-progress.js";
-import { deliverAskAnswer, requestAsk, type AskMessagePayload, type AskMode, type AskSink } from "./ask-runtime.js";
+import { deliverAskAnswer, requestAsk, type AskMessagePayload, type AskMode } from "./ask-runtime.js";
 import { ASK_MENTIONS, acquireAskSlot, askErrorMessage } from "./ask-safety.js";
 
 /**
@@ -27,8 +27,6 @@ export interface AskFlowInput {
   placeholder: (payload: AskMessagePayload) => Promise<Message>;
   /** Further messages after the first. */
   more: (payload: AskMessagePayload) => Promise<unknown>;
-  /** A route only the asker sees, for staff-access answers to public requests. */
-  privateSink: (() => AskSink) | null;
 }
 
 /** Every Ask message goes out with mentions disabled. */
@@ -73,13 +71,11 @@ export async function runAskFlow(input: AskFlowInput): Promise<void> {
       question: input.question,
       requester,
       sink: { first: input.placeholder, more: input.more },
-      isPrivate: input.isPrivate,
-      privateSink: input.privateSink,
       onFollowup: (question, button) => runFollowupFromButton(question, button, input),
     }, result);
     // Replying to a public answer continues the conversation. Private answers
     // cannot be replied to, so they are not tracked.
-    if (delivered && !input.isPrivate && !result.moderator) {
+    if (!input.isPrivate) {
       registerAskAnswer(delivered.id, { userId: input.user.id, question: input.question });
     }
   } catch (error) {
@@ -112,10 +108,6 @@ export async function runFollowupFromButton(
       scopeId: button.id,
       placeholder,
       more: payload => button.followUp({ ...safePayload(payload), ephemeral: parent.isPrivate }),
-      privateSink: parent.isPrivate ? null : () => ({
-        first: payload => button.followUp({ ...safePayload(payload), ephemeral: true }),
-        more: payload => button.followUp({ ...safePayload(payload), ephemeral: true }),
-      }),
     });
   } finally {
     gate.release();

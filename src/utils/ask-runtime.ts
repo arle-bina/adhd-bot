@@ -43,8 +43,6 @@ export interface AskResponse {
   modelName?: string;
   providerName?: string;
   usage?: AskUsage | { input: number; output: number };
-  /** Produced with staff access: must never be posted publicly. */
-  moderator?: boolean;
   questionTrimmed?: boolean;
   followups?: string[];
   followupsLeft?: number;
@@ -178,10 +176,7 @@ export async function requestAsk(options: AskRequestOptions): Promise<AskRespons
       }
       if (typeof data !== "object" || !data) return;
       if (event === "meta") {
-        const value = data as { moderator?: unknown; questionTrimmed?: unknown };
-        meta = { questionTrimmed: value.questionTrimmed === true };
-        // Only an explicit "not staff" unlocks the public preview.
-        if (value.moderator === false) options.progress.allowPreview();
+        meta = { questionTrimmed: (data as { questionTrimmed?: unknown }).questionTrimmed === true };
         return;
       }
       const label = String((data as { label?: unknown }).label || "");
@@ -216,19 +211,9 @@ export interface AskDeliveryTarget {
   requester?: AskIdentity;
   /** The visible placeholder message and its follow-ups. */
   sink: AskSink;
-  /** True when `sink` already only reaches the asker (ephemeral or DM). */
-  isPrivate: boolean;
-  /**
-   * A route that reaches only the asker, used when a public request produced
-   * a staff-access answer. Null when this entry point has none.
-   */
-  privateSink: (() => AskSink) | null;
   /** Runs a suggested follow-up question from a button. */
   onFollowup?: (question: string, button: MessageComponentInteraction) => Promise<void>;
 }
-
-export const PRIVATE_NOTICE = "This answer used staff access to game data, so it was sent only to you.";
-export const PRIVATE_UNAVAILABLE = "This answer used staff access to game data, so it can't be posted here. Ask again with `/ask private: True`.";
 
 async function renderAttachments(text: string): Promise<{ text: string; files: AttachmentBuilder[] }> {
   const extracted = extractAskVisualizations(text);
@@ -260,28 +245,9 @@ async function renderAttachments(text: string): Promise<{ text: string; files: A
  * Render a finished answer into Discord: visualizations as attachments,
  * chunked text, footer, follow-up suggestions, and the feedback controls with
  * their full lifecycle (one rating per answer, truthful confirmations,
- * disabled on expiry). Returns the delivered answer message, or null when the
- * answer could not be delivered on this route.
+ * disabled on expiry). Returns the delivered answer message.
  */
-export async function deliverAskAnswer(target: AskDeliveryTarget, result: AskResponse): Promise<Message | null> {
-  if (result.moderator === true && !target.isPrivate) {
-    const privateSink = target.privateSink?.() ?? null;
-    if (!privateSink) {
-      await target.sink.first({ content: PRIVATE_UNAVAILABLE, files: [], embeds: [], components: [] });
-      return null;
-    }
-    // Deliver privately first, so the public notice is only posted once the
-    // answer has actually reached the asker.
-    try {
-      const delivered = await deliverTo(privateSink, target, result);
-      await target.sink.first({ content: PRIVATE_NOTICE, files: [], embeds: [], components: [] });
-      return delivered;
-    } catch (error) {
-      console.error("[ask] private delivery failed:", error instanceof Error ? error.message : String(error));
-      await target.sink.first({ content: PRIVATE_UNAVAILABLE, files: [], embeds: [], components: [] });
-      return null;
-    }
-  }
+export async function deliverAskAnswer(target: AskDeliveryTarget, result: AskResponse): Promise<Message> {
   return deliverTo(target.sink, target, result);
 }
 
