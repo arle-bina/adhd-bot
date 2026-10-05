@@ -1,23 +1,33 @@
 import {
   ActionRowBuilder,
   AttachmentBuilder,
+  ButtonBuilder,
   EmbedBuilder,
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  type ButtonBuilder,
   type Message,
+  type MessageComponentInteraction,
 } from "discord.js";
 import { apiPostAskSite, apiPostAskSiteStream } from "./api-base.js";
 import { AskProgressReporter, DiscordConversationTracker } from "./ask-progress.js";
 import { splitDiscordContent } from "./discord-content.js";
-import { extractAskVisualizations, renderAskMapPng, renderMermaidPng, truncateDiscordCodeBlocks } from "./ask-visualizations.js";
-import { askActions, asksForSources, compactSources, FEEDBACK_FAILED } from "./ask-presentation.js";
+import { extractAskVisualizations, renderAskMapPng, renderAskVisualizationPng, truncateDiscordCodeBlocks } from "./ask-visualizations.js";
+import { askActions, askFollowupRow, asksForSources, compactSources, FEEDBACK_FAILED } from "./ask-presentation.js";
+import { ASK_MENTIONS } from "./ask-safety.js";
 import type { AskIdentity } from "./ask-context.js";
 
 export interface AskSource {
   kind: "knowledge" | "state";
   label: string;
+}
+
+export interface AskUsage {
+  used?: number;
+  limit?: number;
+  remaining?: number;
+  mcpRemaining?: number;
+  mcpLimit?: number;
 }
 
 export interface AskResponse {
@@ -32,11 +42,21 @@ export interface AskResponse {
   model: string;
   modelName?: string;
   providerName?: string;
-  usage: { input: number; output: number };
+  usage?: AskUsage | { input: number; output: number };
+  /** Produced with staff access: must never be posted publicly. */
+  moderator?: boolean;
+  questionTrimmed?: boolean;
+  followups?: string[];
+  followupsLeft?: number;
+  reportUrl?: string | null;
+  vizBlocked?: boolean;
 }
 
+export const ASK_SITE_ORIGIN = (process.env.ASK_SITE_URL || "https://ask.lakesidegames.net").replace(/\/$/, "");
+
 // A live-data answer may need several model and tool calls. Discord keeps
-// deferred interactions alive for 15 minutes; leave room for deep mode.
+// deferred interactions alive for 15 minutes; leave room for deep mode and
+// for the follow-up messages that are sent after the answer arrives.
 export const ASK_TIMEOUT_MS = 8 * 60_000;
 
 // One tracker for every entry point, so a reply-based follow-up continues the
@@ -56,13 +76,14 @@ function stripPreamble(text: string): string {
   return cleaned.trim();
 }
 
-/** Strip tool call artifacts (XML tags, function invocations). */
+/** Strip tool call artifacts (XML tags, function invocations) and machine markers. */
 function stripToolCalls(text: string): string {
   return text
     .replace(/<function_calls>[\s\S]*?<\/function_calls>/g, "")
     .replace(/<invoke[\s\S]*?<\/invoke>/g, "")
     .replace(/<parameter[\s\S]*?<\/parameter>/g, "")
     .replace(/\b(read_file|read_files)\s*\([^)]*\)/g, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
     .trim();
 }
 
@@ -71,12 +92,36 @@ export function formatForDiscord(answer: string): string {
   return truncateDiscordCodeBlocks(stripToolCalls(stripPreamble(answer)), 30);
 }
 
-function askFooter(result: AskResponse): EmbedBuilder {
+function isQuotaUsage(usage: AskResponse["usage"]): usage is AskUsage {
+  return Boolean(usage && typeof usage === "object" && "remaining" in usage);
+}
+
+export interface AskFooterContext {
+  requester?: AskIdentity;
+}
+
+/** The footer line under every answer: grounding, model, quota, and identity. */
+export function askFooterText(result: AskResponse, context: AskFooterContext = {}): string {
   const usedLive = result.usedMcp ?? result.liveDataUsed ?? false;
-  const grounding = usedLive ? "Live game data used" : "Grounded in game rules and documentation";
+  const parts: string[] = [usedLive ? "Live game data used" : "Grounded in game rules and documentation"];
   const model = result.modelName || result.model;
-  const label = [grounding, model && result.providerName ? `${model} via ${result.providerName}` : model].filter(Boolean).join(" · ");
-  return new EmbedBuilder().setColor(usedLive ? 0x22c55e : 0x64748b).setFooter({ text: label });
+  if (model) parts.push(result.providerName ? `${model} via ${result.providerName}` : model);
+  if (isQuotaUsage(result.usage) && typeof result.usage.remaining === "number" && typeof result.usage.limit === "number") {
+    parts.push(`${result.usage.remaining} of ${result.usage.limit} questions left today`);
+  }
+  const lines = [parts.join(" · ")];
+  const requester = context.requester;
+  if (requester?.characterCount && requester.characterCount > 1) {
+    lines.push(`Answered as ${requester.characterName} (1 of ${requester.characterCount} characters; pick another with the character option)`);
+  }
+  if (result.questionTrimmed) lines.push("Your question was trimmed to 500 characters.");
+  if (result.vizBlocked) lines.push("Charts and maps are a supporter feature; this answer is text only.");
+  return lines.join("\n").slice(0, 2000);
+}
+
+function askFooter(result: AskResponse, context: AskFooterContext): EmbedBuilder {
+  const usedLive = result.usedMcp ?? result.liveDataUsed ?? false;
+  return new EmbedBuilder().setColor(usedLive ? 0x22c55e : 0x64748b).setFooter({ text: askFooterText(result, context) });
 }
 
 interface FeedbackResult {
@@ -95,9 +140,13 @@ async function submitFeedback(input: Record<string, unknown>): Promise<FeedbackR
   }
 }
 
+export type AskMode = "auto" | "verify" | "autopsy" | "scenario";
+
 export interface AskRequestOptions {
   question: string;
   responseLength: string;
+  mode?: AskMode;
+  useMcp?: boolean;
   requester?: AskIdentity;
   subject?: AskIdentity;
   discordId: string;
@@ -108,11 +157,14 @@ export interface AskRequestOptions {
 
 /** One Ask engine round trip with live progress and streamed answer preview. */
 export async function requestAsk(options: AskRequestOptions): Promise<AskResponse> {
-  return apiPostAskSiteStream<AskResponse>(
+  let meta: Partial<AskResponse> = {};
+  const result = await apiPostAskSiteStream<AskResponse>(
     "/api/discord-ask/answer",
     {
       question: options.question,
       responseLength: options.responseLength,
+      mode: options.mode ?? "auto",
+      useMcp: options.useMcp ?? true,
       requester: options.requester,
       subject: options.subject,
       discordId: options.discordId,
@@ -125,12 +177,33 @@ export async function requestAsk(options: AskRequestOptions): Promise<AskRespons
         return;
       }
       if (typeof data !== "object" || !data) return;
+      if (event === "meta") {
+        const value = data as { moderator?: unknown; questionTrimmed?: unknown };
+        meta = { questionTrimmed: value.questionTrimmed === true };
+        // Only an explicit "not staff" unlocks the public preview.
+        if (value.moderator === false) options.progress.allowPreview();
+        return;
+      }
       const label = String((data as { label?: unknown }).label || "");
       if (event === "status" && label) options.progress.status(label);
       if (event === "action" && label) options.progress.action(label);
     },
     ASK_TIMEOUT_MS,
   );
+  return { ...meta, ...result, questionTrimmed: Boolean(result.questionTrimmed || meta.questionTrimmed) };
+}
+
+export interface AskMessagePayload {
+  content: string;
+  files?: AttachmentBuilder[];
+  embeds?: EmbedBuilder[];
+  components?: ActionRowBuilder<ButtonBuilder>[];
+}
+
+/** Where an answer goes: the first message replaces the placeholder, the rest follow it. */
+export interface AskSink {
+  first(payload: AskMessagePayload): Promise<Message>;
+  more(payload: AskMessagePayload): Promise<unknown>;
 }
 
 export interface AskDeliveryTarget {
@@ -140,60 +213,107 @@ export interface AskDeliveryTarget {
   userId: string;
   username: string;
   question: string;
-  /** Replace the main answer message; returns it so a collector can attach. */
-  edit(payload: {
-    content: string;
-    files: AttachmentBuilder[];
-    embeds: EmbedBuilder[];
-    components: ActionRowBuilder<ButtonBuilder>[];
-  }): Promise<Message>;
-  /** Additional messages for answers over one Discord message. */
-  followUp(content: string): Promise<unknown>;
+  requester?: AskIdentity;
+  /** The visible placeholder message and its follow-ups. */
+  sink: AskSink;
+  /** True when `sink` already only reaches the asker (ephemeral or DM). */
+  isPrivate: boolean;
+  /**
+   * A route that reaches only the asker, used when a public request produced
+   * a staff-access answer. Null when this entry point has none.
+   */
+  privateSink: (() => AskSink) | null;
+  /** Runs a suggested follow-up question from a button. */
+  onFollowup?: (question: string, button: MessageComponentInteraction) => Promise<void>;
 }
 
-/**
- * Render a finished answer into Discord: visualizations as attachments,
- * chunked text, footer, and the feedback controls with their full lifecycle
- * (one rating per answer, truthful confirmations, disabled on expiry).
- * Returns the delivered answer message.
- */
-export async function deliverAskAnswer(target: AskDeliveryTarget, result: AskResponse): Promise<Message> {
-  const formatted = formatForDiscord(result.answer);
-  const extracted = extractAskVisualizations(formatted);
-  const attachments: AttachmentBuilder[] = [];
+export const PRIVATE_NOTICE = "This answer used staff access to game data, so it was sent only to you.";
+export const PRIVATE_UNAVAILABLE = "This answer used staff access to game data, so it can't be posted here. Ask again with `/ask private: True`.";
+
+async function renderAttachments(text: string): Promise<{ text: string; files: AttachmentBuilder[] }> {
+  const extracted = extractAskVisualizations(text);
+  const files: AttachmentBuilder[] = [];
+  let body = extracted.text;
   for (const visualization of extracted.visualizations) {
     try {
       const image = visualization.kind === "map"
         ? await renderAskMapPng(visualization.source)
-        : await renderMermaidPng(visualization.source);
-      attachments.push(new AttachmentBuilder(image, {
+        : renderAskVisualizationPng(visualization.source);
+      if (!image) {
+        body += `\n\n*(This answer includes a diagram Discord can't show. Open it on ${ASK_SITE_ORIGIN.replace(/^https?:\/\//, "")}.)*`;
+        continue;
+      }
+      files.push(new AttachmentBuilder(image, {
         name: `ask-${visualization.kind}-${visualization.index}.png`,
         description: visualization.kind === "map"
           ? "Live A House Divided game map generated for this Ask response"
-          : "Visualization generated for this Ask response",
+          : "Chart generated for this Ask response",
       }));
     } catch {
-      extracted.text += "\n\n*(The requested visualization could not be rendered.)*";
+      body += "\n\n*(The requested visualization could not be rendered.)*";
     }
   }
+  return { text: body, files };
+}
+
+/**
+ * Render a finished answer into Discord: visualizations as attachments,
+ * chunked text, footer, follow-up suggestions, and the feedback controls with
+ * their full lifecycle (one rating per answer, truthful confirmations,
+ * disabled on expiry). Returns the delivered answer message, or null when the
+ * answer could not be delivered on this route.
+ */
+export async function deliverAskAnswer(target: AskDeliveryTarget, result: AskResponse): Promise<Message | null> {
+  if (result.moderator === true && !target.isPrivate) {
+    const privateSink = target.privateSink?.() ?? null;
+    if (!privateSink) {
+      await target.sink.first({ content: PRIVATE_UNAVAILABLE, files: [], embeds: [], components: [] });
+      return null;
+    }
+    // Deliver privately first, so the public notice is only posted once the
+    // answer has actually reached the asker.
+    try {
+      const delivered = await deliverTo(privateSink, target, result);
+      await target.sink.first({ content: PRIVATE_NOTICE, files: [], embeds: [], components: [] });
+      return delivered;
+    } catch (error) {
+      console.error("[ask] private delivery failed:", error instanceof Error ? error.message : String(error));
+      await target.sink.first({ content: PRIVATE_UNAVAILABLE, files: [], embeds: [], components: [] });
+      return null;
+    }
+  }
+  return deliverTo(target.sink, target, result);
+}
+
+async function deliverTo(sink: AskSink, target: AskDeliveryTarget, result: AskResponse): Promise<Message> {
+  const rendered = await renderAttachments(formatForDiscord(result.answer));
 
   // Keep the channel answer-first. Source detail is still available through
   // the button, or inline when the player explicitly asks for it.
-  let fullMessage = extracted.text;
+  let fullMessage = rendered.text;
   if (asksForSources(target.question)) {
     const sources = compactSources(result);
     if (sources) fullMessage += `\n\n**Sources**\n${sources}`;
   }
 
+  const followups = (result.followups || []).filter(q => typeof q === "string" && q.trim()).slice(0, 3);
+  const followupsLeft = typeof result.followupsLeft === "number" ? result.followupsLeft : null;
+  const showFollowups = Boolean(target.onFollowup) && followups.length > 0 && followupsLeft !== 0;
+  const components = (state: Parameters<typeof askActions>[1] = {}) => {
+    const rows = [askActions(target.scopeId, { ...state, reportUrl: result.reportUrl ? `${ASK_SITE_ORIGIN}${result.reportUrl}` : undefined })];
+    if (showFollowups) rows.push(askFollowupRow(target.scopeId, followups, Boolean(state.allDisabled)));
+    return rows;
+  };
+
   const chunks = splitDiscordContent(fullMessage);
-  const reply = await target.edit({
+  const reply = await sink.first({
     content: chunks[0] || "I couldn't produce an answer for that one.",
-    files: attachments,
-    embeds: [askFooter(result)],
-    components: [askActions(target.scopeId)],
+    files: rendered.files,
+    embeds: [askFooter(result, { requester: target.requester })],
+    components: components(),
   });
   for (const chunk of chunks.slice(1)) {
-    await target.followUp(chunk);
+    await sink.more({ content: chunk });
   }
 
   // No `max`: a capped collector was consumed by ANY component click, after
@@ -204,15 +324,17 @@ export async function deliverAskAnswer(target: AskDeliveryTarget, result: AskRes
     filter: button => button.customId.endsWith(`:${target.scopeId}`),
   });
   let rated: "up" | "down" | null = null;
+  let followupUsed = false;
   const feedbackBody = (rating: "up" | "down", reason?: string): Record<string, unknown> => ({
     discordId: target.userId, username: target.username, question: target.question,
     answer: result.answer, answerId: result.answerId, rating,
     ...(reason ? { reason } : {}),
     usedMcp: Boolean(result.usedMcp ?? result.liveDataUsed),
   });
-  const showRated = async (kind: "up" | "down") => {
-    rated = kind;
-    try { await reply.edit({ components: [askActions(target.scopeId, { ratingDisabled: true, ratedLabel: kind })] }); } catch { /* cosmetic */ }
+  const rerender = async () => {
+    try {
+      await reply.edit({ components: components({ ratingDisabled: Boolean(rated), ratedLabel: rated ?? undefined }) });
+    } catch { /* cosmetic */ }
   };
   collector.on("collect", async button => {
     if (button.user.id !== target.userId) {
@@ -221,7 +343,19 @@ export async function deliverAskAnswer(target: AskDeliveryTarget, result: AskRes
     }
     const kind = button.customId.split(":")[0];
     if (kind === "ask-sources") {
-      await button.reply({ content: `**Sources**\n${compactSources(result) || "No compact source list was returned."}`, ephemeral: true });
+      await button.reply({ content: `**Sources**\n${compactSources(result) || "No compact source list was returned."}`, ephemeral: true, allowedMentions: ASK_MENTIONS });
+      return;
+    }
+    if (kind === "ask-fu") {
+      const index = Number(button.customId.split(":")[1]);
+      const question = followups[index];
+      if (!question || !target.onFollowup) return;
+      if (followupUsed) {
+        await button.reply({ content: "You already asked a suggested follow-up from this answer.", ephemeral: true });
+        return;
+      }
+      followupUsed = true;
+      await target.onFollowup(question, button);
       return;
     }
     if (rated) {
@@ -231,7 +365,8 @@ export async function deliverAskAnswer(target: AskDeliveryTarget, result: AskRes
     if (kind === "ask-good") {
       const sent = await submitFeedback(feedbackBody("up"));
       if (sent?.ok) {
-        await showRated("up");
+        rated = "up";
+        await rerender();
         await button.reply({ content: "Thanks, recorded as helpful.", ephemeral: true });
       } else {
         await button.reply({ content: FEEDBACK_FAILED, ephemeral: true });
@@ -250,7 +385,8 @@ export async function deliverAskAnswer(target: AskDeliveryTarget, result: AskRes
         filter: value => value.customId === `ask-report-modal:${target.scopeId}` && value.user.id === target.userId });
       const sent = await submitFeedback(feedbackBody("down", submission.fields.getTextInputValue("reason")));
       if (sent?.ok) {
-        await showRated("down");
+        rated = "down";
+        await rerender();
         // Only claim the review queue when the server says the report was
         // actually queued for staff review.
         await submission.reply({ content: sent.queued ? "Thanks, the issue is in the Ask review queue." : "Thanks, the report is recorded.", ephemeral: true });
@@ -261,7 +397,7 @@ export async function deliverAskAnswer(target: AskDeliveryTarget, result: AskRes
   });
   collector.on("end", async () => {
     // Dead-looking-alive buttons read as errors ("This interaction failed").
-    try { await reply.edit({ components: [askActions(target.scopeId, { allDisabled: true, ratedLabel: rated ?? undefined })] }); } catch { /* message may be gone */ }
+    try { await reply.edit({ components: components({ allDisabled: true, ratedLabel: rated ?? undefined }) }); } catch { /* message may be gone */ }
   });
 
   return reply;

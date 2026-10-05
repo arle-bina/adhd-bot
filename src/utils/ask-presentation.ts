@@ -34,6 +34,8 @@ export interface AskActionState {
   ratingDisabled?: boolean;
   allDisabled?: boolean;
   ratedLabel?: string;
+  /** Absolute URL of the shareable report page, when the answer produced one. */
+  reportUrl?: string;
 }
 
 // The feedback button row for one Ask answer. Rendered fresh whenever its
@@ -42,10 +44,32 @@ export interface AskActionState {
 // there looking clickable ("This interaction failed" reads as a bot error).
 export function askActions(id: string, state: AskActionState = {}) {
   const ratingDisabled = Boolean(state.ratingDisabled || state.allDisabled);
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`ask-good:${id}`).setLabel(state.ratedLabel === "up" ? "Recorded" : "Helpful").setStyle(ButtonStyle.Success).setDisabled(ratingDisabled),
     new ButtonBuilder().setCustomId(`ask-report:${id}`).setLabel(state.ratedLabel === "down" ? "Reported" : "Report issue").setStyle(ButtonStyle.Danger).setDisabled(ratingDisabled),
     new ButtonBuilder().setCustomId(`ask-sources:${id}`).setLabel("Sources").setStyle(ButtonStyle.Secondary).setDisabled(Boolean(state.allDisabled)),
+  );
+  // Link buttons never expire and need no collector, so they stay enabled.
+  if (state.reportUrl && /^https:\/\//.test(state.reportUrl)) {
+    row.addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("Open report").setURL(state.reportUrl));
+  }
+  return row;
+}
+
+/** Button labels are capped at 80 characters by Discord. */
+export function followupLabel(question: string): string {
+  const clean = question.replace(/\s+/g, " ").trim();
+  return clean.length <= 80 ? clean : `${clean.slice(0, 77).trimEnd()}...`;
+}
+
+// Suggested follow-ups the engine returned, as one tap each.
+export function askFollowupRow(id: string, questions: string[], disabled = false) {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    questions.slice(0, 3).map((question, index) => new ButtonBuilder()
+      .setCustomId(`ask-fu:${index}:${id}`)
+      .setLabel(followupLabel(question))
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(disabled)),
   );
 }
 

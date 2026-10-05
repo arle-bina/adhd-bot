@@ -15,6 +15,14 @@ export class ApiError extends Error {
   }
 }
 
+/** An error event the Ask engine streamed; its message is written for players. */
+export class AskServerError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AskServerError";
+  }
+}
+
 async function throwApiError(response: Response, endpoint: string): Promise<never> {
   let body = "";
   try {
@@ -34,6 +42,26 @@ export const FETCH_TIMEOUT_MS = 60_000;
 
 let active = 0;
 const waiting: Array<() => void> = [];
+
+// Ask answers stream for minutes. They get their own pool so a handful of
+// slow answers can never starve every other command of game API slots.
+const ASK_MAX_CONCURRENT = Math.max(1, Number(process.env.ASK_MAX_CONCURRENT || 3));
+let askActive = 0;
+const askWaiting: Array<() => void> = [];
+
+function acquireAsk(): Promise<void> {
+  if (askActive < ASK_MAX_CONCURRENT) {
+    askActive++;
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => askWaiting.push(resolve));
+}
+
+function releaseAsk(): void {
+  const next = askWaiting.shift();
+  if (next) next();
+  else askActive = Math.max(0, askActive - 1);
+}
 
 function acquire(): Promise<void> {
   if (active < MAX_CONCURRENT) {
@@ -218,10 +246,11 @@ async function postPublicStream<T>(
   baseUrl: string,
   headers: Record<string, string>,
   timeoutMs?: number,
+  pool: { acquire: () => Promise<void>; release: () => void } = { acquire, release },
 ): Promise<T> {
   const url = new URL(pathname, baseUrl);
 
-  await acquire();
+  await pool.acquire();
   try {
     const response = await fetch(url.toString(), {
       method: "POST",
@@ -254,7 +283,7 @@ async function postPublicStream<T>(
         const message = typeof data === "object" && data && "error" in data
           ? String((data as { error: unknown }).error)
           : "Ask request failed";
-        throw new Error(message);
+        throw new AskServerError(message);
       }
       await onEvent({ event, data });
     };
@@ -271,7 +300,7 @@ async function postPublicStream<T>(
     if (result === undefined) throw new Error("Ask stream ended before returning an answer");
     return result;
   } finally {
-    release();
+    pool.release();
   }
 }
 
@@ -299,8 +328,11 @@ export async function apiPostAskSiteStream<T>(
   if (!secret) throw new Error("ASK_SECRET is required for Ask-site answers");
   return postPublicStream(pathname, body, onEvent,
     process.env.ASK_SITE_URL || "https://ask.lakesidegames.net",
-    { Authorization: `Bearer ${secret}` }, timeoutMs);
+    { Authorization: `Bearer ${secret}` }, timeoutMs, { acquire: acquireAsk, release: releaseAsk });
 }
 
 // Expose for testing only
-export const _testing = { acquire, release, getActive: () => active, getWaitingCount: () => waiting.length };
+export const _testing = {
+  acquire, release, getActive: () => active, getWaitingCount: () => waiting.length,
+  acquireAsk, releaseAsk, getAskActive: () => askActive, getAskWaitingCount: () => askWaiting.length,
+};

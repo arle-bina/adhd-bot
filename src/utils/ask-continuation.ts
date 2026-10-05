@@ -1,28 +1,14 @@
 import type { Message } from "discord.js";
-import { resolveAskIdentity } from "./ask-context.js";
-import { AskProgressReporter } from "./ask-progress.js";
-import { deliverAskAnswer, requestAsk } from "./ask-runtime.js";
+import { askAnswerRecord, registerAskAnswer, type AnswerRecord } from "./ask-continuation-store.js";
+import { runAskFlow, safePayload } from "./ask-flow.js";
+import { ASK_MAX_QUESTION, acquireAskSlot } from "./ask-safety.js";
 
 // Reply-to-continue: replying to one of the bot's Ask answers continues that
 // conversation, no slash command needed. The registry remembers which bot
 // messages are Ask answers and who asked, so a stranger's reply or a reply to
 // any other bot message does nothing.
 
-interface AnswerRecord {
-  userId: string;
-  question: string;
-}
-
-const MAX_TRACKED = 500;
-const answers = new Map<string, AnswerRecord>();
-
-export function registerAskAnswer(messageId: string, record: AnswerRecord): void {
-  answers.set(messageId, record);
-  if (answers.size > MAX_TRACKED) {
-    const oldest = answers.keys().next().value;
-    if (oldest) answers.delete(oldest);
-  }
-}
+export { registerAskAnswer };
 
 export interface ContinuationCheck {
   authorId: string;
@@ -34,10 +20,10 @@ export interface ContinuationCheck {
 /** Pure gate, unit-testable: is this message a follow-up to a tracked answer by its asker? */
 export function continuationFor(check: ContinuationCheck): AnswerRecord | null {
   if (check.authorIsBot || !check.repliedToMessageId) return null;
-  const record = answers.get(check.repliedToMessageId);
+  const record = askAnswerRecord(check.repliedToMessageId);
   if (!record || record.userId !== check.authorId) return null;
   const question = String(check.content || "").trim();
-  if (question.length < 5 || question.length > 2000) return null;
+  if (question.length < 5) return null;
   return record;
 }
 
@@ -53,34 +39,41 @@ export async function handleAskContinuation(message: Message): Promise<void> {
     if (!record) return;
 
     const question = message.content.trim();
-    const thinking = await message.reply("Thinking…");
-    const progress = new AskProgressReporter(content => thinking.edit(content));
+    if (question.length > ASK_MAX_QUESTION) {
+      await message.reply(safePayload(`Follow-ups are limited to ${ASK_MAX_QUESTION} characters. Shorten it and reply again.`));
+      return;
+    }
+    const gate = acquireAskSlot(message.author.id);
+    if (!gate.ok) {
+      await message.reply(safePayload(gate.message));
+      return;
+    }
     try {
-      const requester = await resolveAskIdentity(message.author);
-      const result = await requestAsk({
+      const thinking = await message.reply(safePayload("Thinking…"));
+      const send = async (payload: Parameters<typeof safePayload>[0]) => {
+        if (!message.channel.isSendable()) throw new Error("channel not sendable");
+        return message.channel.send(safePayload(payload));
+      };
+      await runAskFlow({
+        user: message.author,
+        channelId: message.channelId,
         question,
         responseLength: "concise",
-        requester,
-        discordId: message.author.id,
-        discordUsername: message.author.username,
-        channelId: message.channelId,
-        progress,
-      });
-      await progress.stop();
-      const delivered = await deliverAskAnswer({
+        mode: "auto",
+        useMcp: true,
+        isPrivate: false,
         scopeId: message.id,
-        userId: message.author.id,
-        username: message.author.username,
-        question,
-        edit: payload => thinking.edit(payload),
-        followUp: async content => message.channel.isSendable() ? message.channel.send(content) : undefined,
-      }, result);
-      registerAskAnswer(delivered.id, { userId: message.author.id, question });
-    } catch (error) {
-      await progress.stop();
-      const reason = error instanceof Error ? error.message : String(error);
-      console.error("[ask] continuation failed:", reason);
-      try { await thinking.edit(`I couldn't answer that follow-up: ${reason.slice(0, 180)}`); } catch { /* message gone */ }
+        placeholder: payload => thinking.edit(safePayload(payload)),
+        more: send,
+        // No ephemeral messages outside interactions: a staff-access answer
+        // to a follow-up goes by DM.
+        privateSink: () => ({
+          first: payload => message.author.send(safePayload(payload)),
+          more: payload => message.author.send(safePayload(payload)),
+        }),
+      });
+    } finally {
+      gate.release();
     }
   } catch (error) {
     console.error("[ask] continuation handler error:", error instanceof Error ? error.message : String(error));
