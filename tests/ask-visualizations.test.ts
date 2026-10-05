@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { extractAskVisualizations, renderAskMapPng, renderMermaidPng, truncateDiscordCodeBlocks } from "../src/utils/ask-visualizations.js";
+import { extractAskVisualizations, renderAskMapPng, renderAskVisualizationPng, truncateDiscordCodeBlocks } from "../src/utils/ask-visualizations.js";
 
 describe("Ask visualizations", () => {
   it("extracts one Mermaid block and keeps the surrounding answer", () => {
@@ -36,12 +36,13 @@ describe("Ask visualizations", () => {
     expect(result.text).toBe("Before\n\nAfter");
   });
 
-  it("downloads a rendered PNG from the bounded Mermaid image request", async () => {
-    const fetchMock = vi.fn(async (url: string) => {
-      expect(url).toMatch(/^https:\/\/mermaid\.ink\/img\/base64:/);
-      return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { "content-type": "image/png" } });
-    });
-    await expect(renderMermaidPng("flowchart TD\nA-->B", fetchMock as typeof fetch)).resolves.toEqual(Buffer.from([1, 2, 3]));
+  it("renders supported charts in-process and never calls out for other diagrams", () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const chart = renderAskVisualizationPng('xychart-beta\n  title "GDP"\n  x-axis ["US", "UK"]\n  bar [21.4, 2.8]');
+    expect(chart?.subarray(0, 4)).toEqual(Buffer.from([137, 80, 78, 71]));
+    expect(renderAskVisualizationPng("flowchart TD\nA-->B")).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 
   it("posts a map spec to the authenticated Ask PNG renderer", async () => {

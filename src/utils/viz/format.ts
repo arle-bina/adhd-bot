@@ -31,11 +31,18 @@ export function signedPercent(value: number, digits = 1): string {
   return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}%`;
 }
 
-export type ValueFormat = "money" | "number" | "percent";
+/** Like compactNumber, but keeps up to two decimals below 1,000 (rates, indices). */
+export function compactDecimal(value: number): string {
+  if (Math.abs(value) >= 1e3) return compactNumber(value);
+  return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+export type ValueFormat = "money" | "number" | "percent" | "decimal";
 
 export function formatValue(value: number, format: ValueFormat, symbol = "$"): string {
   if (format === "money") return compactMoney(value, symbol);
   if (format === "percent") return signedPercent(value);
+  if (format === "decimal") return compactDecimal(value);
   return compactNumber(value);
 }
 
