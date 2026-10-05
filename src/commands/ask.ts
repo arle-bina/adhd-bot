@@ -1,27 +1,35 @@
 import {
+  PermissionFlagsBits,
   SlashCommandBuilder,
+  type AutocompleteInteraction,
   type ChatInputCommandInteraction,
 } from "discord.js";
-import { resolveAskIdentity } from "../utils/ask-context.js";
-import { AskProgressReporter } from "../utils/ask-progress.js";
-import { registerAskAnswer } from "../utils/ask-continuation.js";
-import { deliverAskAnswer, requestAsk } from "../utils/ask-runtime.js";
+import { linkedCharacterNames } from "../utils/ask-context.js";
+import { runAskFlow, safePayload } from "../utils/ask-flow.js";
+import type { AskMode } from "../utils/ask-runtime.js";
+import { ASK_MAX_QUESTION, acquireAskSlot, askChannelAllowed, askChannelHint } from "../utils/ask-safety.js";
 
 export const data = new SlashCommandBuilder()
   .setName("ask")
   .setDescription("Ask about AHD mechanics or live game data")
+  .setDMPermission(false)
   .addStringOption((opt) =>
     opt
       .setName("question")
       .setDescription("What do you want to know?")
       .setRequired(true)
-      .setMaxLength(2000)
+      .setMaxLength(ASK_MAX_QUESTION)
   )
-  .addUserOption((opt) =>
+  .addStringOption((opt) =>
     opt
-      .setName("user")
-      .setDescription("Discord user whose linked game profile the question is about")
-      .setRequired(false)
+      .setName("mode")
+      .setDescription("How Ask should approach it. Defaults to automatic")
+      .addChoices(
+        { name: "Automatic", value: "auto" },
+        { name: "Verify a claim", value: "verify" },
+        { name: "Autopsy: why did this happen", value: "autopsy" },
+        { name: "Scenario: what if", value: "scenario" },
+      )
   )
   .addStringOption((opt) =>
     opt
@@ -32,56 +40,82 @@ export const data = new SlashCommandBuilder()
         { name: "Standard", value: "standard" },
         { name: "Detailed", value: "detailed" },
       )
+  )
+  .addBooleanOption((opt) =>
+    opt
+      .setName("live_data")
+      .setDescription("Read live game state when useful (uses a live-data question). Defaults to on")
+  )
+  .addBooleanOption((opt) =>
+    opt
+      .setName("private")
+      .setDescription("Only you see the answer")
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("character")
+      .setDescription("Which of your characters the question is about")
+      .setAutocomplete(true)
+      .setMaxLength(120)
+  )
+  .addUserOption((opt) =>
+    opt
+      .setName("user")
+      .setDescription("Discord user whose linked game profile the question is about")
+      .setRequired(false)
   );
+
+const MODES = new Set<AskMode>(["auto", "verify", "autopsy", "scenario"]);
+
+export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  const focused = String(interaction.options.getFocused() || "").toLowerCase();
+  const names = await linkedCharacterNames(interaction.user.id);
+  await interaction.respond(
+    names
+      .filter(name => !focused || name.toLowerCase().includes(focused))
+      .slice(0, 25)
+      .map(name => ({ name: name.slice(0, 100), value: name.slice(0, 100) })),
+  );
+}
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
   const question = interaction.options.getString("question", true).trim();
-  const selectedUser = interaction.options.getUser("user");
-  const responseLength = interaction.options.getString("response_length") ?? "concise";
+  const modeOption = interaction.options.getString("mode") as AskMode | null;
+  const mode: AskMode = modeOption && MODES.has(modeOption) ? modeOption : "auto";
+  const isPrivate = interaction.options.getBoolean("private") ?? false;
+  const isStaff = Boolean(interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages));
 
-  // Defer immediately to get the full interaction window, then replace the
-  // native spinner with a message that survives on every Discord client. Once
-  // the engine starts streaming, the same message becomes a live preview of
-  // the answer being written.
-  await interaction.deferReply();
-  await interaction.editReply("Thinking…");
-  const progress = new AskProgressReporter(content => interaction.editReply(content));
+  if (!isPrivate && !askChannelAllowed(interaction.channelId, isStaff)) {
+    await interaction.reply({ content: askChannelHint() || "Ask isn't available in this channel.", ephemeral: true });
+    return;
+  }
+  const gate = acquireAskSlot(interaction.user.id);
+  if (!gate.ok) {
+    await interaction.reply({ content: gate.message, ephemeral: true });
+    return;
+  }
 
   try {
-    const requesterPromise = resolveAskIdentity(interaction.user);
-    const subjectPromise = selectedUser
-      ? selectedUser.id === interaction.user.id
-        ? requesterPromise
-        : resolveAskIdentity(selectedUser)
-      : Promise.resolve(undefined);
-    const [requester, subject] = await Promise.all([requesterPromise, subjectPromise]);
-
-    const result = await requestAsk({
-      question,
-      responseLength,
-      requester,
-      subject,
-      discordId: interaction.user.id,
-      discordUsername: interaction.user.username,
+    // Defer immediately to get the full interaction window, then replace the
+    // native spinner with a message that survives on every Discord client.
+    await interaction.deferReply({ ephemeral: isPrivate });
+    const placeholder = (payload: Parameters<typeof safePayload>[0]) => interaction.editReply(safePayload(payload));
+    await placeholder("Thinking…");
+    await runAskFlow({
+      user: interaction.user,
       channelId: interaction.channelId,
-      progress,
-    });
-    await progress.stop();
-
-    const delivered = await deliverAskAnswer({
-      scopeId: interaction.id,
-      userId: interaction.user.id,
-      username: interaction.user.username,
       question,
-      edit: payload => interaction.editReply(payload),
-      followUp: content => interaction.followUp({ content }),
-    }, result);
-    // Replying to the delivered answer continues this conversation.
-    registerAskAnswer(delivered.id, { userId: interaction.user.id, question });
-  } catch (error) {
-    await progress.stop();
-    // Use the bot's standard error handling pattern
-    const { replyWithError } = await import("../utils/helpers.js");
-    await replyWithError(interaction, "ask", error);
+      responseLength: interaction.options.getString("response_length") ?? "concise",
+      mode,
+      useMcp: interaction.options.getBoolean("live_data") ?? true,
+      isPrivate,
+      characterName: interaction.options.getString("character"),
+      subjectUser: interaction.options.getUser("user"),
+      scopeId: interaction.id,
+      placeholder,
+      more: payload => interaction.followUp({ ...safePayload(payload), ephemeral: isPrivate }),
+    });
+  } finally {
+    gate.release();
   }
 }

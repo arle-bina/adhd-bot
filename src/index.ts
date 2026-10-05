@@ -78,6 +78,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 import { handleAskContinuation } from "./utils/ask-continuation.js";
+import { startAskWatchPoller } from "./utils/ask-watches.js";
 import type { AutocompleteInteraction } from "discord.js";
 
 interface Command {
@@ -160,6 +161,9 @@ client.once("ready", () => {
     activities: [{ name: "/ticket for support", type: ActivityType.Custom }],
     status: "online",
   });
+
+  // Deliver fired Ask watchlist alerts by DM.
+  startAskWatchPoller(client);
 
   // Load news/suggestions channel IDs from game config (admin panel webhook config)
   refreshChannelConfig();
