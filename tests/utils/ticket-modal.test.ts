@@ -35,6 +35,7 @@ describe("ticket modal", () => {
     expect(select.options.map((o) => o.value)).toEqual([
       "mobile_web",
       "mobile_android",
+      "mobile_ios",
       "desktop_web",
       "desktop_client",
       "desktop_singleplayer",
