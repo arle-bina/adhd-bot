@@ -25,6 +25,8 @@ export interface CreateTicketPayload {
   category: GameTicketCategory;
   title: string;
   description: string;
+  /** Platform picker value (ticketPlatform.ts); the backend stores it as Ticket.platform. */
+  platform?: string;
   discordChannelId?: string;
   discordUserId?: string;
   discordUsername?: string;
