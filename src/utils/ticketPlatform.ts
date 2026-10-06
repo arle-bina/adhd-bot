@@ -1,6 +1,6 @@
 // Where a reporter is actually playing when they hit a problem.
 //
-// The same bug behaves differently across the five surfaces the game ships on,
+// The same bug behaves differently across the six surfaces the game ships on,
 // and "it's broken" with no platform costs a round trip before anyone can even
 // try to reproduce it. Asking at intake is the cheapest possible fix.
 
@@ -28,6 +28,12 @@ export const TICKET_PLATFORMS = [
     label: "Mobile: Android app",
     description: "Playing in the Android app",
     emoji: "🤖",
+  },
+  {
+    value: "mobile_ios",
+    label: "Mobile: iOS app",
+    description: "Playing in the iPhone or iPad app",
+    emoji: "🍎",
   },
   {
     value: "desktop_web",
