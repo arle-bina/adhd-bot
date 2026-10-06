@@ -490,8 +490,9 @@ export async function createTicket(
       details?.description?.trim() ||
       details?.subject?.trim() ||
       "No description provided.";
-    // The backend ticket schema has no platform field, so the answer rides in the
-    // description, which is what the ops dashboard, support MCP and triage read.
+    // The platform goes to the backend as its own field. It also stays at the
+    // top of the description, which is what staff, triage and the ops
+    // dashboard read.
     const description = (
       details?.platform
         ? `Platform: ${formatTicketPlatform(details.platform)}\n\n${body}`
@@ -501,6 +502,7 @@ export async function createTicket(
       category: toGameCategory(category),
       title,
       description,
+      ...(details?.platform ? { platform: details.platform } : {}),
       discordChannelId: channel.id,
       discordUserId: userId,
       discordUsername: username,
