@@ -10,6 +10,7 @@ import { renderComposition, seriesColor, type CompositionSegment } from "../util
 import { chartAttachment } from "../utils/viz/attach.js";
 import { COUNTRY_FLAG } from "../utils/formatting.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
+import { countryOrDefault } from "../utils/userPrefsStore.js";
 
 export const cooldown = 5;
 
@@ -49,7 +50,7 @@ export async function autocomplete(interaction: AutocompleteInteraction): Promis
 }
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
-  const country = interaction.options.getString("country") ?? undefined;
+  const country = countryOrDefault(interaction.user.id, interaction.options.getString("country"));
 
   await interaction.deferReply();
 

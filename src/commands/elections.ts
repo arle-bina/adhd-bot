@@ -13,6 +13,7 @@ import { replyWithError, standardFooter, normalizeGameUrl } from "../utils/helpe
 import { formatElectionType } from "../utils/formatting.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 import { EMBED_COLORS } from "../utils/embeds.js";
+import { countryOrDefault } from "../utils/userPrefsStore.js";
 
 export { formatElectionType };
 
@@ -107,7 +108,7 @@ function buildNavRow(page: number, totalPages: number): ActionRowBuilder<ButtonB
 }
 
 export async function execute(interaction: ChatInputCommandInteraction) {
-  const country = interaction.options.getString("country") ?? undefined;
+  const country = countryOrDefault(interaction.user.id, interaction.options.getString("country"));
   const state = interaction.options.getString("state") ?? undefined;
 
   await interaction.deferReply();
