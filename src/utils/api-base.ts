@@ -84,7 +84,12 @@ function release(): void {
 }
 
 /** Build the standard auth headers for bot API calls. */
-function authHeaders(): Record<string, string> {
+function authHeaders(pathname = ""): Record<string, string> {
+  // /api/public/v1 only accepts the game's PUBLIC_BOT_API_KEY, which is a
+  // different credential from the private discord-bot key.
+  if (pathname.startsWith("/api/public/v1/") && process.env.GAME_PUBLIC_API_KEY) {
+    return { "X-Bot-Token": process.env.GAME_PUBLIC_API_KEY };
+  }
   return { "X-Bot-Token": process.env.GAME_API_KEY! };
 }
 
@@ -104,7 +109,7 @@ async function apiFetchUncached<T>(pathname: string, params?: Record<string, str
   await acquire();
   try {
     const response = await fetch(url.toString(), {
-      headers: authHeaders(),
+      headers: authHeaders(pathname),
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!response.ok) await throwApiError(response, pathname);

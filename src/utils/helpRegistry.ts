@@ -27,6 +27,13 @@ export interface Category {
 
 export const categories: Category[] = [
   {
+    label: "You",
+    emoji: "⭐",
+    color: 0xf59e0b,
+    description: "Your dashboard, settings, follows, and DM alerts.",
+    commands: ["me", "settings", "follow", "unfollow"],
+  },
+  {
     label: "Players",
     emoji: "👤",
     color: 0x5865f2,
@@ -47,6 +54,8 @@ export const categories: Category[] = [
       "party-compare",
       "state",
       "government",
+      "country",
+      "legislation",
     ],
   },
   {
@@ -58,6 +67,7 @@ export const categories: Category[] = [
       "corporation",
       "corpcompare",
       "bonds",
+      "commodity",
       "sectors",
       "marketshare",
       "stock-chart",
@@ -70,7 +80,7 @@ export const categories: Category[] = [
     emoji: "📰",
     color: 0xfee75c,
     description: "In-game news and the game clock.",
-    commands: ["news", "turn"],
+    commands: ["news", "turn", "wars"],
   },
   {
     label: "Ask and Community",
