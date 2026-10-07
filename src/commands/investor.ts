@@ -12,7 +12,7 @@ export const cooldown = 5;
 
 export const data = new SlashCommandBuilder()
   .setName("investor")
-  .setDescription("Look up a politician's corporate positions — CEO roles, investor rank, and portfolio")
+  .setDescription("Look up a politician's corporate positions: CEO roles, investor rank, and portfolio")
   .addStringOption((o) =>
     o.setName("name").setDescription("Character name to search for").setRequired(false).setAutocomplete(true)
   )

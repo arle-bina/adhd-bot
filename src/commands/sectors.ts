@@ -55,7 +55,7 @@ export const data = new SlashCommandBuilder()
   .addBooleanOption((option) =>
     option
       .setName("unowned")
-      .setDescription("Show unowned market instead (default: false)")
+      .setDescription("Show the untapped (unowned) market instead of owned sectors (default: false)")
       .setRequired(false)
   )
   .addIntegerOption((option) =>

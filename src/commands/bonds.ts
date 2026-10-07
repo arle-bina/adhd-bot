@@ -56,14 +56,14 @@ export const data = new SlashCommandBuilder()
   .addStringOption((o) =>
     o
       .setName("corp")
-      .setDescription("Filter by corporation")
+      .setDescription("Only show bonds issued by this corporation")
       .setRequired(false)
       .setAutocomplete(true)
   )
   .addIntegerOption((o) =>
     o
       .setName("page")
-      .setDescription("Page number")
+      .setDescription("Page number (default: 1)")
       .setRequired(false)
       .setMinValue(1)
   )

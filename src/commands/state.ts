@@ -6,6 +6,7 @@ import {
 } from "discord.js";
 import { getState, getAutocomplete } from "../utils/api.js";
 import { replyWithError, standardFooter, normalizeGameUrl } from "../utils/helpers.js";
+import { stateDidYouMean } from "../utils/lookupSuggestions.js";
 import { formatOfficeType } from "../utils/formatting.js";
 
 export { formatOfficeType };
@@ -18,7 +19,7 @@ export const data = new SlashCommandBuilder()
   .addStringOption((option) =>
     option
       .setName("id")
-      .setDescription("State or region")
+      .setDescription("State or region: type a name or code (e.g. CA, UK_ENG)")
       .setRequired(true)
       .setAutocomplete(true)
   );
@@ -45,7 +46,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
     if (!result.found || !result.state) {
       await interaction.editReply({
-        content: "State not found. Use the state code, e.g. `CA`, `TX`, `UK_ENG`.",
+        content:
+          "State not found. Pick one from the suggestions as you type, or use the state code, e.g. `CA`, `TX`, `UK_ENG`." +
+          (await stateDidYouMean(id)),
       });
       return;
     }

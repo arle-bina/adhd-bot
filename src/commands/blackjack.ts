@@ -58,7 +58,7 @@ export const data = new SlashCommandBuilder()
   .addSubcommand((sub) =>
     sub
       .setName("play")
-      .setDescription("Play one hand — wager liquid capital from your linked character")
+      .setDescription("Play one hand: wager liquid capital from your linked character")
       .addIntegerOption((opt) =>
         opt
           .setName("wager")

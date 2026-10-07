@@ -9,7 +9,7 @@ import {
   ButtonStyle,
   ComponentType,
 } from "discord.js";
-import { getMarketShare, SectorType, MarketShareResponse } from "../utils/api.js";
+import { getMarketShare, getAutocomplete, SectorType, MarketShareResponse } from "../utils/api.js";
 import { hexToInt, replyWithError, normalizeGameUrl } from "../utils/helpers.js";
 import { renderBarChart, brandColor, OTHERS, UNOWNED, compactMoney, type BarRow } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
@@ -68,8 +68,9 @@ export const data = new SlashCommandBuilder()
   .addStringOption((option) =>
     option
       .setName("state")
-      .setDescription("State ID (e.g. US_CA, UK_ENG)")
+      .setDescription("Narrow to one state or region (e.g. US_CA, UK_ENG)")
       .setRequired(false)
+      .setAutocomplete(true)
   )
   .addIntegerOption((option) =>
     option
@@ -87,6 +88,16 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  const focused = interaction.options.getFocused(true);
+  if (focused.name === "state") {
+    try {
+      const res = await getAutocomplete({ type: "states", q: focused.value, limit: 25 });
+      await interaction.respond(res.results.map((r) => ({ name: r.name, value: r.id })));
+    } catch {
+      await interaction.respond([]);
+    }
+    return;
+  }
   await respondCountryAutocomplete(interaction);
 }
 
