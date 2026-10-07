@@ -26,6 +26,7 @@ import { AttachmentBuilder } from "discord.js";
 import { currencyFor, formatCurrency, formatSharePrice, formatCurrencySigned, padCurrency, convertCurrency, fetchForexRates, symbolFor, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
 import { renderEntityCard, renderWaterfall, compactMoney, compactNumber, signedPercent, seriesColor, type WaterfallStep } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
+import { EMBED_COLORS, siteFooter } from "../utils/embeds.js";
 
 // ---------------------------------------------------------------------------
 // Corporation list cache (5-minute TTL)
@@ -312,9 +313,9 @@ function buildBondsEmbed(res: BondsResponse, name: string, countryId: string | u
   if (!res.bonds || res.bonds.length === 0) {
     return new EmbedBuilder()
       .setTitle(`${name} — Bonds`.slice(0, 256))
-      .setColor(0x3b82f6)
+      .setColor(EMBED_COLORS.info)
       .setDescription(`${name} has no outstanding bonds.`)
-      .setFooter({ text: "ahousedividedgame.com" });
+      .setFooter(siteFooter());
   }
 
   // Each bond has its own currencyCode; totalOutstandingDebt is in anchor (USD).

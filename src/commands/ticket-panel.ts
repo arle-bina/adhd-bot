@@ -8,6 +8,7 @@ import {
   PermissionFlagsBits,
   TextChannel,
 } from "discord.js";
+import { EMBED_COLORS, siteFooter } from "../utils/embeds.js";
 
 export const data = new SlashCommandBuilder()
   .setName("ticket-panel")
@@ -31,8 +32,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       { name: "🧩 Mechanics Help", value: "Ask a question about how a game mechanic works", inline: true },
       { name: "💡 Suggestions", value: "Use `/suggest` to submit ideas — they're posted on the site for the team to review.", inline: false },
     )
-    .setColor(0x5865f2)
-    .setFooter({ text: "ahousedividedgame.com" });
+    .setColor(EMBED_COLORS.brand)
+    .setFooter(siteFooter());
 
   const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()

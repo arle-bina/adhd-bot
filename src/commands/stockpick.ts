@@ -18,6 +18,7 @@ import {
   currencyFor,
   CURRENCY_CHOICES,
 } from "../utils/currency.js";
+import { siteFooter } from "../utils/embeds.js";
 
 
 // ---------------------------------------------------------------------------
@@ -117,7 +118,7 @@ function buildPicksEmbed(picks: ScoredPick[], total: number, targetCurrency: str
       `Top publicly traded stocks with available float, ranked by fundamentals.\nScanned **${total}** listings.`,
     )
     .setColor(0x22c55e)
-    .setFooter({ text: `Values in ${targetCurrency} · ahousedividedgame.com` })
+    .setFooter(siteFooter(`Values in ${targetCurrency}`))
     .setTimestamp();
 
   for (const p of picks) {

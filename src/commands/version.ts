@@ -3,6 +3,7 @@ import { execSync } from "child_process";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import { EMBED_COLORS, siteFooter } from "../utils/embeds.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -59,7 +60,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   const embed = new EmbedBuilder()
     .setTitle("Bot Version")
-    .setColor(0x5865f2)
+    .setColor(EMBED_COLORS.brand)
     .addFields(
       { name: "Version", value: `v${version}`, inline: true },
       { name: "Commit", value: commit, inline: true },
@@ -70,7 +71,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         inline: true,
       },
     )
-    .setFooter({ text: "ahousedividedgame.com" });
+    .setFooter(siteFooter());
 
   await interaction.reply({ embeds: [embed], ephemeral: true });
 }

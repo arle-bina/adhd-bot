@@ -12,6 +12,7 @@ import { getElections, getAutocomplete, type Election } from "../utils/api.js";
 import { replyWithError, standardFooter, normalizeGameUrl } from "../utils/helpers.js";
 import { formatElectionType } from "../utils/formatting.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
+import { EMBED_COLORS } from "../utils/embeds.js";
 
 export { formatElectionType };
 
@@ -85,7 +86,7 @@ function buildElectionsEmbed(
 
   return new EmbedBuilder()
     .setTitle("Active & Upcoming Elections")
-    .setColor(0x5865f2)
+    .setColor(EMBED_COLORS.brand)
     .setDescription(description.slice(0, 4096))
     .setFooter(standardFooter(pageInfo));
 }

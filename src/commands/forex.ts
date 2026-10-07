@@ -8,6 +8,7 @@ import { symbolFor } from "../utils/currency.js";
 import { renderTimeSeries, SERIES } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
 import { replyWithError, standardFooter } from "../utils/helpers.js";
+import { EMBED_COLORS } from "../utils/embeds.js";
 
 export const cooldown = 10;
 
@@ -127,7 +128,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
     const embed = new EmbedBuilder()
       .setTitle("Currency Exchange Rates")
-      .setColor(0x5865f2)
+      .setColor(EMBED_COLORS.brand)
       .setDescription(table);
 
     // Volume fields
