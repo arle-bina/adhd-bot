@@ -44,7 +44,7 @@ export const data = new SlashCommandBuilder()
   .addBooleanOption((opt) =>
     opt
       .setName("live_data")
-      .setDescription("Read live game state when useful (uses a live-data question). Defaults to on")
+      .setDescription("Read live game state when useful. Defaults to on")
   )
   .addBooleanOption((opt) =>
     opt

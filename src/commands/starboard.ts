@@ -17,7 +17,7 @@ const DEFAULT_CONFIG: Omit<StarboardConfig, "channelId"> = {
 
 export const data = new SlashCommandBuilder()
   .setName("starboard")
-  .setDescription("Configure the starboard — repost messages that earn enough star reactions")
+  .setDescription("Configure the starboard: repost messages that earn enough star reactions")
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addChannelOption((opt) =>
     opt

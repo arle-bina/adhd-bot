@@ -21,6 +21,7 @@ import {
   type BondsResponse,
   type FinancialsResponse,
 } from "../utils/api.js";
+import { didYouMeanLine } from "../utils/didYouMean.js";
 import { hexToInt, replyWithError, safeEmbedUrl } from "../utils/helpers.js";
 import { AttachmentBuilder } from "discord.js";
 import { currencyFor, formatCurrency, formatSharePrice, formatCurrencySigned, padCurrency, convertCurrency, fetchForexRates, symbolFor, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
@@ -532,7 +533,12 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       fetchForexRates(),
     ]);
     if (!overviewRes.found || !overviewRes.corporation) {
-      await interaction.editReply({ content: "Corporation not found." });
+      const hint = await getList()
+        .then((list) => didYouMeanLine(name, list.map((c) => c.name)))
+        .catch(() => "");
+      await interaction.editReply({
+        content: `Corporation not found. Pick one from the suggestions as you type.${hint}`,
+      });
       return;
     }
 

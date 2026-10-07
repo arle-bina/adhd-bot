@@ -52,7 +52,7 @@ export const data = new SlashCommandBuilder()
   .addStringOption((option) =>
     option
       .setName("country")
-      .setDescription("Country code (e.g. US, UK, JP)")
+      .setDescription("Country the party belongs to")
       .setRequired(true)
       .setAutocomplete(true)
   )

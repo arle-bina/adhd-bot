@@ -27,7 +27,7 @@ export const data = new SlashCommandBuilder()
   .addStringOption((o) =>
     o
       .setName("country")
-      .setDescription("Country")
+      .setDescription("Country to browse")
       .setRequired(true)
       .setAutocomplete(true)
   )
