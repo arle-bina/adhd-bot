@@ -17,6 +17,7 @@ import { ellipsize, encodePng, roundRect, SITE, type Rect } from "./card.js";
 import { ensureFonts, font } from "./fonts.js";
 import { drawAvatar, loadAvatar } from "./avatar.js";
 import { drawBrandMark, warmBrandAssets } from "./brand.js";
+import { withRenderSlot } from "./limiter.js";
 import { AXIS, BRAND, GEO, INK, STATUS, SURFACE, TYPE, alpha, brandColor } from "./theme.js";
 
 export interface ProfileStat {
@@ -75,12 +76,14 @@ const PAD = 20;
 const AVATAR_R = 42;
 
 /** Load the avatar, then render. Never rejects on a bad avatar URL. */
-export async function renderEntityCard(o: EntityCardOptions): Promise<Buffer> {
-  const [image] = await Promise.all([
-    o.avatarImage ? Promise.resolve(o.avatarImage) : loadAvatar(o.avatarUrl),
-    warmBrandAssets(),
-  ]);
-  return renderEntityCardSync({ ...o, avatarImage: image });
+export function renderEntityCard(o: EntityCardOptions): Promise<Buffer> {
+  return withRenderSlot(async () => {
+    const [image] = await Promise.all([
+      o.avatarImage ? Promise.resolve(o.avatarImage) : loadAvatar(o.avatarUrl),
+      warmBrandAssets(),
+    ]);
+    return renderEntityCardSync({ ...o, avatarImage: image });
+  });
 }
 
 export function renderEntityCardSync(o: EntityCardOptions): Buffer {

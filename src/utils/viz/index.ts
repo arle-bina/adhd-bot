@@ -72,3 +72,4 @@ export {
   type ProfileStat,
   type ProfileMeter,
 } from "./profile.js";
+export { withRenderSlot, RenderBusyError, RENDER_MAX_CONCURRENT } from "./limiter.js";

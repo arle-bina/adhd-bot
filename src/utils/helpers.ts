@@ -174,6 +174,10 @@ export function errorMessage(error: unknown): string {
     return "The game server returned an unexpected response. Try again shortly.";
   }
 
+  if (error instanceof Error && error.name === "RenderBusyError") {
+    return "Chart rendering is busy right now. Try again in a few seconds.";
+  }
+
   // --- Legacy API error format (fallback) ---
   const statusMatch = msg.match(/\b(\d{3})\b/);
   const code = statusMatch ? ` (${statusMatch[1]})` : "";

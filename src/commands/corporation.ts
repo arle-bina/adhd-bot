@@ -84,7 +84,7 @@ export const data = new SlashCommandBuilder()
       .addChoices(...CURRENCY_CHOICES)
   );
 
-export const cooldown = 5;
+export const cooldown = 10;
 
 // ---------------------------------------------------------------------------
 // Button row builder

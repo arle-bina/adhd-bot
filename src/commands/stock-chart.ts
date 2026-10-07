@@ -91,7 +91,7 @@ export const data = new SlashCommandBuilder()
       ),
   );
 
-export const cooldown = 5;
+export const cooldown = 10;
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -11,7 +11,7 @@ import { renderVersus, compactMoney, compactNumber, type VersusMetric } from "..
 import { chartAttachment } from "../utils/viz/attach.js";
 import { subtext, meta } from "../utils/embeds.js";
 
-export const cooldown = 5;
+export const cooldown = 10;
 
 export const data = new SlashCommandBuilder()
   .setName("compare")

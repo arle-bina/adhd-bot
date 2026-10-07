@@ -13,7 +13,7 @@ import { subtext, meta } from "../utils/embeds.js";
 import { symbolFor } from "../utils/currency.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 
-export const cooldown = 5;
+export const cooldown = 10;
 
 export const data = new SlashCommandBuilder()
   .setName("party-compare")
