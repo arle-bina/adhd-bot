@@ -1,8 +1,17 @@
-export interface CommandHelp {
-  name: string;
-  usage: string;
-  description: string;
+/*
+ * Help metadata that cannot be derived from a command's SlashCommandBuilder:
+ * category grouping, examples, and optional long-form details.
+ *
+ * Command names, descriptions, options, subcommands and permission gates all
+ * come from the loaded command modules (see commandCatalog.ts), so adding a
+ * command only requires listing its name in a category here. A test fails if a
+ * command file is missing from the categories or a listed name no longer exists.
+ */
+
+export interface HelpExtras {
   examples: string[];
+  /** Longer prose shown on the single-command page and category pages. */
+  details?: string;
 }
 
 export interface Category {
@@ -10,7 +19,10 @@ export interface Category {
   emoji: string;
   color: number;
   description: string;
-  commands: CommandHelp[];
+  /** Staff categories are only listed for members who hold a staff permission. */
+  staff?: boolean;
+  /** Command names, without the leading slash. */
+  commands: string[];
 }
 
 export const categories: Category[] = [
@@ -19,48 +31,7 @@ export const categories: Category[] = [
     emoji: "👤",
     color: 0x5865f2,
     description: "Look up politicians, compare them, and see how they rank.",
-    commands: [
-      {
-        name: "/profile",
-        usage: "/profile [name] [user]",
-        description:
-          "View a player's character — position, party, state, stats, and corporate roles (CEO/investor). Links directly to their profile page.",
-        examples: ["/profile name:John Smith", "/profile user:@RainFrog"],
-      },
-      {
-        name: "/leaderboard",
-        usage: "/leaderboard [metric] [country] [limit]",
-        description:
-          "Top politicians ranked by political influence, national influence, favorability, actions, or funds. Filter by country, show up to 25 results.",
-        examples: [
-          "/leaderboard",
-          "/leaderboard metric:Favorability country:US limit:5",
-        ],
-      },
-      {
-        name: "/compare",
-        usage: "/compare politician1:<name> politician2:<name>",
-        description:
-          "Side-by-side comparison of two politicians — stats, policy positions, party, office, and corporate roles.",
-        examples: [
-          "/compare politician1:John Smith politician2:Jane Doe",
-        ],
-      },
-      {
-        name: "/investor",
-        usage: "/investor [name] [user]",
-        description:
-          "Look up a politician's corporate positions — CEO role, investor rank, and portfolio value. Omit all options to look up yourself.",
-        examples: ["/investor name:John Smith", "/investor user:@RainFrog", "/investor"],
-      },
-      {
-        name: "/blackjack",
-        usage: "/blackjack pool  ·  /blackjack play wager:<amount>",
-        description:
-          "View the shared blackjack prize pool, or play a hand using your linked character's liquid capital (LC). The wager is deducted when the hand starts and resolved when it ends; natural blackjack pays 3:2.",
-        examples: ["/blackjack pool", "/blackjack play wager:1000"],
-      },
-    ],
+    commands: ["profile", "leaderboard", "compare", "investor", "blackjack"],
   },
   {
     label: "Politics",
@@ -68,265 +39,192 @@ export const categories: Category[] = [
     color: 0x57f287,
     description: "Explore elections, parties, and government offices.",
     commands: [
-      {
-        name: "/elections",
-        usage: "/elections [country] [state]",
-        description:
-          "Active and upcoming elections with candidate lists and live Discord countdowns.",
-        examples: ["/elections", "/elections country:US state:CA"],
-      },
-      {
-        name: "/election",
-        usage: "/election country:<US|UK|DE|JP|IE|BR|CN|NG> [state] [race]",
-        description:
-          "Drill into a specific race — shows phase (upcoming/primary/general/ended), candidate standings, vote shares, electoral votes, and a link to the election page. Omit state and race to browse all elections for a country.",
-        examples: [
-          "/election country:US state:CA race:Senate",
-          "/election country:UK state:UK_SCO race:Commons",
-          "/election country:US",
-        ],
-      },
-      {
-        name: "/calendar",
-        usage: "/calendar [country]",
-        description:
-          "Election calendar — shows all active and upcoming elections grouped by status, alongside the current game turn and clock so you know when races will resolve.",
-        examples: ["/calendar", "/calendar country:US"],
-      },
-      {
-        name: "/predict",
-        usage: "/predict country:<country> race:<chamber>",
-        description:
-          "Projected seat totals for a legislative chamber, with a parliament chart. Shows current seats vs predicted outcome during active elections.",
-        examples: ["/predict country:US race:Senate", "/predict country:UK race:Commons"],
-      },
-      {
-        name: "/party",
-        usage: "/party id:<slug> country:<US|UK|DE|JP|IE|BR|CN|NG>",
-        description:
-          "Look up a political party — ideology, membership count, treasury, chair, and top politicians.",
-        examples: ["/party id:labour country:UK", "/party id:republican country:US"],
-      },
-      {
-        name: "/party-compare",
-        usage: "/party-compare party1:<slug> country1:<US|UK|DE|JP|IE|BR|CN|NG> party2:<slug> country2:<US|UK|DE|JP|IE|BR|CN|NG>",
-        description:
-          "Side-by-side comparison of two parties — ideology positions (with visual bars), membership, treasury, chair, and top members.",
-        examples: [
-          "/party-compare party1:republican country1:US party2:democrat country2:US",
-          "/party-compare party1:labour country1:UK party2:conservative country2:UK",
-        ],
-      },
-      {
-        name: "/state",
-        usage: "/state id:<code>",
-        description:
-          "State or region overview — population, voting system (RCV or FPTP), and all current office holders.",
-        examples: ["/state id:CA", "/state id:TX", "/state id:UK_ENG"],
-      },
-      {
-        name: "/government",
-        usage: "/government [country]",
-        description:
-          "View the current government of a country — executives, congressional leadership, and cabinet members. Defaults to US.",
-        examples: ["/government", "/government country:UK", "/government country:DE"],
-      },
+      "elections",
+      "election",
+      "calendar",
+      "predict",
+      "party",
+      "party-compare",
+      "state",
+      "government",
     ],
   },
   {
     label: "Economy",
     emoji: "💼",
     color: 0x3b82f6,
-    description: "Track corporations and industry sectors.",
+    description: "Corporations, markets, currencies, and industry sectors.",
     commands: [
-      {
-        name: "/corporation",
-        usage: "/corporation name:<name>",
-        description:
-          "Look up a corporation with tabbed views. Overview (default) shows type, HQ, CEO, capital, extreme  shareholders, and sectors. Use the Bonds and Financials buttons to switch tabs.",
-        examples: [
-          "/corporation name:Apex Media",
-          "/corporation name:National Rail",
-        ],
-      },
-      {
-        name: "/corpcompare",
-        usage: "/corpcompare corp1:<name> corp2:<name> [corp3] [corp4] [metric]",
-        description:
-          "Compare 2-4 corporations side-by-side across key metrics like market cap, revenue, income, profit margin, share price, and type. Visual indicators show which corporation leads each metric.",
-        examples: [
-          "/corpcompare corp1:Apex Media corp2:National Rail",
-          "/corpcompare corp1:Apex Media corp2:National Rail corp3:Lunar Energy metric:Market Cap",
-        ],
-      },
-      {
-        name: "/bonds",
-        usage: "/bonds [corp] [page]",
-        description:
-          "Browse the bond market — all active bonds across corporations with coupon rates, prices, yields, and maturity. Filter by corporation name (autocomplete). Paginated.",
-        examples: ["/bonds", "/bonds corp:Apex Media", "/bonds page:2"],
-      },
-      {
-        name: "/sectors",
-        usage: "/sectors type:<industry> [unowned] [page]",
-        description:
-          "Browse sector ownership by industry type — revenue, growth rate, and worker count per state. Toggle unowned to see untapped market.",
-        examples: [
-          "/sectors type:Technology",
-          "/sectors type:Energy unowned:true",
-          "/sectors type:Media page:2",
-        ],
-      },
+      "corporation",
+      "corpcompare",
+      "bonds",
+      "sectors",
+      "marketshare",
+      "stock-chart",
+      "stockpick",
+      "forex",
     ],
   },
   {
     label: "World",
     emoji: "📰",
     color: 0xfee75c,
-    description: "Stay up to date with in-game events and news.",
-    commands: [
-      {
-        name: "/news",
-        usage: "/news [category]",
-        description:
-          "Latest in-game news posts with reactions and timestamps. Filter by Elections, Legislation, Executive, or General. Up to 10 posts shown with Prev/Next pagination.",
-        examples: ["/news", "/news category:Elections"],
-      },
-      {
-        name: "/turn",
-        usage: "/turn",
-        description:
-          "Current game turn, year, and clock. Shows when the last turn processed and when the next one is due.",
-        examples: ["/turn"],
-      },
-      {
-        name: "/calendar",
-        usage: "/calendar [country]",
-        description:
-          "Election calendar — all active and upcoming elections with the game clock for context.",
-        examples: ["/calendar", "/calendar country:UK"],
-      },
-    ],
+    description: "In-game news and the game clock.",
+    commands: ["news", "turn"],
+  },
+  {
+    label: "Ask and Community",
+    emoji: "💬",
+    color: 0xeb459e,
+    description: "Ask the game assistant, send feedback, and have some fun.",
+    commands: ["ask", "ask-watches", "suggest", "improve", "tarot"],
   },
   {
     label: "Server",
     emoji: "🔑",
-    color: 0xeb459e,
-    description: "Server management and onboarding.",
+    color: 0x95a5a6,
+    description: "Onboarding, support tickets, and bot info.",
     commands: [
-      {
-        name: "/accept",
-        usage: "/accept",
-        description:
-          "Accept the server rules and gain full access. Run this once after reading the rules in the welcome channel.",
-        examples: ["/accept"],
-      },
-      {
-        name: "/ticket",
-        usage: "/ticket",
-        description:
-          "Open a support ticket — choose Bug Report, Moderation Issue, or Mechanics Help. A private channel will be created for the conversation.",
-        examples: ["/ticket"],
-      },
-      {
-        name: "/help",
-        usage: "/help",
-        description: "Browse all bot commands using this interactive menu.",
-        examples: ["/help"],
-      },
-      {
-        name: "/serverstats",
-        usage: "/serverstats type:<messages|members> [days]",
-        description:
-          "View server activity over time as a graph. Messages shows daily count and cumulative total. Members shows member count trend.",
-        examples: [
-          "/serverstats type:Messages",
-          "/serverstats type:Members days:7",
-          "/serverstats type:Messages days:90",
-        ],
-      },
-      {
-        name: "/starboard",
-        usage: "/starboard [channel] [threshold] [emoji] [self-star] [enabled]",
-        description:
-          "Configure the starboard — messages that earn enough star reactions are reposted to a dedicated channel. Requires Manage Server permission. Run with no options to view current config.",
-        examples: [
-          "/starboard channel:#starboard",
-          "/starboard threshold:5 emoji:🌟",
-          "/starboard enabled:false",
-          "/starboard",
-        ],
-      },
-      {
-        name: "/close-ticket",
-        usage: "/close-ticket",
-        description:
-          "Close the current ticket channel. Opens a form for a resolution message; staff closing someone else's ticket must fill it so the opener gets a DM.",
-        examples: ["/close-ticket"],
-      },
-      {
-        name: "/merge-ticket",
-        usage: "/merge-ticket user:<@user>",
-        description:
-          "Merge another user's ticket into the current ticket channel (staff only). Copies messages, notifies the user, and deletes the source ticket.",
-        examples: ["/merge-ticket user:@johndoe"],
-      },
-      {
-        name: "/ticket-panel",
-        usage: "/ticket-panel",
-        description:
-          "Post a persistent ticket panel with buttons in the current channel. Requires Manage Channels permission.",
-        examples: ["/ticket-panel"],
-      },
-      {
-        name: "/sync-roles",
-        usage: "/sync-roles",
-        description:
-          "Backfill party, office, and country roles for all linked members. Requires Manage Roles permission. This processes all members in batches and may take a moment.",
-        examples: ["/sync-roles"],
-      },
-      {
-        name: "/temp-sp-access",
-        usage: "/temp-sp-access user:<@user> [days]",
-        description:
-          "Grant a tagged, Discord-linked player limited (time-limited) singleplayer access. Default 30 days, max 90. Requires Manage Roles. Does not overwrite a permanent grant, and will not shorten a later expiry.",
-        examples: [
-          "/temp-sp-access user:@johndoe",
-          "/temp-sp-access user:@johndoe days:7",
-        ],
-      },
-      {
-        name: "/strike",
-        usage: "/strike add user:<@user> reason:<text>  ·  /strike remove user:<@user> id:<id>  ·  /strike clear user:<@user>  ·  /strike list  ·  /strike info [user]",
-        description:
-          "Track user strikes. 4 strikes per user, each expires after 60 days. Strikes persist if the user leaves and rejoins — mods are alerted in the log channel when a struck user returns. The user is DMed when a strike is added or expires; everything is logged to the moderation channel and moderators are pinged when a user hits the 4-strike threshold. Moderate Members permission required for add/remove/clear/list; anyone can view their own with /strike info.",
-        examples: [
-          "/strike add user:@johndoe reason:Spam in #general",
-          "/strike info",
-          "/strike info user:@johndoe",
-          "/strike list",
-          "/strike remove user:@johndoe id:a1b2c3",
-          "/strike clear user:@johndoe",
-        ],
-      },
-      {
-        name: "/ban-bot-channel-usage",
-        usage: "/ban-bot-channel-usage add|remove channel:<channel>  ·  /ban-bot-channel-usage list",
-        description:
-          "Restrict bot command usage in specific channels. Non-admin users running commands in a banned channel get a polite block. Admins are unaffected. Requires Administrator permission.",
-        examples: [
-          "/ban-bot-channel-usage add channel:#general",
-          "/ban-bot-channel-usage remove channel:#general",
-          "/ban-bot-channel-usage list",
-        ],
-      },
-      {
-        name: "/version",
-        usage: "/version",
-        description:
-          "Show the bot's current version, commit hash, uptime, and last deploy time.",
-        examples: ["/version"],
-      },
+      "accept",
+      "ticket",
+      "claim",
+      "close-ticket",
+      "copy-ticket",
+      "help",
+      "serverstats",
+      "version",
+    ],
+  },
+  {
+    label: "Staff",
+    emoji: "🛡️",
+    color: 0xed4245,
+    description: "Moderation and administration. Only shown to members with the permission.",
+    staff: true,
+    commands: [
+      "merge-ticket",
+      "ticket-panel",
+      "reassess",
+      "retriage",
+      "backfill-tickets",
+      "sync-ticket-perms",
+      "sync-roles",
+      "sync-supporters",
+      "temp-sp-access",
+      "strike",
+      "supporter",
+      "starboard",
+      "filter",
+      "ban-bot-channel-usage",
+      "android-tester",
+      "enable-bot",
+      "disable-bot",
+      "enable-accept",
+      "disable-accept",
+      "test",
     ],
   },
 ];
+
+/** Commands that carry no permission gate in Discord but are staff tools in practice. */
+export const STAFF_BY_CONVENTION = new Set(["claim", "close-ticket", "copy-ticket", "test"]);
+
+export const extras: Record<string, HelpExtras> = {
+  profile: {
+    examples: ["/profile name:John Smith", "/profile user:@RainFrog"],
+    details:
+      "Position, party, state, stats, and corporate roles, with a link to the profile page. Omit all options to look up yourself.",
+  },
+  leaderboard: {
+    examples: ["/leaderboard", "/leaderboard metric:Favorability country:US limit:5"],
+  },
+  compare: { examples: ["/compare politician1:John Smith politician2:Jane Doe"] },
+  investor: {
+    examples: ["/investor name:John Smith", "/investor user:@RainFrog", "/investor"],
+    details: "Omit all options to look up yourself.",
+  },
+  blackjack: {
+    examples: ["/blackjack pool", "/blackjack play wager:1000"],
+    details:
+      "The wager is deducted when the hand starts and resolved when it ends. Natural blackjack pays 3:2.",
+  },
+  elections: { examples: ["/elections", "/elections country:US state:CA"] },
+  election: {
+    examples: [
+      "/election country:US state:CA race:Senate",
+      "/election country:UK state:UK_SCO race:Commons",
+      "/election country:US",
+    ],
+    details: "Omit state and race to browse all elections for a country.",
+  },
+  calendar: { examples: ["/calendar", "/calendar country:US"] },
+  predict: {
+    examples: ["/predict country:US race:Senate", "/predict country:UK race:Commons"],
+  },
+  party: {
+    examples: ["/party id:1 country:UK", "/party id:2 country:US currency:EUR"],
+    details: "The id is the party's number in that country, shown on its party page.",
+  },
+  "party-compare": {
+    examples: ["/party-compare party1:1 country1:US party2:2 country2:US"],
+  },
+  state: { examples: ["/state id:CA", "/state id:UK_ENG"] },
+  government: { examples: ["/government", "/government country:UK"] },
+  corporation: {
+    examples: ["/corporation name:Apex Media"],
+    details: "Use the Bonds and Financials buttons on the result to switch tabs.",
+  },
+  corpcompare: {
+    examples: [
+      "/corpcompare corp1:Apex Media corp2:National Rail",
+      "/corpcompare corp1:Apex Media corp2:National Rail corp3:Lunar Energy metric:Market Cap",
+    ],
+  },
+  bonds: { examples: ["/bonds", "/bonds corp:Apex Media", "/bonds page:2"] },
+  sectors: { examples: ["/sectors type:Technology", "/sectors type:Energy unowned:true"] },
+  marketshare: { examples: ["/marketshare", "/marketshare country:US", "/marketshare state:US_CA"] },
+  "stock-chart": { examples: ["/stock-chart", "/stock-chart corp:Apex Media"] },
+  stockpick: { examples: ["/stockpick", "/stockpick limit:10 currency:EUR"] },
+  forex: { examples: ["/forex"] },
+  news: { examples: ["/news", "/news category:Elections"] },
+  turn: { examples: ["/turn"] },
+  ask: {
+    examples: [
+      "/ask question:Why did UK inflation rise?",
+      "/ask question:Is it true the US treasury is empty? mode:Verify a claim",
+    ],
+    details:
+      "Answers mechanics questions and live game data. Use /ask-watches to manage alerts you create by asking.",
+  },
+  "ask-watches": { examples: ["/ask-watches"] },
+  suggest: { examples: ["/suggest"], details: "Pick a category and game system, then fill in the form." },
+  improve: { examples: ["/improve prompt:make my bill description clearer"] },
+  tarot: { examples: ["/tarot", "/tarot spread:Single Card"] },
+  supporter: { examples: ["/supporter add name:John Smith"] },
+  accept: { examples: ["/accept"], details: "Run once after reading the rules." },
+  ticket: { examples: ["/ticket"], details: "Opens a private channel for the conversation." },
+  claim: { examples: ["/claim"] },
+  "close-ticket": {
+    examples: ["/close-ticket"],
+    details: "Opens a form for a resolution message; the opener is DMed it.",
+  },
+  "copy-ticket": { examples: ["/copy-ticket"] },
+  help: { examples: ["/help", "/help command:party"] },
+  serverstats: { examples: ["/serverstats type:Members days:7"] },
+  version: { examples: ["/version"] },
+  "merge-ticket": { examples: ["/merge-ticket ticket:42"] },
+  "ticket-panel": { examples: ["/ticket-panel"] },
+  starboard: { examples: ["/starboard channel:#starboard", "/starboard"] },
+  strike: {
+    examples: ["/strike add user:@johndoe reason:Spam", "/strike info", "/strike list"],
+    details:
+      "4 strikes per user, each expiring after 60 days. Anyone can view their own with /strike info.",
+  },
+  "temp-sp-access": {
+    examples: ["/temp-sp-access user:@johndoe days:7"],
+    details: "Default 30 days, max 90. Does not overwrite a permanent grant.",
+  },
+  "ban-bot-channel-usage": {
+    examples: ["/ban-bot-channel-usage add channel:#general", "/ban-bot-channel-usage list"],
+  },
+};
