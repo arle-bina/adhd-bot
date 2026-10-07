@@ -59,6 +59,7 @@ import {
   ticketResolutionNonce,
 } from "./utils/ticketResolutionDelivery.js";
 import { checkMessage } from "./utils/filter.js";
+import { handleSummonMessage, startSummonRefresh } from "./utils/summon.js";
 import { isBotEnabled } from "./utils/botState.js";
 import { isChannelBanned } from "./utils/channelBans.js";
 import {
@@ -164,6 +165,9 @@ client.once("ready", () => {
 
   // Deliver fired Ask watchlist alerts by DM.
   startAskWatchPoller(client);
+
+  // Learn which channels have a summoned Keir session, so only those are watched.
+  startSummonRefresh();
 
   // Load news/suggestions channel IDs from game config (admin panel webhook config)
   refreshChannelConfig();
@@ -599,6 +603,8 @@ client.on("messageCreate", async (message) => {
 
   if (message.author.bot || !message.guild) return;
   recordMessage(message.guild.id);
+  // Summoned channels forward developer messages to the ops box (fail-quiet).
+  void handleSummonMessage(message);
 
   // Content filter check
   const matchedTerm = checkMessage(message.content, message.channelId);
