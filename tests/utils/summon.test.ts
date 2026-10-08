@@ -11,15 +11,13 @@ import {
 } from "../../src/utils/summon.js";
 
 // The ops box parses the footer with this exact pattern; keep the two in step.
-const OPS_FOOTER = /Despatch box · (start|stop|floor open|floor closed)$/;
+const OPS_FOOTER = /Despatch box · (start|stop)$/;
 
 const base = {
   channelActive: true,
   authorIsBot: false,
   isWebhook: false,
   isDeveloper: false,
-  mentionsKeir: false,
-  repliesToKeir: false,
 };
 
 describe("shouldPoke", () => {
@@ -27,22 +25,20 @@ describe("shouldPoke", () => {
     expect(shouldPoke({ ...base, isDeveloper: true })).toBe(true);
   });
 
-  it("reports players only when they address Keir", () => {
+  it("never reports anyone else", () => {
     expect(shouldPoke(base)).toBe(false);
-    expect(shouldPoke({ ...base, mentionsKeir: true })).toBe(true);
-    expect(shouldPoke({ ...base, repliesToKeir: true })).toBe(true);
   });
 
   it("ignores inactive channels, bots and webhooks", () => {
     expect(shouldPoke({ ...base, isDeveloper: true, channelActive: false })).toBe(false);
     expect(shouldPoke({ ...base, isDeveloper: true, authorIsBot: true })).toBe(false);
-    expect(shouldPoke({ ...base, mentionsKeir: true, isWebhook: true })).toBe(false);
+    expect(shouldPoke({ ...base, isDeveloper: true, isWebhook: true })).toBe(false);
   });
 });
 
 describe("buildSummonEmbed", () => {
   it("carries the action in the footer the ops box parses", () => {
-    for (const action of ["start", "stop", "floor open", "floor closed"] as const) {
+    for (const action of ["start", "stop"] as const) {
       const footer = buildSummonEmbed(action, { userId: "1", task: "x" }).data.footer?.text;
       expect(footer).toBe(`${FOOTER_PREFIX}${action}`);
       expect(OPS_FOOTER.exec(footer ?? "")?.[1]).toBe(action);
@@ -62,7 +58,7 @@ describe("buildSummonEmbed", () => {
   });
 
   it("never uses em or en dashes in player-visible copy", () => {
-    for (const action of ["start", "stop", "floor open", "floor closed"] as const) {
+    for (const action of ["start", "stop"] as const) {
       const { title, description } = buildSummonEmbed(action, { userId: "1", task: "t" }).data;
       expect(`${title} ${description}`).not.toMatch(/[–—]/);
     }
