@@ -87,7 +87,7 @@ export const categories: Category[] = [
     emoji: "💬",
     color: 0xeb459e,
     description: "Ask the game assistant, send feedback, and have some fun.",
-    commands: ["ask", "ask-watches", "suggest", "improve", "tarot"],
+    commands: ["ask", "ask-watches", "summon", "suggest", "improve", "tarot"],
   },
   {
     label: "Server",
