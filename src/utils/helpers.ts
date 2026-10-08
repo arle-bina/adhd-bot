@@ -182,8 +182,8 @@ export function errorMessage(error: unknown): string {
   const statusMatch = msg.match(/\b(\d{3})\b/);
   const code = statusMatch ? ` (${statusMatch[1]})` : "";
 
-  if (msg.includes("401")) return `Bot configuration error${code} — contact an admin.`;
-  if (msg.includes("400")) return `Invalid request${code} — check your inputs.`;
+  if (msg.includes("401")) return `Bot configuration error${code}. Contact an admin.`;
+  if (msg.includes("400")) return `Invalid request${code}. Check your inputs.`;
   if (msg.includes("API error")) return `Game API error${code}. Try again shortly.`;
 
   // --- Network / timeout errors ---
@@ -248,7 +248,7 @@ function describeForLog(error: unknown): string {
 
 export function logCommandError(command: string, error: unknown, ref?: string): string {
   const tag = ref ? ` ref=${ref}` : "";
-  console.error(`[${command}]${tag} ${new Date().toISOString()} — ${describeForLog(error)}`);
+  console.error(`[${command}]${tag} ${new Date().toISOString()} ${describeForLog(error)}`);
   if (error instanceof Error && error.stack) console.error(error.stack);
 
   if (
@@ -280,7 +280,7 @@ export async function replyWithError(
 
   const embed = new EmbedBuilder()
     .setColor(ERROR_COLOR)
-    .setTitle(`/${command} — Error`)
+    .setTitle(`/${command}: error`)
     .setDescription(summary)
     .setTimestamp()
     .setFooter({ text: `Ref ${ref} · ${SITE_FOOTER}` });

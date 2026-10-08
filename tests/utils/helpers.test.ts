@@ -30,13 +30,13 @@ describe("hexToInt", () => {
 describe("errorMessage", () => {
   it("maps 401 error to bot configuration message", () => {
     expect(errorMessage(new Error("API error: 401"))).toBe(
-      "Bot configuration error (401) — contact an admin."
+      "Bot configuration error (401). Contact an admin."
     );
   });
 
   it("maps 400 error to invalid request message", () => {
     expect(errorMessage(new Error("API error: 400"))).toBe(
-      "Invalid request (400) — check your inputs."
+      "Invalid request (400). Check your inputs."
     );
   });
 
