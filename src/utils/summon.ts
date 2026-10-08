@@ -1,12 +1,12 @@
-// /summon: brings the Prime Minister (a coding agent on the ops box) into a
-// channel, where he works for the developers until dismissed.
+// /summon: brings the Prime Minister (a read-only agent on the ops box) into a
+// channel, where he answers the developers' questions and heals player data
+// when they confirm it, until dismissed.
 //
 // This side only reports message ids. The ops box re-reads every message from
 // Discord itself and decides from Discord's data who may instruct the agent:
 // /summon commands count only on Keir's own replies (invoker taken from the
-// interaction metadata), chat only from developers, or from players who
-// @mention or reply to Keir once a developer opens the floor. So nothing here
-// is trusted and no shared secret is needed.
+// interaction metadata), chat only from developers. Nobody else's messages are
+// reported at all. So nothing here is trusted and no shared secret is needed.
 
 import { EmbedBuilder, type Message } from "discord.js";
 
@@ -20,7 +20,7 @@ const DISMISS_GREY = 0x6b7280;
 // The ops box reads the action from this footer, so the wording is a contract.
 export const FOOTER_PREFIX = "Despatch box · ";
 
-export type SummonAction = "start" | "stop" | "floor open" | "floor closed";
+export type SummonAction = "start" | "stop";
 
 export interface PokeResult {
   ok: boolean;
@@ -35,7 +35,7 @@ export interface SummonStatus {
   working?: boolean;
   startedAt?: string;
   summonedBy?: string;
-  floorOpen?: boolean;
+  healPending?: boolean;
   queued?: number;
   checkIns?: number;
   model?: string;
@@ -109,31 +109,22 @@ export interface PokeDecisionInput {
   authorIsBot: boolean;
   isWebhook: boolean;
   isDeveloper: boolean;
-  mentionsKeir: boolean;
-  repliesToKeir: boolean;
 }
 
-/**
- * Which messages in a summoned channel are worth reporting. Developers always;
- * anyone else only when they address Keir directly, and the ops box then drops
- * those unless a developer has opened the floor.
- */
+/** Only developers' messages in a summoned channel are reported. */
 export function shouldPoke(input: PokeDecisionInput): boolean {
   if (!input.channelActive || input.authorIsBot || input.isWebhook) return false;
-  return input.isDeveloper || input.mentionsKeir || input.repliesToKeir;
+  return input.isDeveloper;
 }
 
 export async function handleSummonMessage(message: Message): Promise<void> {
   if (!message.guild || !activeChannels.has(message.channelId)) return;
-  const keirId = message.client.user?.id;
   const devRoleId = process.env.DEVELOPER_ROLE_ID;
   const poke = shouldPoke({
     channelActive: true,
     authorIsBot: message.author.bot,
     isWebhook: Boolean(message.webhookId),
     isDeveloper: Boolean(devRoleId && message.member?.roles.cache.has(devRoleId)),
-    mentionsKeir: Boolean(keirId && message.mentions.users.has(keirId)),
-    repliesToKeir: Boolean(keirId && message.mentions.repliedUser?.id === keirId),
   });
   if (!poke) return;
   const result = await pokeSummon(message.channelId, message.id);
@@ -143,8 +134,6 @@ export async function handleSummonMessage(message: Message): Promise<void> {
 const TITLES: Record<SummonAction, string> = {
   start: "Order, order. The Prime Minister has been summoned.",
   stop: "The Prime Minister has left the despatch box.",
-  "floor open": "The Prime Minister will now take questions from the floor.",
-  "floor closed": "No further questions.",
 };
 
 /**
@@ -154,21 +143,15 @@ const TITLES: Record<SummonAction, string> = {
 export function buildSummonEmbed(action: SummonAction, opts: { userId: string; task?: string }): EmbedBuilder {
   const embed = new EmbedBuilder()
     .setTitle(TITLES[action])
-    .setColor(action === "stop" || action === "floor closed" ? DISMISS_GREY : SUMMON_RED)
+    .setColor(action === "stop" ? DISMISS_GREY : SUMMON_RED)
     .setFooter({ text: `${FOOTER_PREFIX}${action}` })
     .setTimestamp();
 
   if (action === "start") {
     embed.setDescription((opts.task ?? "").slice(0, 4000));
     embed.addFields({ name: "Summoned by", value: `<@${opts.userId}>`, inline: true });
-  } else if (action === "stop") {
-    embed.setDescription(`Dismissed by <@${opts.userId}>. Anything he left running in progress stops here.`);
-  } else if (action === "floor open") {
-    embed.setDescription(
-      "Anyone here can @mention Keir or reply to him with a question about the game. Developers close the floor with `/summon floor closed`.",
-    );
   } else {
-    embed.setDescription("Keir takes instructions from the developers only in this channel again.");
+    embed.setDescription(`Dismissed by <@${opts.userId}>. Anything he left running stops here.`);
   }
   return embed;
 }
