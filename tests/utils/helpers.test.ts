@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { vi, describe, it, expect } from "vitest";
 import { EmbedBuilder } from "discord.js";
-import { hexToInt, errorMessage, safeEmbedUrl } from "../../src/utils/helpers.js";
+import { hexToInt, errorMessage, safeEmbedUrl, newErrorRef, replyWithError } from "../../src/utils/helpers.js";
 import { FETCH_TIMEOUT_MS } from "../../src/utils/api-base.js";
 
 /** Capture the real error discord.js throws when given an invalid embed URL. */
@@ -63,7 +63,7 @@ describe("errorMessage", () => {
   });
 
   it("handles a non-Error thrown value", () => {
-    expect(errorMessage("oops")).toBe("Error: oops");
+    expect(errorMessage("oops")).not.toContain("oops");
   });
 
   it("still reports a real network AggregateError as a connection failure", () => {
@@ -106,5 +106,43 @@ describe("safeEmbedUrl", () => {
     expect(() => new EmbedBuilder().setURL(ok ?? null).setThumbnail(ok ?? null)).not.toThrow();
     const bad = safeEmbedUrl("/relative/only");
     expect(() => new EmbedBuilder().setURL(bad ?? null).setThumbnail(bad ?? null)).not.toThrow();
+  });
+});
+
+describe("player-facing errors do not leak internals", () => {
+  const body = '{"error":"MongoServerError secret stack at /srv/app/x.js"}';
+  it("errorMessage hides endpoint and body for ApiError", async () => {
+    const { ApiError } = await import("../../src/utils/api-base.js");
+    for (const status of [400, 401, 403, 404, 429, 500, 418]) {
+      const msg = errorMessage(new ApiError(status, "/api/discord-bot/secret-path", body));
+      expect(msg).not.toContain("/api/");
+      expect(msg).not.toContain("Mongo");
+    }
+  });
+
+  it("errorMessage hides raw messages of unknown errors", () => {
+    expect(errorMessage(new RangeError("boom at /root/x.ts"))).not.toContain("boom");
+  });
+
+  it("newErrorRef is a short hex id", () => {
+    expect(newErrorRef()).toMatch(/^[0-9A-F]{6}$/);
+  });
+
+  it("replyWithError sends one embed with a ref, no stack, no endpoint", async () => {
+    const { ApiError } = await import("../../src/utils/api-base.js");
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const editReply = vi.fn(async () => undefined);
+    await replyWithError({ editReply } as never, "state", new ApiError(500, "/api/discord-bot/state", body));
+    const arg = (editReply.mock.calls[0] as unknown as [{ embeds: Array<{ toJSON(): { description: string; footer: { text: string }; fields?: unknown[] } }> }])[0];
+    const json = arg.embeds[0].toJSON();
+    const flat = JSON.stringify(json);
+    expect(flat).not.toContain("/api/");
+    expect(flat).not.toContain("Mongo");
+    expect(flat).not.toContain("    at ");
+    expect(json.footer.text).toMatch(/^Ref [0-9A-F]{6} · /);
+    expect(json.fields ?? []).toHaveLength(0);
+    const logged = spy.mock.calls.map((c) => c.join(" ")).join("\n");
+    expect(logged).toContain("/api/discord-bot/state");
+    spy.mockRestore();
   });
 });

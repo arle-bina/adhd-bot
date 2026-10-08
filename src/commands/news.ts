@@ -9,6 +9,7 @@ import {
 } from "discord.js";
 import { getNews } from "../utils/api.js";
 import { replyWithError } from "../utils/helpers.js";
+import { EMBED_COLORS, siteFooter } from "../utils/embeds.js";
 
 const categoryNames: Record<string, string> = {
   election: "Elections",
@@ -66,7 +67,7 @@ function buildNewsEmbed(
   const titleSuffix = category ? ` — ${categoryNames[category] ?? category}` : "";
   const embed = new EmbedBuilder()
     .setTitle(`📰 Latest News${titleSuffix}`)
-    .setColor(0xfee75c);
+    .setColor(EMBED_COLORS.warning);
 
   const slice = posts.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
@@ -87,9 +88,9 @@ function buildNewsEmbed(
   }
 
   if (totalPages > 1) {
-    embed.setFooter({ text: `Page ${page + 1} of ${totalPages} · ahousedividedgame.com` });
+    embed.setFooter(siteFooter(`Page ${page + 1} of ${totalPages}`));
   } else {
-    embed.setFooter({ text: "ahousedividedgame.com" });
+    embed.setFooter(siteFooter());
   }
 
   return embed;

@@ -80,6 +80,9 @@ const __dirname = dirname(__filename);
 
 import { handleAskContinuation } from "./utils/ask-continuation.js";
 import { startAskWatchPoller } from "./utils/ask-watches.js";
+import { startPrefsNotifier } from "./utils/prefsNotifier.js";
+import { handleFeatureComponent } from "./utils/featureComponents.js";
+import { handleComponent as handlePrefsComponent } from "./commands/settings.js";
 import type { AutocompleteInteraction } from "discord.js";
 
 interface Command {
@@ -165,6 +168,9 @@ client.once("ready", () => {
 
   // Deliver fired Ask watchlist alerts by DM.
   startAskWatchPoller(client);
+
+  // Opt-in turn and follow DMs (see /settings, /follow).
+  startPrefsNotifier(client);
 
   // Learn which channels have a summoned Keir session, so only those are watched.
   startSummonRefresh();
@@ -1181,14 +1187,38 @@ client.on("guildMemberUpdate", async (oldMember, newMember) => {
 
 client.on("interactionCreate", async (interaction) => {
   if (
+    (interaction.isMessageComponent() || interaction.isModalSubmit()) &&
+    interaction.customId.startsWith("prefs_")
+  ) {
+    try {
+      await handlePrefsComponent(interaction);
+    } catch (error) {
+      console.error("Settings component error:", error);
+    }
+    return;
+  }
+
+  if (interaction.isButton()) {
+    try {
+      if (await handleFeatureComponent(interaction)) return;
+    } catch (error) {
+      console.error("Feature component error:", error);
+      return;
+    }
+  }
+
+  if (
     interaction.isStringSelectMenu() &&
     interaction.customId === "help_category"
   ) {
-    const embed = buildCategoryEmbed(interaction.values[0]);
+    const embed = buildCategoryEmbed(
+      interaction.values[0],
+      interaction.memberPermissions ?? undefined,
+    );
     if (!embed) return;
     await interaction.update({
       embeds: [embed],
-      components: [buildSelectMenu()],
+      components: [buildSelectMenu(interaction.memberPermissions ?? undefined)],
     });
     return;
   }

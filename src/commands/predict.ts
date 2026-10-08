@@ -9,6 +9,7 @@ import { replyWithError } from "../utils/helpers.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 import { renderChamber, brandColor, type ChamberShape } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
+import { siteFooter } from "../utils/embeds.js";
 
 export const cooldown = 5;
 
@@ -176,7 +177,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         .setColor(embedColor)
         .setDescription(`_No general elections active._\n\n${majorityLabel}\n\n${buildSeatsColumn(result.current)}`)
         .setImage(chart.url)
-        .setFooter({ text: `${metaLine} · ahousedividedgame.com` });
+        .setFooter(siteFooter(metaLine));
 
       await interaction.editReply({ embeds: [embed], files: [chart.file] });
       return;

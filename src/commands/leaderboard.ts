@@ -11,6 +11,7 @@ import {
 import { getLeaderboard, LeaderboardCharacter, LeaderboardMetric } from "../utils/api.js";
 import { replyWithError, normalizeGameUrl } from "../utils/helpers.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
+import { countryOrDefault } from "../utils/userPrefsStore.js";
 import { COUNTRY_NAMES } from "../utils/formatting.js";
 import { currencyFor, formatCurrency, convertCurrency, fetchForexRates, symbolFor, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
 import { renderBarChart, brandColor, compactMoney, compactNumber, type BarRow } from "../utils/viz/index.js";
@@ -229,7 +230,7 @@ function buildNavRow(page: number, totalPages: number): ActionRowBuilder<ButtonB
 
 export async function execute(interaction: ChatInputCommandInteraction) {
   const metric = interaction.options.getString("metric") ?? "influence";
-  const country = interaction.options.getString("country") ?? undefined;
+  const country = countryOrDefault(interaction.user.id, interaction.options.getString("country"));
   const limit = interaction.options.getInteger("limit") ?? 10;
   const explicitCurrency = interaction.options.getString("currency") ?? undefined;
 

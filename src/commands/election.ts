@@ -27,7 +27,7 @@ export const data = new SlashCommandBuilder()
   .addStringOption((o) =>
     o
       .setName("country")
-      .setDescription("Country")
+      .setDescription("Country to browse")
       .setRequired(true)
       .setAutocomplete(true)
   )
@@ -77,6 +77,7 @@ export async function autocomplete(interaction: AutocompleteInteraction): Promis
 
 import { renderBarChart, brandColor, compactNumber, type BarRow } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
+import { EMBED_COLORS, siteFooter } from "../utils/embeds.js";
 
 function ts(iso: string): number {
   return Math.floor(new Date(iso).getTime() / 1000);
@@ -106,12 +107,12 @@ function buildListEmbed(elections: ListElection[], country: string, state?: stri
 
   const embed = new EmbedBuilder()
     .setTitle(`🗳️ Elections — ${country}${subtitle}`)
-    .setColor(0x5865f2)
+    .setColor(EMBED_COLORS.brand)
     .setDescription(lines.join("\n\n").slice(0, 4096))
-    .setFooter({ text: "ahousedividedgame.com" });
+    .setFooter(siteFooter());
 
   if (elections.length > 25) {
-    embed.setFooter({ text: `Showing 25 of ${elections.length} · ahousedividedgame.com` });
+    embed.setFooter(siteFooter(`Showing 25 of ${elections.length}`));
   }
 
   return embed;

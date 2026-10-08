@@ -11,16 +11,16 @@ import { renderVersus, compactMoney, compactNumber, type VersusMetric } from "..
 import { chartAttachment } from "../utils/viz/attach.js";
 import { subtext, meta } from "../utils/embeds.js";
 
-export const cooldown = 5;
+export const cooldown = 10;
 
 export const data = new SlashCommandBuilder()
   .setName("compare")
   .setDescription("Compare two politicians side by side")
   .addStringOption((o) =>
-    o.setName("politician1").setDescription("First character name").setRequired(true).setAutocomplete(true)
+    o.setName("politician1").setDescription("First politician (character name)").setRequired(true).setAutocomplete(true)
   )
   .addStringOption((o) =>
-    o.setName("politician2").setDescription("Second character name").setRequired(true).setAutocomplete(true)
+    o.setName("politician2").setDescription("Second politician (character name)").setRequired(true).setAutocomplete(true)
   )
   .addStringOption((o) =>
     o

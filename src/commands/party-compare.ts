@@ -9,11 +9,11 @@ import { hexToInt, replyWithError, positionBar } from "../utils/helpers.js";
 import { currencyFor } from "../utils/currency.js";
 import { renderVersus, compactMoney, compactNumber, type VersusMetric } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
-import { subtext, meta } from "../utils/embeds.js";
+import { subtext, meta, siteFooter } from "../utils/embeds.js";
 import { symbolFor } from "../utils/currency.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 
-export const cooldown = 5;
+export const cooldown = 10;
 
 export const data = new SlashCommandBuilder()
   .setName("party-compare")
@@ -152,7 +152,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     const embed = new EmbedBuilder()
       .setTitle(`${p1.name} vs ${p2.name}`.slice(0, 256))
       .setColor(color)
-      .setFooter({ text: "ahousedividedgame.com" });
+      .setFooter(siteFooter());
 
     /*
      * The chart draws members, treasury and top-member influence for both sides,

@@ -107,3 +107,76 @@ export function subtext(line: string): string {
 export function meta(...parts: Array<string | null | undefined | false>): string {
   return parts.filter(Boolean).join(" · ");
 }
+
+// ---------------------------------------------------------------------------
+// Shared embed factory: colours, footer, timestamps, truncation guards.
+// Commands build player-facing embeds through these so they stay cohesive.
+// ---------------------------------------------------------------------------
+
+import { EmbedBuilder } from "discord.js";
+
+export const SITE_FOOTER_TEXT = "ahousedividedgame.com";
+/** Discord's hard cap on an embed title. */
+export const TITLE_LIMIT = 256;
+
+export const EMBED_COLORS = {
+  brand: 0x5865f2,
+  info: 0x3b82f6,
+  success: 0x57f287,
+  warning: 0xfee75c,
+  error: 0xed4245,
+} as const;
+
+/** Cut `text` to `max` characters, ending with an ellipsis when shortened. */
+export function truncate(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return max <= 1 ? text.slice(0, max) : `${text.slice(0, max - 1)}…`;
+}
+
+export const clampTitle = (t: string): string => truncate(t, TITLE_LIMIT);
+export const clampDescription = (t: string): string => truncate(t, DESCRIPTION_LIMIT);
+export const clampField = (t: string): string => truncate(t, FIELD_LIMIT);
+
+/** Footer object with the site attribution, optionally preceded by extra context. */
+export function siteFooter(...extra: Array<string | null | undefined | false>): { text: string } {
+  return { text: [...extra.filter(Boolean), SITE_FOOTER_TEXT].join(" · ") };
+}
+
+/** Discord relative/absolute timestamp markup for a unix-seconds or Date value. */
+export function discordTime(when: number | Date, style: "R" | "F" | "f" | "D" | "d" | "t" | "T" = "R"): string {
+  const unix = when instanceof Date ? Math.floor(when.getTime() / 1000) : Math.floor(when);
+  return `<t:${unix}:${style}>`;
+}
+
+export interface BaseEmbedOptions {
+  title?: string;
+  description?: string;
+  color?: number;
+  /** Extra footer context placed before the site attribution. */
+  footer?: string;
+  /** Set the embed timestamp to now. Default false so existing output is unchanged. */
+  timestamp?: boolean;
+  url?: string;
+}
+
+/** An EmbedBuilder with brand colour, site footer and length guards applied. */
+export function baseEmbed(opts: BaseEmbedOptions = {}): EmbedBuilder {
+  const embed = new EmbedBuilder()
+    .setColor(opts.color ?? EMBED_COLORS.brand)
+    .setFooter(siteFooter(opts.footer));
+  if (opts.title) embed.setTitle(clampTitle(opts.title));
+  if (opts.description) embed.setDescription(clampDescription(opts.description));
+  if (opts.url) embed.setURL(opts.url);
+  if (opts.timestamp) embed.setTimestamp();
+  return embed;
+}
+
+/** addFields with every name/value clamped to Discord's limits. */
+export function addSafeFields(
+  embed: EmbedBuilder,
+  fields: Array<{ name: string; value: string; inline?: boolean }>,
+): EmbedBuilder {
+  return embed.addFields(
+    fields.slice(0, 25).map((f) => ({ name: truncate(f.name, 256) || "​", value: clampField(f.value) || "​", inline: f.inline })),
+  );
+}

@@ -6,6 +6,7 @@ import {
   ChannelType,
 } from "discord.js";
 import { getConfig, setConfig, type StarboardConfig } from "../utils/starboardStore.js";
+import { EMBED_COLORS, siteFooter } from "../utils/embeds.js";
 
 const DEFAULT_CONFIG: Omit<StarboardConfig, "channelId"> = {
   emoji: "⭐",
@@ -16,7 +17,7 @@ const DEFAULT_CONFIG: Omit<StarboardConfig, "channelId"> = {
 
 export const data = new SlashCommandBuilder()
   .setName("starboard")
-  .setDescription("Configure the starboard — repost messages that earn enough star reactions")
+  .setDescription("Configure the starboard: repost messages that earn enough star reactions")
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addChannelOption((opt) =>
     opt
@@ -73,7 +74,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     }
 
     const embed = new EmbedBuilder()
-      .setColor(0xfee75c)
+      .setColor(EMBED_COLORS.warning)
       .setTitle("Starboard Configuration")
       .addFields(
         { name: "Channel", value: `<#${existing.channelId}>`, inline: true },
@@ -82,7 +83,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         { name: "Self-star", value: existing.selfStar ? "Allowed" : "Not allowed", inline: true },
         { name: "Status", value: existing.enabled ? "Enabled" : "Disabled", inline: true },
       )
-      .setFooter({ text: "ahousedividedgame.com" })
+      .setFooter(siteFooter())
       .setTimestamp();
 
     await interaction.reply({ embeds: [embed], ephemeral: true });
@@ -134,10 +135,10 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   if (enabled !== null) changes.push(`**Status:** ${enabled ? "Enabled" : "Disabled"}`);
 
   const embed = new EmbedBuilder()
-    .setColor(0xfee75c)
+    .setColor(EMBED_COLORS.warning)
     .setTitle("Starboard Updated")
     .setDescription(changes.join("\n"))
-    .setFooter({ text: "ahousedividedgame.com" })
+    .setFooter(siteFooter())
     .setTimestamp();
 
   await interaction.reply({ embeds: [embed], ephemeral: true });

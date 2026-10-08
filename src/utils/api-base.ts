@@ -1,5 +1,7 @@
 // Shared API infrastructure: error class, rate-limited fetch wrapper.
 
+import { cachedGet, _cacheTesting } from "./api-cache.js";
+
 export class ApiError extends Error {
   readonly status: number;
   readonly endpoint: string;
@@ -82,12 +84,21 @@ function release(): void {
 }
 
 /** Build the standard auth headers for bot API calls. */
-function authHeaders(): Record<string, string> {
+function authHeaders(pathname = ""): Record<string, string> {
+  // /api/public/v1 only accepts the game's PUBLIC_BOT_API_KEY, which is a
+  // different credential from the private discord-bot key.
+  if (pathname.startsWith("/api/public/v1/") && process.env.GAME_PUBLIC_API_KEY) {
+    return { "X-Bot-Token": process.env.GAME_PUBLIC_API_KEY };
+  }
   return { "X-Bot-Token": process.env.GAME_API_KEY! };
 }
 
 /** Rate-limited GET request to the game API. */
-export async function apiFetch<T>(pathname: string, params?: Record<string, string>): Promise<T> {
+export function apiFetch<T>(pathname: string, params?: Record<string, string>): Promise<T> {
+  return cachedGet(true, pathname, params, () => apiFetchUncached<T>(pathname, params));
+}
+
+async function apiFetchUncached<T>(pathname: string, params?: Record<string, string>): Promise<T> {
   const url = new URL(pathname, process.env.GAME_API_URL);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
@@ -98,7 +109,7 @@ export async function apiFetch<T>(pathname: string, params?: Record<string, stri
   await acquire();
   try {
     const response = await fetch(url.toString(), {
-      headers: authHeaders(),
+      headers: authHeaders(pathname),
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!response.ok) await throwApiError(response, pathname);
@@ -131,7 +142,11 @@ export async function opsApiFetch<T>(pathname: string): Promise<T> {
 }
 
 /** Rate-limited GET request without auth (public endpoints). */
-export async function apiFetchPublic<T>(pathname: string, params?: Record<string, string>): Promise<T> {
+export function apiFetchPublic<T>(pathname: string, params?: Record<string, string>): Promise<T> {
+  return cachedGet(false, pathname, params, () => apiFetchPublicUncached<T>(pathname, params));
+}
+
+async function apiFetchPublicUncached<T>(pathname: string, params?: Record<string, string>): Promise<T> {
   const url = new URL(pathname, process.env.GAME_API_URL);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
@@ -333,6 +348,7 @@ export async function apiPostAskSiteStream<T>(
 
 // Expose for testing only
 export const _testing = {
+  clearCache: _cacheTesting.clear,
   acquire, release, getActive: () => active, getWaitingCount: () => waiting.length,
   acquireAsk, releaseAsk, getAskActive: () => askActive, getAskWaitingCount: () => askWaiting.length,
 };

@@ -12,6 +12,8 @@ import { getElections, getAutocomplete, type Election } from "../utils/api.js";
 import { replyWithError, standardFooter, normalizeGameUrl } from "../utils/helpers.js";
 import { formatElectionType } from "../utils/formatting.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
+import { EMBED_COLORS } from "../utils/embeds.js";
+import { countryOrDefault } from "../utils/userPrefsStore.js";
 
 export { formatElectionType };
 
@@ -85,7 +87,7 @@ function buildElectionsEmbed(
 
   return new EmbedBuilder()
     .setTitle("Active & Upcoming Elections")
-    .setColor(0x5865f2)
+    .setColor(EMBED_COLORS.brand)
     .setDescription(description.slice(0, 4096))
     .setFooter(standardFooter(pageInfo));
 }
@@ -106,7 +108,7 @@ function buildNavRow(page: number, totalPages: number): ActionRowBuilder<ButtonB
 }
 
 export async function execute(interaction: ChatInputCommandInteraction) {
-  const country = interaction.options.getString("country") ?? undefined;
+  const country = countryOrDefault(interaction.user.id, interaction.options.getString("country"));
   const state = interaction.options.getString("state") ?? undefined;
 
   await interaction.deferReply();

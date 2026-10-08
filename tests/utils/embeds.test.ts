@@ -93,3 +93,32 @@ describe("subtext", () => {
     expect(subtext("Values USD")).toBe("-# Values USD");
   });
 });
+
+import { truncate, siteFooter, baseEmbed, addSafeFields, discordTime, EMBED_COLORS } from "../../src/utils/embeds.js";
+
+describe("embed factory", () => {
+  it("truncates with an ellipsis within the limit", () => {
+    expect(truncate("abcdef", 4)).toBe("abc…");
+    expect(truncate("abc", 4)).toBe("abc");
+  });
+  it("builds the site footer", () => {
+    expect(siteFooter()).toEqual({ text: "ahousedividedgame.com" });
+    expect(siteFooter("Page 1 of 2", null)).toEqual({ text: "Page 1 of 2 · ahousedividedgame.com" });
+  });
+  it("baseEmbed applies colour, footer and guards", () => {
+    const j = baseEmbed({ title: "t".repeat(400), description: "d".repeat(5000), timestamp: true }).toJSON();
+    expect(j.color).toBe(EMBED_COLORS.brand);
+    expect(j.title!.length).toBe(256);
+    expect(j.description!.length).toBe(4096);
+    expect(j.footer!.text).toBe("ahousedividedgame.com");
+    expect(j.timestamp).toBeTruthy();
+  });
+  it("clamps field values", () => {
+    const j = addSafeFields(baseEmbed(), [{ name: "n", value: "v".repeat(2000) }]).toJSON();
+    expect(j.fields![0].value.length).toBe(1024);
+  });
+  it("formats discord timestamps", () => {
+    expect(discordTime(1700000000)).toBe("<t:1700000000:R>");
+    expect(discordTime(new Date(1700000000999), "F")).toBe("<t:1700000000:F>");
+  });
+});

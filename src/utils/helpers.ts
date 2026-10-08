@@ -1,15 +1,8 @@
-import {
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ComponentType,
-  type ChatInputCommandInteraction,
-} from "discord.js";
+import { randomBytes } from "node:crypto";
+import { EmbedBuilder, type ChatInputCommandInteraction } from "discord.js";
 
 const DEFAULT_EMBED_COLOR = 0x5865f2; // Discord blurple
 const ERROR_COLOR = 0xed4245; // Discord red
-const ERRORS_PER_PAGE = 3;
 
 export const SITE_FOOTER = "ahousedividedgame.com";
 
@@ -89,120 +82,6 @@ export function safeEmbedUrl(url: string | null | undefined): string | undefined
 }
 
 // ---------------------------------------------------------------------------
-// Error detail extraction
-// ---------------------------------------------------------------------------
-
-interface ErrorDetail {
-  name: string;
-  message: string;
-  code: string | undefined;
-  stack: string | undefined;
-  endpoint: string | undefined;
-  status: number | undefined;
-  responseBody: string | undefined;
-}
-
-function extractDetail(error: unknown): ErrorDetail {
-  if (error instanceof Error) {
-    const apiFields = error.name === "ApiError"
-      ? {
-          endpoint: (error as Error & { endpoint: string }).endpoint,
-          status: (error as Error & { status: number }).status,
-          responseBody: (error as Error & { responseBody: string }).responseBody,
-        }
-      : { endpoint: undefined, status: undefined, responseBody: undefined };
-
-    // If this error's message is unhelpful but it has a cause, prefer the cause's message
-    const cause = (error as Error & { cause?: unknown }).cause;
-    let message = error.message;
-    const isUninformativeMessage =
-      !message ||
-      message === "0" ||
-      message.includes("Received one or more errors") ||
-      /^\d+,/.test(message);
-    if (isUninformativeMessage) {
-      if (cause instanceof Error && cause.message) {
-        message = cause.message;
-      } else {
-        message = "Connection failed — network or DNS error.";
-      }
-    }
-
-    return {
-      name: error.name,
-      message,
-      code: (error as NodeJS.ErrnoException).code,
-      stack: error.stack,
-      ...apiFields,
-    };
-  }
-  return { name: "Error", message: String(error), code: undefined, stack: undefined, endpoint: undefined, status: undefined, responseBody: undefined };
-}
-
-/** Unwrap AggregateError (and nested ones) into a flat list of sub-errors. */
-function collectErrors(error: unknown): ErrorDetail[] {
-  const details: ErrorDetail[] = [];
-
-  if (
-    error instanceof Error &&
-    "errors" in error &&
-    Array.isArray((error as AggregateError).errors)
-  ) {
-    for (const sub of (error as AggregateError).errors) {
-      // Recurse one level in case of nested AggregateErrors
-      if (
-        sub instanceof Error &&
-        "errors" in sub &&
-        Array.isArray((sub as AggregateError).errors)
-      ) {
-        for (const nested of (sub as AggregateError).errors) {
-          details.push(extractDetail(nested));
-        }
-      } else {
-        details.push(extractDetail(sub));
-      }
-    }
-  }
-
-  if (details.length === 0) {
-    details.push(extractDetail(error));
-  }
-
-  return details;
-}
-
-/** Pull unique stack frames from our own code across all (sub-)errors. */
-function buildStackExcerpt(error: unknown): string {
-  const stacks: string[] = [];
-
-  if (error instanceof Error && error.stack) stacks.push(error.stack);
-
-  if (
-    error instanceof Error &&
-    "errors" in error &&
-    Array.isArray((error as AggregateError).errors)
-  ) {
-    for (const sub of (error as AggregateError).errors) {
-      if (sub instanceof Error && sub.stack) stacks.push(sub.stack);
-    }
-  }
-
-  const seen = new Set<string>();
-  const frames: string[] = [];
-  for (const stack of stacks) {
-    for (const line of stack.split("\n")) {
-      const trimmed = line.trim();
-      if (trimmed.includes("/src/") && !seen.has(trimmed)) {
-        seen.add(trimmed);
-        frames.push(trimmed);
-      }
-    }
-  }
-
-  return frames.slice(0, 6).join("\n");
-}
-
-// ---------------------------------------------------------------------------
 // Human-readable summary (used in embed title)
 // ---------------------------------------------------------------------------
 
@@ -277,27 +156,26 @@ function describeAggregateNetwork(err: AggregateError): string | null {
   return null;
 }
 
+/**
+ * Player-safe summary of an error. Never includes stack traces, endpoint
+ * paths, or raw API response bodies; those go to the server log only.
+ */
 export function errorMessage(error: unknown): string {
   const msg = error instanceof Error ? error.message : String(error);
 
-  // --- ApiError from our own api.ts — richest information available ---
+  // --- ApiError from our own api layer: map by status only ---
   if (error instanceof Error && error.name === "ApiError") {
-    const apiErr = error as Error & { status: number; endpoint: string; responseBody: string };
-    const { status, endpoint, responseBody } = apiErr;
+    const status = (error as Error & { status: number }).status;
+    if (status === 401 || status === 403) return "The bot could not authenticate with the game server. Contact an admin.";
+    if (status === 404) return "That could not be found. Check the name and try again.";
+    if (status === 400) return "That request was not valid. Check your inputs.";
+    if (status === 429) return "Too many requests right now. Try again in a minute.";
+    if (status >= 500) return "The game server hit an error. Try again shortly.";
+    return "The game server returned an unexpected response. Try again shortly.";
+  }
 
-    if (status === 401) return `Authentication failed (401) on ${endpoint} — bot API key may be invalid. Contact an admin.`;
-    if (status === 403) return `Forbidden (403) on ${endpoint} — bot does not have permission. Contact an admin.`;
-    if (status === 404) return `Not found (404) on ${endpoint} — this API endpoint may not exist or the resource was not found.`;
-    if (status === 400) {
-      const detail = responseBody.slice(0, 150);
-      return `Bad request (400) on ${endpoint}: ${detail || "check your inputs."}`;
-    }
-    if (status === 429) return `Rate limited (429) on ${endpoint} — too many requests. Try again in a minute.`;
-    if (status >= 500) {
-      const detail = responseBody.slice(0, 100);
-      return `Game server error (${status}) on ${endpoint}: ${detail || "the server had an internal error. Try again shortly."}`;
-    }
-    return `API error (${status}) on ${endpoint}: ${responseBody.slice(0, 150) || "unknown error"}`;
+  if (error instanceof Error && error.name === "RenderBusyError") {
+    return "Chart rendering is busy right now. Try again in a few seconds.";
   }
 
   // --- Legacy API error format (fallback) ---
@@ -319,7 +197,7 @@ export function errorMessage(error: unknown): string {
     return networkMsg ?? "Could not reach the game server — connection refused or DNS failure. Try again shortly.";
   }
 
-  // --- AggregateError — usually a network failure from fetch ---
+  // --- AggregateError: usually a network failure, sometimes embed validation ---
   if (
     error instanceof Error &&
     "errors" in error &&
@@ -328,134 +206,59 @@ export function errorMessage(error: unknown): string {
     const networkMsg = describeAggregateNetwork(error as AggregateError);
     if (networkMsg) return networkMsg;
 
-    const subs = (error as AggregateError).errors as Error[];
+    const subs = (error as AggregateError).errors as unknown[];
     const subMsgs = subs
       .map((e) => (e instanceof Error ? e.message : String(e)))
       .filter((m) => m && m !== "0" && m !== "undefined");
     if (subMsgs.length === 0) {
       return "Could not reach the game server — connection failed. Try again shortly.";
     }
-    return `Multiple errors: ${subMsgs.join("; ").slice(0, 200)}`;
+    if (subMsgs.some((m) => /url/i.test(m))) {
+      return "Part of this result had an invalid URL and could not be displayed.";
+    }
+    return "Part of this result could not be displayed. Try again shortly.";
   }
 
   // --- Discord.js API errors ---
   if (error instanceof Error && "code" in error && "requestBody" in error) {
     const discordCode = (error as Error & { code: number }).code;
-    return `Discord API error (code ${discordCode}): ${msg.slice(0, 200)}`;
+    return `Discord rejected the message (code ${discordCode}). Try again shortly.`;
   }
 
-  // --- Catch-all: show error name + message for maximum clarity ---
-  const name = error instanceof Error ? error.name : "Error";
-  const errCode = error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined;
-  const codeStr = errCode ? ` [${errCode}]` : "";
-  return `${name}${codeStr}: ${msg.slice(0, 200)}`;
+  return "Something went wrong running that command. Try again shortly.";
+}
+
+/** Short opaque id shown to players and written to the server log so staff can match them up. */
+export function newErrorRef(): string {
+  return randomBytes(3).toString("hex").toUpperCase();
 }
 
 // ---------------------------------------------------------------------------
-// Error embed builder
+// Server-side logging: full detail, never shown to players
 // ---------------------------------------------------------------------------
 
-function buildErrorPages(
-  command: string,
-  summary: string,
-  errors: ErrorDetail[],
-  stackExcerpt: string,
-): EmbedBuilder[] {
-  const pages: EmbedBuilder[] = [];
-  const totalErrors = errors.length;
-  const totalPages = Math.max(1, Math.ceil(totalErrors / ERRORS_PER_PAGE));
-
-  for (let p = 0; p < totalPages; p++) {
-    const embed = new EmbedBuilder()
-      .setColor(ERROR_COLOR)
-      .setTitle(`/${command} — Error`)
-      .setDescription(summary)
-      .setTimestamp()
-      .setFooter({
-        text:
-          totalPages > 1
-            ? `Page ${p + 1}/${totalPages} · ${totalErrors} error(s) · ahousedividedgame.com`
-            : `${totalErrors} error(s) · ahousedividedgame.com`,
-      });
-
-    const pageErrors = errors.slice(p * ERRORS_PER_PAGE, (p + 1) * ERRORS_PER_PAGE);
-
-    for (let i = 0; i < pageErrors.length; i++) {
-      const err = pageErrors[i];
-      const idx = p * ERRORS_PER_PAGE + i + 1;
-      const label = totalErrors > 1 ? `Error ${idx}/${totalErrors}` : "Details";
-
-      const parts: string[] = [];
-      parts.push(`**Type:** \`${err.name}\``);
-      if (err.code) parts.push(`**Code:** \`${err.code}\``);
-      if (err.status) parts.push(`**HTTP Status:** \`${err.status}\``);
-      if (err.endpoint) parts.push(`**Endpoint:** \`${err.endpoint}\``);
-      parts.push(`**Message:** ${err.message.slice(0, 300)}`);
-
-      embed.addFields({ name: label, value: parts.join("\n").slice(0, 1024) });
-
-      // Show API response body if available (separate field for readability)
-      if (err.responseBody && err.responseBody.length > 0) {
-        embed.addFields({
-          name: "API Response",
-          value: `\`\`\`\n${err.responseBody.slice(0, 900)}\n\`\`\``,
-        });
-      }
-    }
-
-    // Show stack excerpt on the first page
-    if (p === 0 && stackExcerpt) {
-      embed.addFields({
-        name: "Stack Trace",
-        value: `\`\`\`\n${stackExcerpt.slice(0, 900)}\n\`\`\``,
-      });
-    }
-
-    pages.push(embed);
+function describeForLog(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  if (error.name === "ApiError") {
+    const e = error as Error & { status: number; endpoint: string; responseBody: string };
+    return `ApiError ${e.status} ${e.endpoint}: ${e.responseBody.slice(0, 500)}`;
   }
-
-  return pages;
+  return `${error.name}: ${error.message}`;
 }
 
-function buildPageRow(
-  currentPage: number,
-  totalPages: number,
-): ActionRowBuilder<ButtonBuilder> {
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId("err_prev")
-      .setLabel("Previous")
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(currentPage === 0),
-    new ButtonBuilder()
-      .setCustomId("err_next")
-      .setLabel("Next")
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(currentPage === totalPages - 1),
-  );
-}
+export function logCommandError(command: string, error: unknown, ref?: string): string {
+  const tag = ref ? ` ref=${ref}` : "";
+  console.error(`[${command}]${tag} ${new Date().toISOString()} — ${describeForLog(error)}`);
+  if (error instanceof Error && error.stack) console.error(error.stack);
 
-// ---------------------------------------------------------------------------
-// Console logger (still useful for server-side logs)
-// ---------------------------------------------------------------------------
-
-export function logCommandError(command: string, error: unknown): string {
-  const msg = error instanceof Error ? error.message : String(error);
-  const stack = error instanceof Error ? error.stack : undefined;
-  console.error(`[${command}] ${new Date().toISOString()} — ${msg}`);
-  if (stack) console.error(stack);
-
-  // Also log sub-errors for AggregateError
   if (
     error instanceof Error &&
     "errors" in error &&
     Array.isArray((error as AggregateError).errors)
   ) {
     for (const sub of (error as AggregateError).errors) {
-      const subMsg = sub instanceof Error ? sub.message : String(sub);
-      const subStack = sub instanceof Error ? sub.stack : undefined;
-      console.error(`  ↳ ${subMsg}`);
-      if (subStack) console.error(subStack);
+      console.error(`  ↳ ${describeForLog(sub)}`);
+      if (sub instanceof Error && sub.stack) console.error(sub.stack);
     }
   }
 
@@ -463,9 +266,8 @@ export function logCommandError(command: string, error: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
-// Primary error reply — replaces all `interaction.editReply({ content: ... })`
-// calls in command catch blocks. Sends a rich embed with full error detail and
-// pagination buttons when there are many sub-errors.
+// Primary error reply used by command catch blocks. Players get a friendly
+// message and a short reference id; the full detail stays in the server log.
 // ---------------------------------------------------------------------------
 
 export async function replyWithError(
@@ -473,49 +275,15 @@ export async function replyWithError(
   command: string,
   error: unknown,
 ): Promise<void> {
-  // Log to console
-  logCommandError(command, error);
+  const ref = newErrorRef();
+  const summary = logCommandError(command, error, ref);
 
-  // Build embed pages
-  const errors = collectErrors(error);
-  const stackExcerpt = buildStackExcerpt(error);
-  const summary = errorMessage(error);
-  const pages = buildErrorPages(command, summary, errors, stackExcerpt);
+  const embed = new EmbedBuilder()
+    .setColor(ERROR_COLOR)
+    .setTitle(`/${command} — Error`)
+    .setDescription(summary)
+    .setTimestamp()
+    .setFooter({ text: `Ref ${ref} · ${SITE_FOOTER}` });
 
-  if (pages.length === 1) {
-    await interaction.editReply({ embeds: [pages[0]], content: "" });
-    return;
-  }
-
-  // Paginated error display
-  let page = 0;
-  const message = await interaction.editReply({
-    embeds: [pages[0]],
-    components: [buildPageRow(0, pages.length)],
-    content: "",
-  });
-
-  const collector = message.createMessageComponentCollector({
-    componentType: ComponentType.Button,
-    time: 120_000,
-  });
-
-  collector.on("collect", async (btn) => {
-    if (btn.user.id !== interaction.user.id) {
-      await btn.reply({ content: "This isn't your error report.", ephemeral: true });
-      return;
-    }
-
-    await btn.deferUpdate();
-    if (btn.customId === "err_prev") page = Math.max(0, page - 1);
-    if (btn.customId === "err_next") page = Math.min(pages.length - 1, page + 1);
-    await btn.editReply({
-      embeds: [pages[page]],
-      components: [buildPageRow(page, pages.length)],
-    });
-  });
-
-  collector.on("end", () => {
-    interaction.editReply({ components: [] }).catch(() => {});
-  });
+  await interaction.editReply({ embeds: [embed], content: "", components: [] });
 }

@@ -81,7 +81,7 @@ export const data = new SlashCommandBuilder()
   .addStringOption((o) =>
     o
       .setName("metric")
-      .setDescription("Data metric to chart (default: marketCap for market, sharePrice for corp)")
+      .setDescription("Metric to chart (default: Market Cap for the market view, Share Price for a corporation)")
       .setRequired(false)
       .addChoices(
         { name: "Market Cap", value: "marketCap" },
@@ -91,7 +91,7 @@ export const data = new SlashCommandBuilder()
       ),
   );
 
-export const cooldown = 5;
+export const cooldown = 10;
 
 // ---------------------------------------------------------------------------
 // Helpers

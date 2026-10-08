@@ -239,7 +239,7 @@ export const data = new SlashCommandBuilder()
     .setRequired(false)
     .addChoices(...CURRENCY_CHOICES));
 
-export const cooldown = 5;
+export const cooldown = 10;
 
 // ---------------------------------------------------------------------------
 // Command execution

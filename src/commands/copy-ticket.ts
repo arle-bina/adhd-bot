@@ -9,6 +9,7 @@ import { getTicketByChannel } from "../utils/ticketStore.js";
 import { formatTicketPlatform } from "../utils/ticketPlatform.js";
 import { fetchAllMessages } from "../utils/tickets.js";
 import type { TicketCategory } from "../utils/ticketStore.js";
+import { EMBED_COLORS, siteFooter } from "../utils/embeds.js";
 
 const CATEGORY_LABELS: Record<TicketCategory, string> = {
   bug: "🐛 Bug Report",
@@ -73,14 +74,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     // Build a summary embed for the DM header
     const dmEmbed = new EmbedBuilder()
       .setTitle(`📋 Ticket #${paddedNum} — Copy`)
-      .setColor(0x5865f2)
+      .setColor(EMBED_COLORS.brand)
       .setDescription("Here's a copy of the ticket and its conversation.")
       .addFields(
         { name: "Category", value: CATEGORY_LABELS[ticket.category] ?? ticket.category, inline: true },
         { name: "Created", value: `<t:${Math.floor(new Date(ticket.createdAt).getTime() / 1000)}:R>`, inline: true },
         { name: "Messages", value: String(messages.length), inline: true },
       )
-      .setFooter({ text: "ahousedividedgame.com" })
+      .setFooter(siteFooter())
       .setTimestamp();
 
     if (ticket.subject) {
