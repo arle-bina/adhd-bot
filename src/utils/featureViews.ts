@@ -62,8 +62,11 @@ function button(id: string, label: string, opts: { active?: boolean; disabled?: 
     .setDisabled(opts.disabled === true);
 }
 
+// The ":r" suffix keeps Refresh distinct from the tab or page button that
+// shares its view id. Discord rejects a message with duplicate custom ids
+// (50035), and the router ignores trailing args.
 function refreshButton(id: string): ButtonBuilder {
-  return new ButtonBuilder().setCustomId(id).setLabel("Refresh").setStyle(ButtonStyle.Success);
+  return new ButtonBuilder().setCustomId(`${id}:r`).setLabel("Refresh").setStyle(ButtonStyle.Success);
 }
 
 function row(...buttons: ButtonBuilder[]): ActionRowBuilder<ButtonBuilder> {
@@ -93,7 +96,7 @@ function zipByTurn(a: HistoryPoint[], b: HistoryPoint[]): { turns: number[]; a: 
 // /country
 // ---------------------------------------------------------------------------
 
-function countryRows(tab: CountryTab, c: string): ActionRowBuilder<ButtonBuilder>[] {
+export function countryRows(tab: CountryTab, c: string): ActionRowBuilder<ButtonBuilder>[] {
   return [
     row(...COUNTRY_TABS.map((t) => button(featId("country", t, c), COUNTRY_TAB_LABELS[t], { active: t === tab }))),
     row(refreshButton(featId("country", tab, c))),
