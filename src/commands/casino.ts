@@ -38,7 +38,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     const embed = baseEmbed({
       title: "🎰 Casino",
       description:
-        `**Bank:** ${house.anchorBalance.toLocaleString("en-US")} INT. One stake can be up to 2% of it and one win up to 10%.` +
+        `**Bank:** ${house.anchorBalance.toLocaleString("en-US")} INT. Table limits: ${house.maxStakeAnchor.toLocaleString("en-US")} INT per stake, ${house.maxPayoutAnchor.toLocaleString("en-US")} INT per win.` +
         `${you}\n\n${rows.join("\n")}`,
       color: CASINO_COLORS.table,
       footer: "Results are drawn by the game server",
