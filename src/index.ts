@@ -185,6 +185,9 @@ client.once("ready", () => {
   }
   setInterval(() => {
     for (const guild of client.guilds.cache.values()) {
+      void reconcileTicketChannels(guild).catch((error) => {
+        console.error(`Ticket intake reconciliation retry failed for guild ${guild.id}:`, error);
+      });
       void retryPendingTicketLifecycle(guild).catch((error) => {
         console.error(`Pending ticket lifecycle retry failed for guild ${guild.id}:`, error);
       });

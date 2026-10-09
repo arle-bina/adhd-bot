@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { _testing, ApiError, apiPostAskSiteStream, apiPostPublicStream } from "../../src/utils/api-base.js";
+import { _testing, ApiError, apiPostAskSiteStream, apiPostPublicStream, opsApiFetch } from "../../src/utils/api-base.js";
 
 const { acquire, release, getActive, getWaitingCount } = _testing;
 
@@ -130,5 +130,55 @@ describe("apiPostPublicStream", () => {
         headers: expect.objectContaining({ Authorization: "Bearer shared-secret" }),
       }),
     );
+  });
+});
+
+describe("opsApiFetch ticket links", () => {
+  const previousBase = process.env.OPS_DASHBOARD_URL;
+  const previousToken = process.env.DISCORD_BOT_TOKEN;
+
+  beforeEach(() => {
+    process.env.DISCORD_BOT_TOKEN = "test-bot-token";
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    if (previousBase === undefined) delete process.env.OPS_DASHBOARD_URL;
+    else process.env.OPS_DASHBOARD_URL = previousBase;
+    if (previousToken === undefined) delete process.env.DISCORD_BOT_TOKEN;
+    else process.env.DISCORD_BOT_TOKEN = previousToken;
+    vi.unstubAllGlobals();
+  });
+
+  it("uses the canonical dashboard when no origin is configured", async () => {
+    delete process.env.OPS_DASHBOARD_URL;
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ receiptUrl: "https://ops.lakesidegames.net/t/opaque" }), { status: 200 }));
+
+    await expect(opsApiFetch<{ receiptUrl: string }>("/api/tickets/1446/public-link"))
+      .resolves.toEqual({ receiptUrl: "https://ops.lakesidegames.net/t/opaque" });
+    expect(fetch).toHaveBeenCalledWith("https://ops.lakesidegames.net/api/tickets/1446/public-link", expect.objectContaining({
+      headers: { Authorization: "Bot test-bot-token" },
+    }));
+  });
+
+  it.each([401, 403, 404])( "falls back to the canonical dashboard after a stale-origin %s", async (status) => {
+    process.env.OPS_DASHBOARD_URL = "http://127.0.0.1:9788";
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response("not found", { status }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ receiptUrl: "https://ops.lakesidegames.net/t/opaque" }), { status: 200 }));
+
+    await expect(opsApiFetch<{ receiptUrl: string }>("/api/tickets/1446/public-link"))
+      .resolves.toEqual({ receiptUrl: "https://ops.lakesidegames.net/t/opaque" });
+    expect(fetch).toHaveBeenNthCalledWith(2, "https://ops.lakesidegames.net/api/tickets/1446/public-link", expect.objectContaining({
+      headers: { Authorization: "Bot test-bot-token" },
+    }));
+  });
+
+  it("does not retry a transient server error against another origin", async () => {
+    process.env.OPS_DASHBOARD_URL = "http://127.0.0.1:9788";
+    vi.mocked(fetch).mockResolvedValueOnce(new Response("temporarily unavailable", { status: 503 }));
+
+    await expect(opsApiFetch("/api/tickets/1446/public-link")).rejects.toThrow("API 503");
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
