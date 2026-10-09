@@ -262,6 +262,55 @@ async function alertSyncFailure(
     );
 }
 
+async function alertDeliveryFailure(
+  guild: Guild,
+  channelId: string,
+  ticketNumber: number,
+  username: string,
+  failedMessages: string[],
+): Promise<void> {
+  const logChannelId =
+    process.env.TICKET_LOG_CHANNEL_ID ?? "1483974417628270593";
+  const logChannel = guild.channels.cache.get(logChannelId) as
+    TextChannel | undefined;
+  const modRoleId = moderatorRoleId();
+  const ping = modRoleId ? `<@&${modRoleId}> ` : "";
+  await logChannel
+    ?.send(
+      `${ping}⚠️ Ticket #${String(ticketNumber).padStart(4, "0")} was created, but Discord could not deliver ${failedMessages.join(" and ")} to its channel (<#${channelId}>, ${username}). Please inspect the channel and deliver the missing message manually.`,
+    )
+    .catch((err) =>
+      console.error("Failed to post ticket delivery-failure alert:", err),
+    );
+}
+
+/** Retry one filing message with a stable Discord nonce to deduplicate ambiguous timeouts. */
+export async function sendTicketMessageWithRetry(
+  send: (options: { content: string; nonce: string; enforceNonce: true }) => Promise<unknown>,
+  content: string,
+  nonce: string,
+  wait: (ms: number) => Promise<void> = (ms) =>
+    new Promise((resolve) => setTimeout(resolve, ms)),
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await send({ content, nonce, enforceNonce: true });
+      return true;
+    } catch (error) {
+      if (attempt === 2) {
+        console.error("Ticket filing message delivery failed after retries:", error);
+        return false;
+      }
+      await wait(500 * (attempt + 1));
+    }
+  }
+  return false;
+}
+
+function ticketFilingNonce(ticketNumber: number, kind: "receipt" | "questions"): string {
+  return `t${ticketNumber}-${kind}`;
+}
+
 /**
  * Visible filing-time follow-up for the missing-context questions the game
  * backend flagged at creation (Track1 companion to AHDGame #2393). Pure so it
@@ -599,8 +648,7 @@ export async function createTicket(
     };
     addTicket(guild.id, ticketRecord);
 
-    // Best-effort mirror into the game backend (MongoDB). Non-fatal: the local
-    // tickets.json store above is the source of truth for the Discord UX.
+    // Mirror into the game backend using the shared atomic number reservation.
     const openerName = sanitizeDisplayName(guild, userId, username);
     const title = (details?.subject?.trim() || `${config.label}`).slice(0, 200);
     const body =
@@ -622,9 +670,8 @@ export async function createTicket(
       discordUserId: userId,
       discordUsername: username,
       discordDisplayName: openerName,
-      // This channel's number is the source of truth: send it so the backend
-      // (ops dashboard / support MCP) stores the exact number shown in Discord
-      // instead of minting its own and drifting apart from the channel name.
+      // The shared reservation is authoritative; send its number so the backend
+      // stores the same value shown in Discord.
       ticketNumber,
     })
       .then(async (res) => {
@@ -641,26 +688,19 @@ export async function createTicket(
             receiptUrl = await getTicketReceiptUrl(res.ticketNumber);
             if (receiptUrl) break;
           }
+          const failedMessages: string[] = [];
           if (receiptUrl) {
-            await channel
-              .send(`Your support receipt: ${receiptUrl}`)
-              .catch((err) => {
-                console.error(
-                  `Failed to post ticket #${res.ticketNumber} receipt in its channel:`,
-                  err,
-                );
-              });
+            const receiptDelivered = await sendTicketMessageWithRetry(
+              (options) => channel.send(options),
+              `Your support receipt: ${receiptUrl}`,
+              ticketFilingNonce(res.ticketNumber, "receipt"),
+            );
+            if (!receiptDelivered) failedMessages.push("the receipt link");
           } else {
             console.error(
               `Receipt link unavailable for newly created ticket #${res.ticketNumber}`,
             );
-            await alertSyncFailure(
-              guild,
-              channel.id,
-              ticketNumber,
-              category,
-              username,
-            );
+            failedMessages.push("the receipt link (receipt URL unavailable)");
           }
 
           // The backend persists the number we sent, so res.ticketNumber should
@@ -690,12 +730,21 @@ export async function createTicket(
             res.contextQuestions,
           );
           if (questionsMessage) {
-            await channel.send(questionsMessage).catch((err) => {
-              console.error(
-                `Failed to post filing questions for ticket #${res.ticketNumber}:`,
-                err,
-              );
-            });
+            const questionsDelivered = await sendTicketMessageWithRetry(
+              (options) => channel.send(options),
+              questionsMessage,
+              ticketFilingNonce(res.ticketNumber, "questions"),
+            );
+            if (!questionsDelivered) failedMessages.push("filing questions");
+          }
+          if (failedMessages.length) {
+            await alertDeliveryFailure(
+              guild,
+              channel.id,
+              res.ticketNumber,
+              username,
+              failedMessages,
+            );
           }
         } else {
           // apiCreateTicket already retried internally; a final undefined here means
