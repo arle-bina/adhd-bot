@@ -168,28 +168,26 @@ type IntakeAction = "confirm_page" | "decline_page" | "change_page" | "confirm_p
 
 function buildIntakeActionRow(ticketNumber: number, ticket: NonNullable<ReturnType<typeof getTicketByChannel>>) {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${INTAKE_ID_PREFIX}:confirm_page:${ticketNumber}`).setLabel(ticket.intakePageConfirmed ? "Page confirmed" : "Confirm page").setStyle(ticket.intakePageConfirmed ? ButtonStyle.Success : ButtonStyle.Primary).setDisabled(Boolean(ticket.intakePageConfirmed || ticket.intakeAwaitingReply === "page")),
-    new ButtonBuilder().setCustomId(`${INTAKE_ID_PREFIX}:change_page:${ticketNumber}`).setLabel("Change page").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`${INTAKE_ID_PREFIX}:confirm_platform:${ticketNumber}`).setLabel(ticket.intakePlatformConfirmed ? "Details confirmed" : "Confirm details").setStyle(ticket.intakePlatformConfirmed ? ButtonStyle.Success : ButtonStyle.Primary).setDisabled(Boolean(ticket.intakePlatformConfirmed)),
-    new ButtonBuilder().setCustomId(`${INTAKE_ID_PREFIX}:edit_details:${ticketNumber}`).setLabel("Edit details").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${INTAKE_ID_PREFIX}:confirm_all:${ticketNumber}`).setLabel(ticket.intakePageConfirmed && ticket.intakePlatformConfirmed ? "Details confirmed" : "Confirm page and platform").setStyle(ticket.intakePageConfirmed && ticket.intakePlatformConfirmed ? ButtonStyle.Success : ButtonStyle.Primary).setDisabled(Boolean((ticket.intakePageConfirmed && ticket.intakePlatformConfirmed) || ticket.intakeAwaitingReply === "page")),
+    new ButtonBuilder().setCustomId(`${INTAKE_ID_PREFIX}:decline_page:${ticketNumber}`).setLabel(ticket.intakeAwaitingReply === "page" ? "Waiting for page details" : "Wrong page / issue").setStyle(ButtonStyle.Secondary).setDisabled(ticket.intakeAwaitingReply === "page"),
+    new ButtonBuilder().setCustomId(`${INTAKE_ID_PREFIX}:change_page:${ticketNumber}`).setLabel("Paste link or describe").setStyle(ButtonStyle.Secondary),
   );
 }
 export const buildTicketIntakeButtons = buildIntakeActionRow;
 
 function buildIntakeModal(action: "change_page" | "edit_details", ticketNumber: number, ticket: NonNullable<ReturnType<typeof getTicketByChannel>>): ModalBuilder {
-  const page = action === "change_page";
+  const page = true;
   const input = new TextInputBuilder()
     .setCustomId(page ? "intake_page_url" : "intake_environment")
-    .setLabel(page ? "Page URL" : "Platform, game and client version")
-    .setPlaceholder(page ? "https://ahousedividedgame.com/..." : "Desktop web, game 1.13.0, client version unknown")
+    .setLabel("Page link or menu / issue")
+    .setPlaceholder("https://ahousedividedgame.com/... or describe the affected menu")
     .setStyle(TextInputStyle.Short)
-    .setMaxLength(page ? 500 : 180)
+    .setMaxLength(500)
     .setRequired(true);
   if (page && ticket.intakeCandidatePageUrl) input.setValue(ticket.intakeCandidatePageUrl.slice(0, 500));
-  if (!page) input.setValue([ticket.intakePlatformLabel ?? ticket.platform ?? "Platform unknown", `game ${ticket.intakeGameVersion ?? "version unknown"}`, `client ${ticket.intakeClientVersion ?? "version unknown"}`].join(", ").slice(0, 180));
   return new ModalBuilder()
     .setCustomId(`${INTAKE_ID_PREFIX}:modal:${action}:${ticketNumber}`)
-    .setTitle(page ? "Update the affected page" : "Confirm platform and versions")
+    .setTitle("Correct the page or issue")
     .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
 }
 
@@ -424,24 +422,32 @@ export async function handleTicketIntakeComponent(interaction: ButtonInteraction
   }
 
   if (interaction.isButton()) {
-    const action = interaction.customId.split(":")[1] as IntakeAction;
-    if (!["confirm_page", "change_page", "confirm_platform", "edit_details"].includes(action)) return true;
-    if (action === "change_page" || action === "edit_details") {
+    const action = interaction.customId.split(":")[1] as IntakeAction | "confirm_all";
+    if (!["confirm_all", "decline_page", "change_page"].includes(action)) return true;
+    if (action === "change_page") {
       await interaction.showModal(buildIntakeModal(action, ticketNumber!, ticket));
       return true;
     }
-    if (action === "confirm_page" && !(ticket.intakeCandidatePageUrl ?? ticket.intakePageDescription ?? ticketCandidatePage(ticket.description))) {
-      await interaction.reply({ content: "No page is listed yet. Use Change page to add the page you are reporting.", ephemeral: true });
+    if (action === "confirm_all" && !(ticket.intakeCandidatePageUrl ?? ticket.intakePageDescription ?? ticketCandidatePage(ticket.description))) {
+      await interaction.reply({ content: "No page is listed yet. Paste a link or describe the page first.", ephemeral: true });
       return true;
     }
-    if (action === "confirm_page" && ticket.intakeAwaitingReply === "page") {
+    if (action === "confirm_all" && ticket.intakeAwaitingReply === "page") {
       await interaction.reply({ content: "Please reply with the corrected page or issue details first.", ephemeral: true });
       return true;
     }
     await interaction.deferReply({ ephemeral: true });
-    if (action === "confirm_page") { ticket.intakePageConfirmed = true; ticket.intakeAwaitingReply = null; }
-    if (action === "confirm_platform") ticket.intakePlatformConfirmed = true;
-    await persistIntakeInteraction(interaction.guild.id, ticket, interaction.id, action);
+    if (action === "decline_page") {
+      ticket.intakePageConfirmed = false;
+      ticket.intakeAwaitingReply = "page";
+      await persistIntakeInteraction(interaction.guild.id, ticket, interaction.id, "decline_page");
+    } else {
+      ticket.intakePageConfirmed = true;
+      ticket.intakePlatformConfirmed = true;
+      ticket.intakeAwaitingReply = null;
+      await persistIntakeInteraction(interaction.guild.id, ticket, `${interaction.id}:page`, "confirm_page");
+      await persistIntakeInteraction(interaction.guild.id, ticket, `${interaction.id}:platform`, "confirm_platform");
+    }
   const cardId = ticket.intakeCardMessageId ?? ticket.embedMessageId;
   const card = cardId ? await interaction.channel.messages.fetch(cardId).catch(() => null) : null;
   if (card) {
@@ -457,12 +463,12 @@ export async function handleTicketIntakeComponent(interaction: ButtonInteraction
 }
 
   const parts = interaction.customId.split(":");
-  const action = parts[2] as "change_page" | "edit_details";
-  if (action !== "change_page" && action !== "edit_details") {
+  const action = parts[2] as "change_page";
+  if (action !== "change_page") {
     await interaction.reply({ content: "This intake action is no longer available.", ephemeral: true });
     return true;
   }
-  const value = interaction.fields.getTextInputValue(action === "change_page" ? "intake_page_url" : "intake_environment").trim();
+  const value = interaction.fields.getTextInputValue("intake_page_url").trim();
   if (value.length < 3) {
     await interaction.reply({ content: "Please enter a little more detail.", ephemeral: true });
     return true;
@@ -487,9 +493,6 @@ export async function handleTicketIntakeComponent(interaction: ButtonInteraction
     }
     ticket.intakePageConfirmed = true;
     ticket.intakeAwaitingReply = null;
-  } else {
-    Object.assign(ticket, parseTicketEnvironment(value));
-    ticket.intakePlatformConfirmed = true;
   }
   await interaction.deferReply({ ephemeral: true });
   await persistIntakeInteraction(interaction.guild.id, ticket, interaction.id, action, value);
