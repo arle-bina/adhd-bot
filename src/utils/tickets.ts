@@ -266,47 +266,135 @@ export function ticketIntakeReactionAction(
   return null;
 }
 
-async function persistIntakeInteraction(guildId: string, ticket: NonNullable<ReturnType<typeof getTicketByChannel>>, interactionId: string, action: string, value?: string): Promise<void> {
-  if (ticket.intakeInteractionIds?.includes(interactionId)) return;
-  ticket.intakeInteractionIds = [...(ticket.intakeInteractionIds ?? []), interactionId].slice(-100);
-  addTicket(guildId, ticket);
-  const payload = {
-    action: "intake",
-    ticketNumber: ticket.apiTicketNumber ?? ticket.ticketNumber,
-    discordChannelId: ticket.channelId,
-    intake: {
-      gameVersion: ticketApiVersion(ticket.intakeGameVersion),
-      clientVersion: ticketApiVersion(ticket.intakeClientVersion),
-    },
-    interaction: {
-      interactionId,
-      reporterDiscordId: ticket.userId,
-      action: action as IntakeAction,
-      ...((action === "edit_details" ? ticket.intakePlatformLabel : value)
-        ? { value: action === "edit_details" ? ticket.intakePlatformLabel : value }
-        : {}),
-    },
-  } as const;
+const ticketIntakeLocks = new Map<string, Promise<void>>();
+
+async function withTicketIntakeLock<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const previous = ticketIntakeLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => { release = resolve; });
+  ticketIntakeLocks.set(key, current);
+  await previous;
+  try {
+    return await work();
+  } finally {
+    release();
+    if (ticketIntakeLocks.get(key) === current) ticketIntakeLocks.delete(key);
+  }
+}
+
+function mergeTicketIntakeState(target: Ticket, source: Ticket): void {
+  if (Object.prototype.hasOwnProperty.call(source, "intakeCandidatePageUrl")) target.intakeCandidatePageUrl = source.intakeCandidatePageUrl;
+  if (Object.prototype.hasOwnProperty.call(source, "intakePageDescription")) target.intakePageDescription = source.intakePageDescription;
+  if (Object.prototype.hasOwnProperty.call(source, "intakeAwaitingReply")) target.intakeAwaitingReply = source.intakeAwaitingReply;
+  if (Object.prototype.hasOwnProperty.call(source, "intakeRevision")) target.intakeRevision = source.intakeRevision;
+  if (Object.prototype.hasOwnProperty.call(source, "intakeReceiptUrl")) target.intakeReceiptUrl = source.intakeReceiptUrl;
+  if (Object.prototype.hasOwnProperty.call(source, "intakePageConfirmed")) target.intakePageConfirmed = source.intakePageConfirmed;
+  if (Object.prototype.hasOwnProperty.call(source, "intakePlatformConfirmed")) target.intakePlatformConfirmed = source.intakePlatformConfirmed;
+  if (Object.prototype.hasOwnProperty.call(source, "intakePlatformLabel")) target.intakePlatformLabel = source.intakePlatformLabel;
+  if (Object.prototype.hasOwnProperty.call(source, "intakeGameVersion")) target.intakeGameVersion = source.intakeGameVersion;
+  if (Object.prototype.hasOwnProperty.call(source, "intakeClientVersion")) target.intakeClientVersion = source.intakeClientVersion;
+}
+
+async function flushPendingIntakeInteraction(
+  guildId: string,
+  channelId: string,
+  interactionId: string,
+): Promise<boolean> {
+  const ticket = getTicketByChannel(guildId, channelId);
+  if (!ticket) return false;
+  const pending = ticket.pendingIntakeInteractions?.find((item) => item.interactionId === interactionId);
+  if (!pending) return ticket.intakeInteractionIds?.includes(interactionId) ?? false;
   let saved;
   for (let attempt = 0; attempt < 3; attempt++) {
-    saved = await apiUpdateTicket(payload);
-    if (saved) break;
+    saved = await apiUpdateTicket({
+      action: "intake",
+      ticketNumber: ticket.apiTicketNumber ?? ticket.ticketNumber,
+      discordChannelId: ticket.channelId,
+      intake: {
+        gameVersion: pending.gameVersion !== undefined ? pending.gameVersion : ticketApiVersion(ticket.intakeGameVersion),
+        clientVersion: pending.clientVersion !== undefined ? pending.clientVersion : ticketApiVersion(ticket.intakeClientVersion),
+      },
+      interaction: pending,
+    });
+    if (saved?.ok === true) break;
     if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
   }
-  if (!saved) console.error(`Could not mirror intake interaction ${interactionId} for ticket #${ticket.ticketNumber}`);
-  if (saved?.intake) {
-    ticket.intakeCardMessageId = saved.intake.cardMessageId ?? ticket.intakeCardMessageId;
-    ticket.intakeReceiptUrl = saved.intake.receiptUrl ?? ticket.intakeReceiptUrl;
-    ticket.intakeCandidatePageUrl = saved.intake.candidatePageUrl ?? undefined;
-    ticket.intakePlatformLabel = saved.intake.platformLabel ?? undefined;
-    ticket.intakeGameVersion = saved.intake.gameVersion ?? undefined;
-    ticket.intakeClientVersion = saved.intake.clientVersion ?? undefined;
-    ticket.intakePageDescription = saved.intake.pageDescription ?? undefined;
-    ticket.intakeAwaitingReply = saved.intake.awaitingReply ?? null;
-    ticket.intakeRevision = saved.intake.revision ?? ticket.intakeRevision;
-    ticket.intakePageConfirmed = saved.intake.pageConfirmed ?? ticket.intakePageConfirmed;
-    ticket.intakePlatformConfirmed = saved.intake.platformConfirmed ?? ticket.intakePlatformConfirmed;
-    addTicket(guildId, ticket);
+  if (saved?.ok !== true) {
+    console.error(`Could not mirror intake interaction ${interactionId} for ticket #${ticket.ticketNumber}; it remains queued for retry`);
+    return false;
+  }
+
+  const latest = getTicketByChannel(guildId, channelId);
+  if (!latest) return false;
+  latest.pendingIntakeInteractions = latest.pendingIntakeInteractions?.filter((item) => item.interactionId !== interactionId);
+  latest.intakeInteractionIds = [...(latest.intakeInteractionIds ?? []), interactionId].slice(-100);
+  if (saved.intake) {
+    latest.intakeCardMessageId = saved.intake.cardMessageId ?? latest.intakeCardMessageId;
+    latest.intakeReceiptUrl = saved.intake.receiptUrl ?? latest.intakeReceiptUrl;
+    latest.intakeCandidatePageUrl = saved.intake.candidatePageUrl ?? undefined;
+    latest.intakePlatformLabel = saved.intake.platformLabel ?? undefined;
+    latest.intakeGameVersion = saved.intake.gameVersion ?? undefined;
+    latest.intakeClientVersion = saved.intake.clientVersion ?? undefined;
+    latest.intakePageDescription = saved.intake.pageDescription ?? undefined;
+    latest.intakeAwaitingReply = saved.intake.awaitingReply ?? null;
+    latest.intakeRevision = saved.intake.revision ?? latest.intakeRevision;
+    latest.intakePageConfirmed = saved.intake.pageConfirmed ?? latest.intakePageConfirmed;
+    latest.intakePlatformConfirmed = saved.intake.platformConfirmed ?? latest.intakePlatformConfirmed;
+  }
+  addTicket(guildId, latest);
+  return true;
+}
+
+export async function persistTicketIntakeInteraction(
+  guildId: string,
+  ticket: Ticket,
+  interactionId: string,
+  action: string,
+  value?: string,
+): Promise<boolean> {
+  const lockKey = `${guildId}:${ticket.channelId}`;
+  const latest = getTicketByChannel(guildId, ticket.channelId) ?? { ...ticket };
+  mergeTicketIntakeState(latest, ticket);
+  if (latest.intakeInteractionIds?.includes(interactionId)) return true;
+  if (!latest.pendingIntakeInteractions?.some((item) => item.interactionId === interactionId)) {
+    const versions = normalizeTicketIntakeSeedVersions(latest.intakeGameVersion, latest.intakeClientVersion);
+    latest.pendingIntakeInteractions = [
+      ...(latest.pendingIntakeInteractions ?? []),
+      {
+        interactionId,
+        reporterDiscordId: latest.userId,
+        action: action as IntakeAction,
+        ...((action === "edit_details" ? latest.intakePlatformLabel : value)
+          ? { value: action === "edit_details" ? latest.intakePlatformLabel : value }
+          : {}),
+        ...versions,
+      },
+    ];
+  }
+  addTicket(guildId, latest);
+
+  return withTicketIntakeLock(lockKey, async () => {
+    const current = getTicketByChannel(guildId, ticket.channelId);
+    if (!current) return false;
+    await flushPendingIntakeInteractionsUnlocked(guildId, current);
+    const afterSync = getTicketByChannel(guildId, ticket.channelId);
+    return afterSync?.intakeInteractionIds?.includes(interactionId) ?? false;
+  });
+}
+
+async function flushPendingIntakeInteractionsUnlocked(guildId: string, ticket: Ticket): Promise<void> {
+  for (const pending of [...(ticket.pendingIntakeInteractions ?? [])]) {
+    const synced = await flushPendingIntakeInteraction(guildId, ticket.channelId, pending.interactionId);
+    if (!synced) break;
+  }
+}
+
+export async function retryPendingTicketIntake(guildId: string): Promise<void> {
+  for (const ticket of Object.values(getTickets(guildId))) {
+    await withTicketIntakeLock(`${guildId}:${ticket.channelId}`, async () => {
+      const latest = getTicketByChannel(guildId, ticket.channelId);
+      if (latest) await flushPendingIntakeInteractionsUnlocked(guildId, latest);
+    });
   }
 }
 
@@ -337,7 +425,7 @@ export async function handleTicketIntakeReaction(reaction: MessageReaction, user
     ticket.intakeAwaitingReply = "page";
   }
   ticket.intakeRevision = (ticket.intakeRevision ?? 0) + 1;
-  await persistIntakeInteraction(guild.id, ticket, eventId, action);
+  await persistTicketIntakeInteraction(guild.id, ticket, eventId, action);
   const base = message.embeds[0] ? EmbedBuilder.from(message.embeds[0]) : undefined;
   const components = [
     ...(ticket.embedMessageId === message.id ? [buildTicketActionRow(Boolean(ticket.claimedByUserId))] : []),
@@ -362,7 +450,7 @@ export async function consumeTicketIntakeReply(message: Message): Promise<boolea
   ticket.intakePageDescription = candidate ? undefined : value;
   ticket.intakePageConfirmed = true;
   ticket.intakeAwaitingReply = null;
-  await persistIntakeInteraction(message.guild.id, ticket, message.id, "change_page", candidate ?? value);
+  await persistTicketIntakeInteraction(message.guild.id, ticket, message.id, "change_page", candidate ?? value);
   const cardId = ticket.intakeCardMessageId ?? ticket.embedMessageId;
   const card = cardId ? await message.channel.messages.fetch(cardId).catch(() => null) : null;
   if (card) {
@@ -447,23 +535,25 @@ export async function handleTicketIntakeComponent(interaction: ButtonInteraction
       return true;
     }
     await interaction.deferReply({ ephemeral: true });
+    let synced = true;
     if (action === "decline_page") {
       ticket.intakePageConfirmed = false;
       ticket.intakeAwaitingReply = "page";
-      await persistIntakeInteraction(interaction.guild.id, ticket, interaction.id, "decline_page");
+      synced = await persistTicketIntakeInteraction(interaction.guild.id, ticket, interaction.id, "decline_page");
     } else if (action === "confirm_all") {
       ticket.intakePageConfirmed = true;
       ticket.intakePlatformConfirmed = true;
       ticket.intakeAwaitingReply = null;
-      await persistIntakeInteraction(interaction.guild.id, ticket, `${interaction.id}:page`, "confirm_page");
-      await persistIntakeInteraction(interaction.guild.id, ticket, `${interaction.id}:platform`, "confirm_platform");
+      const pageSynced = await persistTicketIntakeInteraction(interaction.guild.id, ticket, `${interaction.id}:page`, "confirm_page");
+      const platformSynced = await persistTicketIntakeInteraction(interaction.guild.id, ticket, `${interaction.id}:platform`, "confirm_platform");
+      synced = pageSynced && platformSynced;
     } else if (action === "confirm_page") {
       ticket.intakePageConfirmed = true;
       ticket.intakeAwaitingReply = null;
-      await persistIntakeInteraction(interaction.guild.id, ticket, interaction.id, "confirm_page");
+      synced = await persistTicketIntakeInteraction(interaction.guild.id, ticket, interaction.id, "confirm_page");
     } else if (action === "confirm_platform") {
       ticket.intakePlatformConfirmed = true;
-      await persistIntakeInteraction(interaction.guild.id, ticket, interaction.id, "confirm_platform");
+      synced = await persistTicketIntakeInteraction(interaction.guild.id, ticket, interaction.id, "confirm_platform");
     }
   const cardId = ticket.intakeCardMessageId ?? ticket.embedMessageId;
   const card = cardId ? await interaction.channel.messages.fetch(cardId).catch(() => null) : null;
@@ -475,7 +565,9 @@ export async function handleTicketIntakeComponent(interaction: ButtonInteraction
     ];
     await card.edit({ embeds: [intakeEmbed(ticket, base)], components: rows });
   }
-  await interaction.editReply({ content: "Saved. The ticket card has been updated." });
+  await interaction.editReply({ content: synced
+    ? "Saved. The ticket card has been updated."
+    : "Saved on the card. I’m still syncing this to the ticket record; no need to resubmit." });
   return true;
 }
 
@@ -517,11 +609,12 @@ export async function handleTicketIntakeComponent(interaction: ButtonInteraction
     ticket.intakePlatformConfirmed = true;
   }
   await interaction.deferReply({ ephemeral: true });
+  let synced = true;
   if (action === "change_page") {
-    await persistIntakeInteraction(interaction.guild.id, ticket, `${interaction.id}:page`, "change_page", value);
+    synced = await persistTicketIntakeInteraction(interaction.guild.id, ticket, `${interaction.id}:page`, "change_page", value) && synced;
   }
   if (environment) {
-    await persistIntakeInteraction(interaction.guild.id, ticket, action === "edit_details" ? interaction.id : `${interaction.id}:platform`, "edit_details");
+    synced = await persistTicketIntakeInteraction(interaction.guild.id, ticket, action === "edit_details" ? interaction.id : `${interaction.id}:platform`, "edit_details") && synced;
   }
   const cardId = ticket.intakeCardMessageId ?? ticket.embedMessageId;
   const card = cardId ? await interaction.channel.messages.fetch(cardId).catch(() => null) : null;
@@ -533,7 +626,9 @@ export async function handleTicketIntakeComponent(interaction: ButtonInteraction
     ];
     await card.edit({ embeds: [intakeEmbed(ticket, base)], components: rows });
   }
-  await interaction.editReply({ content: "Saved. The ticket card has been updated." });
+  await interaction.editReply({ content: synced
+    ? "Saved. The ticket card has been updated."
+    : "Saved on the card. I’m still syncing this to the ticket record; no need to resubmit." });
   return true;
 }
 
@@ -690,13 +785,62 @@ export function ticketNumberFromChannelName(name: string): number | null {
 }
 
 export function ticketIntakeCardNeedsRefresh(
-  previous: { ticketNumber?: number; apiTicketNumber?: number; intakeCardVersion?: number; intakeReceiptUrl?: string },
+  previous: { ticketNumber?: number; apiTicketNumber?: number; intakeCardVersion?: number; intakeReceiptUrl?: string; intakeSeeded?: boolean },
   ticketNumber: number,
 ): boolean {
   return previous.ticketNumber !== ticketNumber
     || previous.apiTicketNumber !== ticketNumber
     || previous.intakeCardVersion !== 2
+    || previous.intakeSeeded !== true
     || !previous.intakeReceiptUrl;
+}
+
+export function normalizeTicketIntakeSeedVersions(
+  gameVersion?: string,
+  clientVersion?: string,
+  fallbackGameVersion?: string,
+  fallbackClientVersion?: string,
+): { gameVersion: string | null; clientVersion: string | null } {
+  return {
+    gameVersion: ticketApiVersion(gameVersion) ?? ticketApiVersion(fallbackGameVersion),
+    clientVersion: ticketApiVersion(clientVersion) ?? ticketApiVersion(fallbackClientVersion),
+  };
+}
+
+export function buildTicketIntakeSeedPayload(
+  ticket: Pick<Ticket, "ticketNumber" | "apiTicketNumber" | "channelId" | "intakeReceiptUrl" | "intakeCandidatePageUrl" | "intakePageDescription" | "intakePlatformLabel" | "intakeGameVersion" | "intakeClientVersion">,
+  cardMessageId: string,
+  fallbackVersions?: { gameVersion?: string | null; clientVersion?: string | null },
+) {
+  return {
+    action: "intake" as const,
+    ticketNumber: ticket.apiTicketNumber ?? ticket.ticketNumber,
+    discordChannelId: ticket.channelId,
+    intake: {
+      cardMessageId,
+      receiptUrl: ticket.intakeReceiptUrl ?? null,
+      candidatePageUrl: ticket.intakeCandidatePageUrl ?? null,
+      pageDescription: ticket.intakePageDescription ?? null,
+      platformLabel: ticket.intakePlatformLabel ?? null,
+      ...normalizeTicketIntakeSeedVersions(
+        ticket.intakeGameVersion,
+        ticket.intakeClientVersion,
+        fallbackVersions?.gameVersion ?? undefined,
+        fallbackVersions?.clientVersion ?? undefined,
+      ),
+    },
+  };
+}
+
+export function markTicketIntakeSeeded(
+  ticket: Pick<Ticket, "intakeSeeded" | "intakeCardVersion">,
+  response: { ok?: boolean; intake?: unknown } | undefined,
+  cardUpdated: boolean,
+): boolean {
+  if (response?.ok !== true || !response.intake || !cardUpdated) return false;
+  ticket.intakeSeeded = true;
+  ticket.intakeCardVersion = 2;
+  return true;
 }
 
 /** Rehydrate locally-created ticket records for channels opened by staff tools. */
@@ -808,43 +952,35 @@ export async function reconcileTicketChannels(guild: Guild): Promise<void> {
           stored.intakeCandidatePageUrl = serverIntake ? serverIntake.candidatePageUrl ?? undefined : stored.intakeCandidatePageUrl ?? suggestion?.candidatePageUrl ?? undefined;
           stored.intakePageDescription = serverIntake ? serverIntake.pageDescription ?? undefined : stored.intakePageDescription;
           stored.intakePlatformLabel = serverIntake?.platformLabel ?? stored.intakePlatformLabel ?? (suggestion?.platformLabel ? normalizeTicketPlatformLabel(suggestion.platformLabel) : undefined);
-          stored.intakeGameVersion = serverIntake?.gameVersion ?? stored.intakeGameVersion ?? suggestion?.gameVersion ?? undefined;
-          stored.intakeClientVersion = serverIntake?.clientVersion ?? stored.intakeClientVersion ?? suggestion?.clientVersion ?? undefined;
+          stored.intakeGameVersion = serverIntake ? serverIntake.gameVersion ?? undefined : stored.intakeGameVersion ?? suggestion?.gameVersion ?? undefined;
+          stored.intakeClientVersion = serverIntake ? serverIntake.clientVersion ?? undefined : stored.intakeClientVersion ?? suggestion?.clientVersion ?? undefined;
           stored.intakePageConfirmed = serverIntake?.pageConfirmed ?? stored.intakePageConfirmed;
           stored.intakePlatformConfirmed = serverIntake?.platformConfirmed ?? stored.intakePlatformConfirmed;
           stored.intakeAwaitingReply = serverIntake ? serverIntake.awaitingReply ?? null : stored.intakeAwaitingReply;
           stored.intakeRevision = serverIntake?.revision ?? stored.intakeRevision;
           stored.intakeReceiptUrl = stored.intakeReceiptUrl ?? await getTicketReceiptUrl(ticketNumber);
           addTicket(guild.id, stored);
-          const seeded = await apiUpdateTicket({
-            action: "intake", ticketNumber, discordChannelId: channel.id,
-            intake: {
-              cardMessageId: card.id,
-              receiptUrl: stored.intakeReceiptUrl ?? null,
-              candidatePageUrl: stored.intakeCandidatePageUrl ?? null,
-              pageDescription: stored.intakePageDescription ?? null,
-              platformLabel: stored.intakePlatformLabel ?? null,
-              gameVersion: stored.intakeGameVersion ?? null,
-              clientVersion: stored.intakeClientVersion ?? null,
-            },
-          });
-          if (seeded?.intake) {
+          const seeded = await apiUpdateTicket(buildTicketIntakeSeedPayload(stored, card.id));
+          if (seeded?.ok === true && seeded.intake) {
             stored.intakePageConfirmed = seeded.intake.pageConfirmed ?? stored.intakePageConfirmed;
             stored.intakePlatformConfirmed = seeded.intake.platformConfirmed ?? stored.intakePlatformConfirmed;
             stored.intakeAwaitingReply = seeded.intake.awaitingReply ?? stored.intakeAwaitingReply;
             stored.intakeRevision = seeded.intake.revision ?? stored.intakeRevision;
             addTicket(guild.id, stored);
           }
-          await card.edit({
+          const cardUpdated = await card.edit({
             embeds: [intakeEmbed(stored, EmbedBuilder.from(card.embeds[0]))],
             components: [
               ...(stored.embedMessageId === card.id ? [buildTicketActionRow(Boolean(stored.claimedByUserId))] : []),
               buildIntakeActionRow(stored.ticketNumber, stored),
             ],
-          }).then(() => {
-            stored.intakeCardVersion = 2;
+          }).then(() => true).catch((error) => {
+            console.error(`Could not restore intake card for ticket #${ticketNumber}:`, error);
+            return false;
+          });
+          if (markTicketIntakeSeeded(stored, seeded, cardUpdated)) {
             addTicket(guild.id, stored);
-          }).catch((error) => console.error(`Could not restore intake card for ticket #${ticketNumber}:`, error));
+          }
           if (!card.reactions.cache.some((item) => item.emoji.name === "✅")) await card.react("✅").catch(() => {});
           if (!card.reactions.cache.some((item) => item.emoji.name === "❌")) await card.react("❌").catch(() => {});
         }
@@ -1076,9 +1212,6 @@ export async function createTicket(
     await embedMessage.edit({
       embeds: [intakeEmbed(ticketRecord, EmbedBuilder.from(embedMessage.embeds[0]))],
       components: [buildTicketActionRow(false), buildIntakeActionRow(ticketNumber, ticketRecord)],
-    }).then(() => {
-      ticketRecord.intakeCardVersion = 2;
-      addTicket(guild.id, ticketRecord);
     }).catch((error) => console.error(`Could not activate intake card for #${paddedNum}:`, error));
     await embedMessage.react("✅").catch(() => {});
     await embedMessage.react("❌").catch(() => {});
@@ -1128,10 +1261,8 @@ export async function createTicket(
     })
       .then(async (res) => {
         if (res?.ticketNumber != null) {
-          addTicket(guild.id, {
-            ...ticketRecord,
-            apiTicketNumber: res.ticketNumber,
-          });
+          ticketRecord.apiTicketNumber = res.ticketNumber;
+          addTicket(guild.id, ticketRecord);
 
           let receiptUrl: string | undefined;
           for (const delayMs of [0, 1000, 3000]) {
@@ -1149,21 +1280,12 @@ export async function createTicket(
             ticketRecord.intakePlatformLabel = ticketRecord.intakePlatformLabel ?? (suggestion?.platformLabel ? normalizeTicketPlatformLabel(suggestion.platformLabel) : undefined);
             ticketRecord.intakeGameVersion = suggestion?.gameVersion ?? ticketRecord.intakeGameVersion;
             ticketRecord.intakeClientVersion = suggestion?.clientVersion ?? ticketRecord.intakeClientVersion;
-            const intakeSeed = await apiUpdateTicket({
-              action: "intake",
-              ticketNumber: res.ticketNumber,
-              discordChannelId: channel.id,
-              intake: {
-                cardMessageId: embedMessage.id,
-                receiptUrl,
-                candidatePageUrl: ticketRecord.intakeCandidatePageUrl ?? null,
-                platformLabel: ticketRecord.intakePlatformLabel ?? null,
-                gameVersion: ticketRecord.intakeGameVersion === "version unknown" ? suggestion?.gameVersion ?? null : ticketRecord.intakeGameVersion ?? null,
-                clientVersion: ticketRecord.intakeClientVersion === "version unknown" ? suggestion?.clientVersion ?? null : ticketRecord.intakeClientVersion ?? null,
-              },
-            });
-            if (!intakeSeed) console.error(`Could not seed intake state for ticket #${res.ticketNumber}`);
-            if (intakeSeed?.intake) {
+            const intakeSeed = await apiUpdateTicket(buildTicketIntakeSeedPayload(ticketRecord, embedMessage.id, {
+              gameVersion: suggestion?.gameVersion,
+              clientVersion: suggestion?.clientVersion,
+            }));
+            if (intakeSeed?.ok !== true) console.error(`Could not seed intake state for ticket #${res.ticketNumber}`);
+            if (intakeSeed?.ok === true && intakeSeed.intake) {
               ticketRecord.intakePageConfirmed = intakeSeed.intake.pageConfirmed ?? false;
               ticketRecord.intakePlatformConfirmed = intakeSeed.intake.platformConfirmed ?? false;
             }
@@ -1176,6 +1298,8 @@ export async function createTicket(
               await currentCard.edit({
                 embeds: [cardEmbed],
                 components: [buildTicketActionRow(false), buildIntakeActionRow(ticketNumber, ticketRecord)],
+              }).then(() => {
+                markTicketIntakeSeeded(ticketRecord, intakeSeed, true);
               }).catch(() => failedMessages.push("the receipt link on the intake card"));
             } else {
               failedMessages.push("the receipt link on the intake card");

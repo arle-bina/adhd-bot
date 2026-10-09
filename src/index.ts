@@ -36,6 +36,7 @@ import {
   handleTicketIntakeComponent,
   handleTicketIntakeReaction,
   consumeTicketIntakeReply,
+  retryPendingTicketIntake,
   retryPendingTicketLifecycle,
   recordMissingTicketConversation,
 } from "./utils/tickets.js";
@@ -179,6 +180,7 @@ client.once("ready", () => {
       await reconcileTicketChannels(guild).catch((error) => {
         console.error(`Ticket channel reconciliation failed for guild ${guild.id}:`, error);
       });
+      await retryPendingTicketIntake(guild.id);
       await retryPendingTicketLifecycle(guild);
     })().catch((error) => {
       console.error(`Ticket startup reconciliation failed for guild ${guild.id}:`, error);
@@ -188,6 +190,9 @@ client.once("ready", () => {
     for (const guild of client.guilds.cache.values()) {
       void reconcileTicketChannels(guild).catch((error) => {
         console.error(`Ticket intake reconciliation retry failed for guild ${guild.id}:`, error);
+      });
+      void retryPendingTicketIntake(guild.id).catch((error) => {
+        console.error(`Pending ticket intake retry failed for guild ${guild.id}:`, error);
       });
       void retryPendingTicketLifecycle(guild).catch((error) => {
         console.error(`Pending ticket lifecycle retry failed for guild ${guild.id}:`, error);

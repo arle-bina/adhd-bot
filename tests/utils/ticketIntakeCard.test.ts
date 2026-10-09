@@ -9,6 +9,9 @@ import {
   parseTicketEnvironment,
   ticketIntakeReactionAction,
   ticketIntakeCardNeedsRefresh,
+  normalizeTicketIntakeSeedVersions,
+  buildTicketIntakeSeedPayload,
+  markTicketIntakeSeeded,
 } from "../../src/utils/tickets.js";
 
 const ticket = {
@@ -27,8 +30,57 @@ const ticket = {
 
 describe("persistent ticket intake card", () => {
   it("keeps retrying card adoption until the durable receipt URL is present", () => {
-    expect(ticketIntakeCardNeedsRefresh({ ticketNumber: 1446, apiTicketNumber: 1446, intakeCardVersion: 2 }, 1446)).toBe(true);
-    expect(ticketIntakeCardNeedsRefresh({ ticketNumber: 1446, apiTicketNumber: 1446, intakeCardVersion: 2, intakeReceiptUrl: "https://ops.example/t/opaque" }, 1446)).toBe(false);
+    expect(ticketIntakeCardNeedsRefresh({ ticketNumber: 1446, apiTicketNumber: 1446, intakeCardVersion: 2, intakeReceiptUrl: "https://ops.example/t/opaque" }, 1446)).toBe(true);
+    expect(ticketIntakeCardNeedsRefresh({ ticketNumber: 1446, apiTicketNumber: 1446, intakeCardVersion: 2, intakeReceiptUrl: "https://ops.example/t/opaque", intakeSeeded: true }, 1446)).toBe(false);
+  });
+
+  it("seeds known versions and a receipt while encoding an unknown client as null", () => {
+    const versions = normalizeTicketIntakeSeedVersions("1.13.0", "version unknown");
+    expect(versions).toEqual({ gameVersion: "1.13.0", clientVersion: null });
+    expect(normalizeTicketIntakeSeedVersions("version unknown", "unknown", "1.12.0", "2.3.4"))
+      .toEqual({ gameVersion: "1.12.0", clientVersion: "2.3.4" });
+
+    const seededTicket = { intakeReceiptUrl: "https://ops.example/t/opaque" };
+    expect(markTicketIntakeSeeded(seededTicket, { ok: true, intake: { receiptUrl: seededTicket.intakeReceiptUrl } }, true)).toBe(true);
+    expect(seededTicket).toMatchObject({ intakeReceiptUrl: "https://ops.example/t/opaque", intakeSeeded: true, intakeCardVersion: 2 });
+  });
+
+  it("builds a durable seed payload with the receipt and no invalid unknown version strings", () => {
+    const ticket = {
+      ticketNumber: 1446,
+      apiTicketNumber: 1446,
+      channelId: "ticket-channel",
+      intakeReceiptUrl: "https://ops.example/t/opaque",
+      intakeCandidatePageUrl: "https://ahousedividedgame.com/corporation/499",
+      intakePlatformLabel: "Desktop browser",
+      intakeGameVersion: "1.13.0",
+      intakeClientVersion: "version unknown",
+    };
+    const payload = buildTicketIntakeSeedPayload(ticket, "card-message");
+    expect(payload).toEqual({
+      action: "intake",
+      ticketNumber: 1446,
+      discordChannelId: "ticket-channel",
+      intake: {
+        cardMessageId: "card-message",
+        receiptUrl: "https://ops.example/t/opaque",
+        candidatePageUrl: "https://ahousedividedgame.com/corporation/499",
+        pageDescription: null,
+        platformLabel: "Desktop browser",
+        gameVersion: "1.13.0",
+        clientVersion: null,
+      },
+    });
+    expect(JSON.stringify(payload)).not.toContain("version unknown");
+    expect(markTicketIntakeSeeded(ticket, { ok: true, intake: payload.intake }, true)).toBe(true);
+    expect(ticketIntakeCardNeedsRefresh(ticket, 1446)).toBe(false);
+  });
+
+  it("does not mark a card seeded when the API or card edit failed", () => {
+    const ticket: { intakeSeeded?: boolean; intakeCardVersion?: number } = {};
+    expect(markTicketIntakeSeeded(ticket, { ok: false, intake: {} }, true)).toBe(false);
+    expect(markTicketIntakeSeeded(ticket, { ok: true, intake: {} }, false)).toBe(false);
+    expect(ticket).toEqual({});
   });
 
   it("shows one candidate, unknown versions, receipt and deterministic controls", () => {
