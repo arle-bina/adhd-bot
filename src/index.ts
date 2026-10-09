@@ -33,6 +33,9 @@ import {
   handleClaimTicket,
   closeTicketChannel,
   reconcileTicketChannels,
+  handleTicketIntakeComponent,
+  handleTicketIntakeReaction,
+  consumeTicketIntakeReply,
 } from "./utils/tickets.js";
 import {
   getChannelConfig,
@@ -685,7 +688,8 @@ client.on("messageCreate", async (message) => {
 
   // Mirror ticket follow-up messages into the game backend (non-fatal, additive).
   // Skip filtered messages — those get deleted above and shouldn't be persisted.
-  if (!matchedTerm) {
+  const intakeReplyConsumed = !matchedTerm ? await consumeTicketIntakeReply(message) : false;
+  if (!matchedTerm && !intakeReplyConsumed) {
     const ticket = getTicketByChannel(message.guild.id, message.channelId);
     if (ticket) {
       const imageUrls = [...message.attachments.values()].map((a) => a.url);
@@ -715,6 +719,8 @@ client.on("messageReactionAdd", async (reaction, user) => {
 
     // Resolve partial user
     const fullUser = user.partial ? await user.fetch() : user;
+
+    if (await handleTicketIntakeReaction(fullReaction, fullUser)) return;
 
     // Ticket lock reaction (🔒)
     await handleLockReaction(
@@ -1197,6 +1203,23 @@ client.on("guildMemberUpdate", async (oldMember, newMember) => {
 });
 
 client.on("interactionCreate", async (interaction) => {
+  if (
+    (interaction.isButton() || interaction.isModalSubmit()) &&
+    interaction.customId.startsWith("ticket_intake:")
+  ) {
+    try {
+      await handleTicketIntakeComponent(interaction);
+    } catch (error) {
+      console.error("Ticket intake component error:", error);
+      if (interaction.deferred) {
+        await interaction.editReply({ content: "I could not save that update. Please try again or reply in the ticket." }).catch(() => {});
+      } else if (!interaction.replied) {
+        await interaction.reply({ content: "I could not save that update. Please try again or reply in the ticket.", ephemeral: true }).catch(() => {});
+      }
+    }
+    return;
+  }
+
   if (
     (interaction.isMessageComponent() || interaction.isModalSubmit()) &&
     interaction.customId.startsWith("prefs_")

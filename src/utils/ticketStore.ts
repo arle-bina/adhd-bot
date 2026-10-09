@@ -28,6 +28,20 @@ export interface Ticket {
   claimedAt?: string;
   /** Message ID of the initial ticket embed (used to update it on claim) */
   embedMessageId?: string;
+  /** Persistent player-facing intake card, edited in place after each response. */
+  intakeCardMessageId?: string;
+  intakeCandidatePageUrl?: string;
+  intakePageDescription?: string;
+  intakeAwaitingReply?: "page" | "details" | null;
+  intakeRevision?: number;
+  intakeReceiptUrl?: string;
+  intakePageConfirmed?: boolean;
+  intakePlatformConfirmed?: boolean;
+  intakePlatformLabel?: string;
+  intakeGameVersion?: string;
+  intakeClientVersion?: string;
+  /** Interaction IDs make local replay/recovery idempotent across restarts. */
+  intakeInteractionIds?: string[];
   /** Ticket number assigned by the game backend (MongoDB sync), if mirrored */
   apiTicketNumber?: number;
 }
