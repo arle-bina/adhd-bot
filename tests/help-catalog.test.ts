@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { describe, it, expect, beforeAll } from "vitest";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";

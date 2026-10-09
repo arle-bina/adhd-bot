@@ -25,6 +25,7 @@ import {
   type Card,
 } from "../utils/blackjackGame.js";
 import { replyWithError } from "../utils/helpers.js";
+import { replyCasinoError } from "../utils/casino.js";
 import { currencyFor, formatCurrency, symbolFor, convertCurrency, fetchForexRates, CURRENCY_CHOICES, CURRENCY_SYMBOLS } from "../utils/currency.js";
 
 export const cooldown = 10;
@@ -53,7 +54,7 @@ export const data = new SlashCommandBuilder()
   .setName("blackjack")
   .setDescription("Play blackjack against the house using your character's cash on hand")
   .addSubcommand((sub) =>
-    sub.setName("pool").setDescription("Show the shared blackjack prize pool balance")
+    sub.setName("pool").setDescription("Show the casino bank that pays blackjack wins")
   )
   .addSubcommand((sub) =>
     sub
@@ -122,7 +123,7 @@ function buildTableEmbed(params: {
   const pLine =
     params.playerCards.length > 0
       ? `${formatHand(params.playerCards, false)} (${pTotal})`
-      : "—";
+      : "-";
 
   return new EmbedBuilder()
     .setTitle("Blackjack")
@@ -156,7 +157,7 @@ function buildResultEmbed(params: {
   const title = outcomeTitle(params.kind, params.naturalWin);
   const emoji = outcomeEmoji(params.kind);
   const headline = params.detailLine
-    ? `${emoji} **${title}** — ${params.detailLine}`
+    ? `${emoji} **${title}**: ${params.detailLine}`
     : `${emoji} **${title}**`;
 
   const { previousCash, newCash, payout } = params.resolve;
@@ -238,12 +239,12 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         return;
       }
       const embed = new EmbedBuilder()
-        .setTitle("Blackjack prize pool")
+        .setTitle("Casino bank")
         .setColor(FELT_GREEN)
         .setDescription(
-          `**Balance:** ${formatCurrency(fund.balance, "USD")} LC\n` +
-            (fund.gamesPlayed != null ? `**Hands recorded:** ${fund.gamesPlayed.toLocaleString()}\n` : "") +
-            (fund.totalWagered != null ? `**Total wagered (tracked):** ${formatCurrency(fund.totalWagered, "USD")} LC\n` : "")
+          `**Balance:** ${fund.balance.toLocaleString("en-US")} INT\n` +
+            "Blackjack and every other house game pay from this bank. See `/casino` for limits.\n" +
+            (fund.gamesPlayed != null ? `**Hands recorded:** ${fund.gamesPlayed.toLocaleString()}\n` : "")
         )
         .setFooter({ text: "ahousedividedgame.com" });
       await interaction.editReply({ embeds: [embed] });
@@ -290,7 +291,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   try {
     await postBlackjackPlaceWager({ discordId, wagerAmount: wager, gameId });
   } catch (err) {
-    await replyWithError(interaction, "blackjack", err);
+    await replyCasinoError(interaction, "blackjack", err);
     return;
   }
 
@@ -325,7 +326,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       resolve = await resolveHand(discordId, gameId, kind, naturalWin);
     } catch (err) {
       finalized = false;
-      await replyWithError(interaction, "blackjack", err);
+      await replyCasinoError(interaction, "blackjack", err);
       return;
     }
     const embed = buildResultEmbed({
@@ -372,7 +373,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     playerCards: player,
     dealerCards: dealer,
     hideHole: true,
-    statusLine: "Hit or stand — dealer stands on all 17s.",
+    statusLine: "Hit or stand. The dealer stands on all 17s.",
     displayCurrency,
     nativeCc: cc,
     rates,
@@ -416,7 +417,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         playerCards: player,
         dealerCards: dealer,
         hideHole: true,
-        statusLine: `You drew — **${total}**. Hit or stand?`,
+        statusLine: `You drew to **${total}**. Hit or stand?`,
         displayCurrency,
         nativeCc: cc,
         rates,
@@ -452,7 +453,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       /* message may be gone */
     }
     if (!finalized) {
-      await finalize("loss", false, "time ran out — hand forfeited", message);
+      await finalize("loss", false, "time ran out, hand forfeited", message);
     }
   });
 }
