@@ -63,6 +63,7 @@ import {
   ticketResolutionNonce,
 } from "./utils/ticketResolutionDelivery.js";
 import { checkMessage } from "./utils/filter.js";
+import { buildWelcomeMessage } from "./utils/welcome.js";
 import { handleSummonMessage, startSummonRefresh } from "./utils/summon.js";
 import { isBotEnabled } from "./utils/botState.js";
 import { isChannelBanned } from "./utils/channelBans.js";
@@ -973,15 +974,13 @@ client.on("guildMemberAdd", async (member) => {
     );
     if (!channel?.isTextBased()) return;
 
-    const embed = new EmbedBuilder()
-      .setTitle("Welcome to the server!")
-      .setDescription(
-        `Hey ${member}! 👋\n\nWelcome to **${member.guild.name}**.\n\nPlease read the rules in <#${process.env.RULES_CHANNEL_ID}>, then run \`/accept\` in this channel to gain access to the rest of the server.`,
-      )
-      .setColor(0x5865f2)
-      .setThumbnail(member.user.displayAvatarURL());
-
-    await channel.send({ embeds: [embed] });
+    const welcome = await buildWelcomeMessage(member);
+    await channel.send(welcome).catch(async (error) => {
+      // Most likely a missing Attach Files permission: retry as text only.
+      if (!welcome.files) throw error;
+      console.error("Welcome post with card failed, retrying without it:", error);
+      await channel.send({ ...welcome, files: [] });
+    });
 
     // Strikes persist when a user leaves — alert mods if a returning member
     // still has active strikes so they're not caught off-guard.
