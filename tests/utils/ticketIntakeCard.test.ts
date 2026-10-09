@@ -12,6 +12,9 @@ import {
   normalizeTicketIntakeSeedVersions,
   buildTicketIntakeSeedPayload,
   markTicketIntakeSeeded,
+  extractTicketLinkTarget,
+  ticketCandidatePage,
+  ticketReceiptUrlFromField,
 } from "../../src/utils/tickets.js";
 
 const ticket = {
@@ -29,6 +32,17 @@ const ticket = {
 };
 
 describe("persistent ticket intake card", () => {
+  it("parses Markdown embed link destinations without duplicating URLs or accepting unsafe receipts", () => {
+    const pageField = "[https://ahousedividedgame.com/corporation/499](https://ahousedividedgame.com/corporation/499) · optional to confirm";
+    const receiptField = "[View ticket receipt](https://ops.lakesidegames.net/t/v01jAMqyQBdT)";
+
+    expect(extractTicketLinkTarget(pageField)).toBe("https://ahousedividedgame.com/corporation/499");
+    expect(ticketCandidatePage(pageField)).toBe("https://ahousedividedgame.com/corporation/499");
+    expect(ticketReceiptUrlFromField(receiptField)).toBe("https://ops.lakesidegames.net/t/v01jAMqyQBdT");
+    expect(ticketReceiptUrlFromField("https://evil.example/t/opaque")).toBeUndefined();
+    expect(ticketReceiptUrlFromField("[receipt](https://ops.lakesidegames.net/t/opaque?x=1)")).toBeUndefined();
+  });
+
   it("keeps retrying card adoption until the durable receipt URL is present", () => {
     expect(ticketIntakeCardNeedsRefresh({ ticketNumber: 1446, apiTicketNumber: 1446, intakeCardVersion: 2, intakeReceiptUrl: "https://ops.example/t/opaque" }, 1446)).toBe(true);
     expect(ticketIntakeCardNeedsRefresh({ ticketNumber: 1446, apiTicketNumber: 1446, intakeCardVersion: 2, intakeReceiptUrl: "https://ops.example/t/opaque", intakeSeeded: true }, 1446)).toBe(false);
