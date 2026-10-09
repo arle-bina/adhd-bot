@@ -32,6 +32,8 @@ export interface Ticket {
   intakeCardMessageId?: string;
   /** Schema version of the currently adopted persistent intake controls. */
   intakeCardVersion?: number;
+  /** The backend acknowledged the current intake seed for this ticket. */
+  intakeSeeded?: boolean;
   intakeCandidatePageUrl?: string;
   intakePageDescription?: string;
   intakeAwaitingReply?: "page" | "details" | null;
@@ -44,6 +46,15 @@ export interface Ticket {
   intakeClientVersion?: string;
   /** Interaction IDs make local replay/recovery idempotent across restarts. */
   intakeInteractionIds?: string[];
+  /** Pending intake mutations are replayed until the API acknowledges them. */
+  pendingIntakeInteractions?: Array<{
+    interactionId: string;
+    reporterDiscordId: string;
+    action: "confirm_page" | "decline_page" | "change_page" | "confirm_platform" | "edit_details";
+    value?: string;
+    gameVersion?: string | null;
+    clientVersion?: string | null;
+  }>;
   /** Ticket number assigned by the game backend (MongoDB sync), if mirrored */
   apiTicketNumber?: number;
   /** Durable close intent. Retained until the backend confirms close. */
