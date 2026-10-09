@@ -201,8 +201,25 @@ function buildIntakeModal(action: "change_page" | "edit_details", ticketNumber: 
     );
 }
 
-function ticketCandidatePage(description?: string): string | undefined {
-  const candidate = description?.match(/https?:\/\/[^\s<>]+/i)?.[0]?.replace(/[),.;]+$/, "");
+export function extractTicketLinkTarget(value?: string): string | undefined {
+  if (!value) return undefined;
+  // Discord embed fields preserve Markdown source. Prefer the destination in
+  // `[label](URL)` so the URL in the label cannot be concatenated with `](URL`.
+  const markdownTarget = value.match(/\]\(\s*(https?:\/\/[^)\s<>]+)\s*\)/i)?.[1];
+  const plainTarget = value.match(/https?:\/\/[^\s<>\])]+/i)?.[0];
+  const candidate = (markdownTarget ?? plainTarget)?.replace(/[),.;]+$/, "");
+  if (!candidate) return undefined;
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password) return undefined;
+    return parsed.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+export function ticketCandidatePage(description?: string): string | undefined {
+  const candidate = extractTicketLinkTarget(description);
   if (!candidate) return undefined;
   try {
     const parsed = new URL(candidate);
@@ -210,6 +227,18 @@ function ticketCandidatePage(description?: string): string | undefined {
     if (parsed.protocol !== "https:" || parsed.username || parsed.password || !/^(?:www\.)?ahousedividedgame\.com$/i.test(parsed.hostname)) return undefined;
     if (!path.startsWith("/") || path.startsWith("//") || /[\\\s<>%]|\.\./.test(path) || path.length > 300 || /^\/(?:api|admin|moderator|auth|login|logout|register|reset-password|settings|account)(?:\/|$)/i.test(path)) return undefined;
     return `https://ahousedividedgame.com${path}`;
+  } catch {
+    return undefined;
+  }
+}
+
+export function ticketReceiptUrlFromField(value?: string): string | undefined {
+  const candidate = extractTicketLinkTarget(value);
+  if (!candidate) return undefined;
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.origin !== "https://ops.lakesidegames.net" || !/^\/t\/[A-Za-z0-9_-]+$/.test(parsed.pathname) || parsed.search || parsed.hash) return undefined;
+    return parsed.toString();
   } catch {
     return undefined;
   }
@@ -903,8 +932,8 @@ export async function reconcileTicketChannels(guild: Guild): Promise<void> {
       const cardFields = card?.embeds[0].fields ?? [];
       const cardField = (name: string) => cardFields.find((item) => item.name.toLowerCase() === name.toLowerCase())?.value;
       const pageField = cardField("Affected page / issue") ?? cardField("Affected page") ?? cardField("Page to confirm");
-      const candidateMatch = pageField?.match(/https?:\/\/[^\s)]+/i)?.[0];
-      const receiptMatch = cardField("Receipt")?.match(/https?:\/\/[^\s)]+/i)?.[0];
+      const candidateMatch = ticketCandidatePage(pageField);
+      const receiptMatch = ticketReceiptUrlFromField(cardField("Receipt"));
       const envLines = (cardField("Platform and versions") ?? cardField("Platform to confirm"))?.split("\n") ?? [];
       const intakeStatus = cardField("Intake")?.toLowerCase() ?? "";
 
