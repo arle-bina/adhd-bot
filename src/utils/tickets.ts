@@ -21,10 +21,12 @@ import {
 } from "discord.js";
 import {
   type TicketCategory,
+  type Ticket,
   addTicket,
   removeTicket,
   claimTicket,
   getTicketByChannel,
+  getTicketByNumber,
   getTicketNumberFloor,
   setTicketNumberFloor,
   getCategoryId,
@@ -34,8 +36,6 @@ import {
   MAX_TICKETS_PER_CATEGORY,
 } from "./ticketStore.js";
 import {
-  PLATFORM_PROMPT_OPTIONS,
-  categoryNeedsPlatform,
   formatTicketPlatform,
   type TicketPlatform,
   TICKET_PLATFORMS,
@@ -44,6 +44,7 @@ import {
   createTicket as apiCreateTicket,
   reserveTicketNumber as apiReserveTicketNumber,
   getTicketReceiptUrl,
+  getTicketIntakeContext,
   updateTicket as apiUpdateTicket,
   type GameTicketCategory,
 } from "./ticketsApi.js";
@@ -160,6 +161,350 @@ function buildTicketActionRow(
       .setStyle(ButtonStyle.Danger)
       .setEmoji("🔒"),
   );
+}
+
+const INTAKE_ID_PREFIX = "ticket_intake";
+type IntakeAction = "confirm_page" | "decline_page" | "change_page" | "confirm_platform" | "edit_details";
+
+function buildIntakeActionRow(ticketNumber: number, ticket: NonNullable<ReturnType<typeof getTicketByChannel>>) {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`${INTAKE_ID_PREFIX}:confirm_page:${ticketNumber}`).setLabel(ticket.intakePageConfirmed ? "Page confirmed" : "Confirm page").setStyle(ticket.intakePageConfirmed ? ButtonStyle.Success : ButtonStyle.Primary).setDisabled(Boolean(ticket.intakePageConfirmed || ticket.intakeAwaitingReply === "page")),
+    new ButtonBuilder().setCustomId(`${INTAKE_ID_PREFIX}:change_page:${ticketNumber}`).setLabel("Change page").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`${INTAKE_ID_PREFIX}:confirm_platform:${ticketNumber}`).setLabel(ticket.intakePlatformConfirmed ? "Details confirmed" : "Confirm details").setStyle(ticket.intakePlatformConfirmed ? ButtonStyle.Success : ButtonStyle.Primary).setDisabled(Boolean(ticket.intakePlatformConfirmed)),
+    new ButtonBuilder().setCustomId(`${INTAKE_ID_PREFIX}:edit_details:${ticketNumber}`).setLabel("Edit details").setStyle(ButtonStyle.Secondary),
+  );
+}
+export const buildTicketIntakeButtons = buildIntakeActionRow;
+
+function buildIntakeModal(action: "change_page" | "edit_details", ticketNumber: number, ticket: NonNullable<ReturnType<typeof getTicketByChannel>>): ModalBuilder {
+  const page = action === "change_page";
+  const input = new TextInputBuilder()
+    .setCustomId(page ? "intake_page_url" : "intake_environment")
+    .setLabel(page ? "Page URL" : "Platform, game and client version")
+    .setPlaceholder(page ? "https://ahousedividedgame.com/..." : "Desktop web, game 1.13.0, client version unknown")
+    .setStyle(TextInputStyle.Short)
+    .setMaxLength(page ? 500 : 180)
+    .setRequired(true);
+  if (page && ticket.intakeCandidatePageUrl) input.setValue(ticket.intakeCandidatePageUrl.slice(0, 500));
+  if (!page) input.setValue([ticket.intakePlatformLabel ?? ticket.platform ?? "Platform unknown", `game ${ticket.intakeGameVersion ?? "version unknown"}`, `client ${ticket.intakeClientVersion ?? "version unknown"}`].join(", ").slice(0, 180));
+  return new ModalBuilder()
+    .setCustomId(`${INTAKE_ID_PREFIX}:modal:${action}:${ticketNumber}`)
+    .setTitle(page ? "Update the affected page" : "Confirm platform and versions")
+    .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+}
+
+function ticketCandidatePage(description?: string): string | undefined {
+  const candidate = description?.match(/https?:\/\/[^\s<>]+/i)?.[0]?.replace(/[),.;]+$/, "");
+  if (!candidate) return undefined;
+  try {
+    const parsed = new URL(candidate);
+    const path = parsed.pathname.split(/[?#]/, 1)[0];
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password || !/^(?:www\.)?ahousedividedgame\.com$/i.test(parsed.hostname)) return undefined;
+    if (!path.startsWith("/") || path.startsWith("//") || /[\\\s<>%]|\.\./.test(path) || path.length > 300 || /^\/(?:api|admin|moderator|auth|login|logout|register|reset-password|settings|account)(?:\/|$)/i.test(path)) return undefined;
+    return `https://ahousedividedgame.com${path}`;
+  } catch {
+    return undefined;
+  }
+}
+
+export function normalizeTicketPlatformLabel(value?: string | null): string {
+  const label = String(value || "").toLowerCase();
+  if (/android/.test(label)) return "Android";
+  if (/\bios\b|iphone|ipad/.test(label)) return "iOS";
+  if (/mobile|phone|tablet/.test(label)) return /browser|web/.test(label) ? "Mobile browser" : "Mobile";
+  if (/desktop|windows|macos|linux|computer|laptop/.test(label)) return /client|app/.test(label) ? "Desktop client" : "Desktop browser";
+  if (/client/.test(label)) return "Desktop client";
+  return "Platform unknown";
+}
+
+function intakeEmbed(ticket: NonNullable<ReturnType<typeof getTicketByChannel>>, base?: EmbedBuilder): EmbedBuilder {
+  const embed = base ?? new EmbedBuilder().setTitle(`Ticket #${String(ticket.ticketNumber).padStart(4, "0")}`);
+  const page = ticket.intakeCandidatePageUrl ?? (!ticket.intakePageDescription && !ticket.intakePageConfirmed && ticket.intakeAwaitingReply !== "page" ? ticketCandidatePage(ticket.description) : undefined);
+  const existing = embed.data.fields ?? [];
+  const retained = existing.filter((field) => !["Intake", "Affected page / issue", "Affected page", "Page to confirm", "Platform to confirm", "Platform and versions", "Receipt"].includes(field.name));
+  embed.setFields([...retained,
+    { name: "Intake", value: ticket.intakeAwaitingReply === "page" ? "Which page or menu is affected? Reply here." : ticket.intakePageConfirmed && ticket.intakePlatformConfirmed ? "Details confirmed" : `Page ${ticket.intakePageConfirmed ? "confirmed" : "optional to confirm"} · platform ${ticket.intakePlatformConfirmed ? "confirmed" : "optional to confirm"}`, inline: false },
+    { name: "Affected page / issue", value: ticket.intakeAwaitingReply === "page" ? "Which page or menu is affected? Reply here." : ticket.intakePageDescription ? `${ticket.intakePageDescription.slice(0, 900)} · ${ticket.intakePageConfirmed ? "confirmed" : "optional to confirm"}` : page ? `[${page}](${page}) · ${ticket.intakePageConfirmed ? "confirmed" : "optional to confirm"}` : "No page detected · confirm or replace the suggested page", inline: false },
+    { name: "Platform and versions", value: [ticket.intakePlatformLabel ?? (ticket.platform ? formatTicketPlatform(ticket.platform) : "Platform unknown"), `Game: ${ticket.intakeGameVersion ?? "version unknown"}`, `Client: ${ticket.intakeClientVersion ?? "version unknown"}`, `Status: ${ticket.intakePlatformConfirmed ? "confirmed" : "please confirm"}`].join("\n"), inline: false },
+    { name: "Receipt", value: ticket.intakeReceiptUrl ? `[View ticket receipt](${ticket.intakeReceiptUrl})` : "Receipt link is being prepared", inline: false },
+  ]);
+  embed.setFooter({ text: "Details are optional. Investigation continues. · ✅ Correct · ❌ Wrong · ahousedividedgame.com" });
+  return embed;
+}
+export const buildTicketIntakeCardEmbed = intakeEmbed;
+
+export function canUpdateTicketIntakeCard(input: {
+  reporterId: string;
+  actorId: string;
+  ticketChannelId: string;
+  interactionChannelId: string;
+  cardMessageId?: string;
+  interactionMessageId?: string;
+}): boolean {
+  return input.reporterId === input.actorId &&
+    input.ticketChannelId === input.interactionChannelId &&
+    (!input.cardMessageId || input.cardMessageId === input.interactionMessageId);
+}
+
+export function ticketIntakeReactionAction(
+  ticket: Pick<NonNullable<ReturnType<typeof getTicketByChannel>>, "intakePageConfirmed" | "intakeAwaitingReply" | "intakeCandidatePageUrl" | "intakePageDescription" | "description">,
+  emoji: string,
+): "confirm_page" | "decline_page" | null {
+  if (emoji === "✅") {
+    if (ticket.intakePageConfirmed || ticket.intakeAwaitingReply === "page") return null;
+    return ticket.intakeCandidatePageUrl || ticket.intakePageDescription || ticketCandidatePage(ticket.description) ? "confirm_page" : null;
+  }
+  if (emoji === "❌") return ticket.intakeAwaitingReply === "page" ? null : "decline_page";
+  return null;
+}
+
+async function persistIntakeInteraction(guildId: string, ticket: NonNullable<ReturnType<typeof getTicketByChannel>>, interactionId: string, action: string, value?: string): Promise<void> {
+  if (ticket.intakeInteractionIds?.includes(interactionId)) return;
+  ticket.intakeInteractionIds = [...(ticket.intakeInteractionIds ?? []), interactionId].slice(-100);
+  addTicket(guildId, ticket);
+  const payload = {
+    action: "intake",
+    ticketNumber: ticket.apiTicketNumber ?? ticket.ticketNumber,
+    discordChannelId: ticket.channelId,
+    intake: {
+      gameVersion: ticketApiVersion(ticket.intakeGameVersion),
+      clientVersion: ticketApiVersion(ticket.intakeClientVersion),
+    },
+    interaction: {
+      interactionId,
+      reporterDiscordId: ticket.userId,
+      action: action as IntakeAction,
+      ...((action === "edit_details" ? ticket.intakePlatformLabel : value)
+        ? { value: action === "edit_details" ? ticket.intakePlatformLabel : value }
+        : {}),
+    },
+  } as const;
+  let saved;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    saved = await apiUpdateTicket(payload);
+    if (saved) break;
+    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+  }
+  if (!saved) console.error(`Could not mirror intake interaction ${interactionId} for ticket #${ticket.ticketNumber}`);
+  if (saved?.intake) {
+    ticket.intakeCardMessageId = saved.intake.cardMessageId ?? ticket.intakeCardMessageId;
+    ticket.intakeReceiptUrl = saved.intake.receiptUrl ?? ticket.intakeReceiptUrl;
+    ticket.intakeCandidatePageUrl = saved.intake.candidatePageUrl ?? undefined;
+    ticket.intakePlatformLabel = saved.intake.platformLabel ?? undefined;
+    ticket.intakeGameVersion = saved.intake.gameVersion ?? undefined;
+    ticket.intakeClientVersion = saved.intake.clientVersion ?? undefined;
+    ticket.intakePageDescription = saved.intake.pageDescription ?? undefined;
+    ticket.intakeAwaitingReply = saved.intake.awaitingReply ?? null;
+    ticket.intakeRevision = saved.intake.revision ?? ticket.intakeRevision;
+    ticket.intakePageConfirmed = saved.intake.pageConfirmed ?? ticket.intakePageConfirmed;
+    ticket.intakePlatformConfirmed = saved.intake.platformConfirmed ?? ticket.intakePlatformConfirmed;
+    addTicket(guildId, ticket);
+  }
+}
+
+export async function handleTicketIntakeReaction(reaction: MessageReaction, user: User): Promise<boolean> {
+  if (user.bot || !["✅", "❌"].includes(reaction.emoji.name ?? "")) return false;
+  const message = reaction.message.partial ? await reaction.message.fetch().catch(() => null) : reaction.message;
+  const guild = message?.guild;
+  if (!message || !guild) return false;
+  let ticket = getTicketByChannel(guild.id, message.channelId);
+  const hasIntakeControls = message.components.some((row) =>
+    "components" in row && row.components.some((component) =>
+      "customId" in component && typeof component.customId === "string" && component.customId.startsWith("ticket_intake:"),
+    ),
+  );
+  if (!ticket && hasIntakeControls) {
+    await reconcileTicketChannels(guild).catch((error) => console.error("Ticket intake reaction hydration failed:", error));
+    ticket = getTicketByChannel(guild.id, message.channelId);
+  }
+  const action = reaction.emoji.name === "✅" ? "confirm_page" : "decline_page";
+  if (!ticket || !canUpdateTicketIntakeCard({ reporterId: ticket.userId, actorId: user.id, ticketChannelId: ticket.channelId, interactionChannelId: message.channelId, cardMessageId: ticket.intakeCardMessageId ?? ticket.embedMessageId, interactionMessageId: message.id })) return false;
+  if (ticketIntakeReactionAction(ticket, reaction.emoji.name ?? "") !== action) return true;
+  const eventId = `reaction:${ticket.ticketNumber}:${message.id}:${user.id}:${action}:${(ticket.intakeRevision ?? 0) + 1}`;
+  if (action === "confirm_page") {
+    ticket.intakePageConfirmed = true;
+    ticket.intakeAwaitingReply = null;
+  } else {
+    ticket.intakePageConfirmed = false;
+    ticket.intakeAwaitingReply = "page";
+  }
+  ticket.intakeRevision = (ticket.intakeRevision ?? 0) + 1;
+  await persistIntakeInteraction(guild.id, ticket, eventId, action);
+  const base = message.embeds[0] ? EmbedBuilder.from(message.embeds[0]) : undefined;
+  const components = [
+    ...(ticket.embedMessageId === message.id ? [buildTicketActionRow(Boolean(ticket.claimedByUserId))] : []),
+    buildIntakeActionRow(ticket.ticketNumber, ticket),
+  ];
+  await message.edit({ embeds: [intakeEmbed(ticket, base)], components }).catch((error) => console.error(`Failed to edit intake card for #${ticket.ticketNumber}:`, error));
+  return true;
+}
+
+export async function consumeTicketIntakeReply(message: Message): Promise<boolean> {
+  if (!message.guild || message.author.bot || !(message.channel instanceof TextChannel)) return false;
+  const ticket = getTicketByChannel(message.guild.id, message.channel.id);
+  if (!ticket || ticket.userId !== message.author.id || ticket.intakeAwaitingReply !== "page") return false;
+  const value = message.content.trim();
+  if (value.length < 2 || value.length > 500) return false;
+  if (/^https?:\/\//i.test(value) && !ticketCandidatePage(value)) {
+    await message.reply("Please use a page on ahousedividedgame.com, or describe the page or issue in plain text.").catch(() => {});
+    return true;
+  }
+  const candidate = ticketCandidatePage(value);
+  ticket.intakeCandidatePageUrl = candidate;
+  ticket.intakePageDescription = candidate ? undefined : value;
+  ticket.intakePageConfirmed = true;
+  ticket.intakeAwaitingReply = null;
+  await persistIntakeInteraction(message.guild.id, ticket, message.id, "change_page", candidate ?? value);
+  const cardId = ticket.intakeCardMessageId ?? ticket.embedMessageId;
+  const card = cardId ? await message.channel.messages.fetch(cardId).catch(() => null) : null;
+  if (card) {
+    const base = card.embeds[0] ? EmbedBuilder.from(card.embeds[0]) : undefined;
+    await card.edit({
+      embeds: [intakeEmbed(ticket, base)],
+      components: [
+        ...(ticket.embedMessageId === card.id ? [buildTicketActionRow(Boolean(ticket.claimedByUserId))] : []),
+        buildIntakeActionRow(ticket.ticketNumber, ticket),
+      ],
+    }).catch((error) => console.error(`Failed to refresh intake card for #${ticket.ticketNumber}:`, error));
+    for (const current of card.reactions.cache.filter((item) => ["✅", "❌"].includes(item.emoji.name ?? "")).values()) {
+      await current.users.remove(message.author.id).catch(() => {});
+    }
+    if (!card.reactions.cache.some((item) => item.emoji.name === "✅" && item.me)) await card.react("✅").catch(() => {});
+    if (!card.reactions.cache.some((item) => item.emoji.name === "❌" && item.me)) await card.react("❌").catch(() => {});
+  }
+  return true;
+}
+
+function parseTicketNumberFromIntakeId(customId: string): number | undefined {
+  const match = /^ticket_intake:(?:[a-z_]+:)?(?:[a-z_]+:)?(\d+)$/.exec(customId);
+  const number = match ? Number(match[1]) : NaN;
+  return Number.isSafeInteger(number) && number > 0 ? number : undefined;
+}
+
+export function parseTicketEnvironment(value: string): Pick<NonNullable<ReturnType<typeof getTicketByChannel>>, "intakePlatformLabel" | "intakeGameVersion" | "intakeClientVersion"> {
+  const game = /game(?:\s+version)?\s*[:=]?\s*([^,;]+)/i.exec(value)?.[1]?.trim();
+  const client = /client(?:\s+version)?\s*[:=]?\s*([^,;]+)/i.exec(value)?.[1]?.trim();
+  const platform = value.replace(/game(?:\s+version)?\s*[:=]?\s*[^,;]+/ig, "").replace(/client(?:\s+version)?\s*[:=]?\s*[^,;]+/ig, "").replace(/[,;]+/g, " ").trim();
+  const isVersion = (candidate?: string) => Boolean(candidate && /^\d+\.\d+\.\d+(?:[.+-][\w.-]+)?$/.test(candidate));
+  const additional = [game && !isVersion(game) ? `game details: ${game}` : "", client && !isVersion(client) ? `client details: ${client}` : ""].filter(Boolean);
+  const label = normalizeTicketPlatformLabel(platform || value);
+  return {
+    intakePlatformLabel: `${label}${additional.length ? `; ${additional.join("; ")}` : ""}`.slice(0, 200),
+    intakeGameVersion: isVersion(game) ? game!.slice(0, 40) : "version unknown",
+    intakeClientVersion: isVersion(client) ? client!.slice(0, 40) : "version unknown",
+  };
+}
+
+function ticketApiVersion(value?: string): string | null {
+  return value && /^\d+\.\d+\.\d+(?:[.+-][\w.-]+)?$/.test(value) ? value : null;
+}
+export const normalizeTicketApiVersion = ticketApiVersion;
+
+/** Handle reporter-only intake controls without in-memory collectors. */
+export async function handleTicketIntakeComponent(interaction: ButtonInteraction | ModalSubmitInteraction): Promise<boolean> {
+  if (!interaction.customId.startsWith("ticket_intake:")) return false;
+  if (!interaction.guild || !(interaction.channel instanceof TextChannel)) {
+    await interaction.reply({ content: "This intake card is only available inside its ticket channel.", ephemeral: true });
+    return true;
+  }
+  const ticketNumber = parseTicketNumberFromIntakeId(interaction.customId);
+  let ticket = ticketNumber ? getTicketByNumber(interaction.guild.id, ticketNumber) : undefined;
+  if (!ticket && ticketNumber) {
+    await reconcileTicketChannels(interaction.guild).catch((error) => console.error("Ticket intake lazy hydration failed:", error));
+    ticket = getTicketByNumber(interaction.guild.id, ticketNumber);
+  }
+  if (!ticket || ticket.channelId !== interaction.channel.id) {
+    await interaction.reply({ content: "I could not match this card to an open ticket. Please ask staff to refresh it.", ephemeral: true });
+    return true;
+  }
+  const expectedCardId = ticket.intakeCardMessageId ?? ticket.embedMessageId;
+  if (!canUpdateTicketIntakeCard({ reporterId: ticket.userId, actorId: interaction.user.id, ticketChannelId: ticket.channelId, interactionChannelId: interaction.channel.id, cardMessageId: expectedCardId, interactionMessageId: interaction.message?.id })) {
+    await interaction.reply({ content: "Only the person who opened this ticket can update these details.", ephemeral: true });
+    return true;
+  }
+
+  if (interaction.isButton()) {
+    const action = interaction.customId.split(":")[1] as IntakeAction;
+    if (!["confirm_page", "change_page", "confirm_platform", "edit_details"].includes(action)) return true;
+    if (action === "change_page" || action === "edit_details") {
+      await interaction.showModal(buildIntakeModal(action, ticketNumber!, ticket));
+      return true;
+    }
+    if (action === "confirm_page" && !(ticket.intakeCandidatePageUrl ?? ticket.intakePageDescription ?? ticketCandidatePage(ticket.description))) {
+      await interaction.reply({ content: "No page is listed yet. Use Change page to add the page you are reporting.", ephemeral: true });
+      return true;
+    }
+    if (action === "confirm_page" && ticket.intakeAwaitingReply === "page") {
+      await interaction.reply({ content: "Please reply with the corrected page or issue details first.", ephemeral: true });
+      return true;
+    }
+    await interaction.deferReply({ ephemeral: true });
+    if (action === "confirm_page") { ticket.intakePageConfirmed = true; ticket.intakeAwaitingReply = null; }
+    if (action === "confirm_platform") ticket.intakePlatformConfirmed = true;
+    await persistIntakeInteraction(interaction.guild.id, ticket, interaction.id, action);
+  const cardId = ticket.intakeCardMessageId ?? ticket.embedMessageId;
+  const card = cardId ? await interaction.channel.messages.fetch(cardId).catch(() => null) : null;
+  if (card) {
+    const base = card.embeds[0] ? EmbedBuilder.from(card.embeds[0]) : undefined;
+    const rows = [
+      ...(ticket.embedMessageId === card.id ? [buildTicketActionRow(Boolean(ticket.claimedByUserId))] : []),
+      buildIntakeActionRow(ticketNumber!, ticket),
+    ];
+    await card.edit({ embeds: [intakeEmbed(ticket, base)], components: rows });
+  }
+  await interaction.editReply({ content: "Saved. The ticket card has been updated." });
+  return true;
+}
+
+  const parts = interaction.customId.split(":");
+  const action = parts[2] as "change_page" | "edit_details";
+  if (action !== "change_page" && action !== "edit_details") {
+    await interaction.reply({ content: "This intake action is no longer available.", ephemeral: true });
+    return true;
+  }
+  const value = interaction.fields.getTextInputValue(action === "change_page" ? "intake_page_url" : "intake_environment").trim();
+  if (value.length < 3) {
+    await interaction.reply({ content: "Please enter a little more detail.", ephemeral: true });
+    return true;
+  }
+  if (action === "change_page") {
+    let parsed: URL | undefined;
+    try { parsed = new URL(value); } catch { parsed = undefined; }
+    if (parsed && (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password || !/(^|\.)ahousedividedgame\.com$/i.test(parsed.hostname))) {
+      await interaction.reply({ content: "Use a page on ahousedividedgame.com, or describe the page or issue in plain text.", ephemeral: true });
+      return true;
+    }
+    if (parsed) {
+      ticket.intakeCandidatePageUrl = parsed.toString();
+      ticket.intakePageDescription = undefined;
+    } else {
+      if (/^https?:\/\//i.test(value)) {
+        await interaction.reply({ content: "That link is not a valid game page URL. You can describe the page or issue in plain text.", ephemeral: true });
+        return true;
+      }
+      ticket.intakeCandidatePageUrl = undefined;
+      ticket.intakePageDescription = value.slice(0, 500);
+    }
+    ticket.intakePageConfirmed = true;
+    ticket.intakeAwaitingReply = null;
+  } else {
+    Object.assign(ticket, parseTicketEnvironment(value));
+    ticket.intakePlatformConfirmed = true;
+  }
+  await interaction.deferReply({ ephemeral: true });
+  await persistIntakeInteraction(interaction.guild.id, ticket, interaction.id, action, value);
+  const cardId = ticket.intakeCardMessageId ?? ticket.embedMessageId;
+  const card = cardId ? await interaction.channel.messages.fetch(cardId).catch(() => null) : null;
+  if (card) {
+    const base = card.embeds[0] ? EmbedBuilder.from(card.embeds[0]) : undefined;
+    const rows = [
+      ...(ticket.embedMessageId === card.id ? [buildTicketActionRow(Boolean(ticket.claimedByUserId))] : []),
+      buildIntakeActionRow(ticketNumber!, ticket),
+    ];
+    await card.edit({ embeds: [intakeEmbed(ticket, base)], components: rows });
+  }
+  await interaction.editReply({ content: "Saved. The ticket card has been updated." });
+  return true;
 }
 
 export const TICKET_CLOSE_MODAL_PREFIX = "ticket_close_modal_";
@@ -284,39 +629,9 @@ async function alertDeliveryFailure(
     );
 }
 
-/** Retry one filing message with a stable Discord nonce to deduplicate ambiguous timeouts. */
-export async function sendTicketMessageWithRetry(
-  send: (options: { content: string; nonce: string; enforceNonce: true }) => Promise<unknown>,
-  content: string,
-  nonce: string,
-  wait: (ms: number) => Promise<void> = (ms) =>
-    new Promise((resolve) => setTimeout(resolve, ms)),
-): Promise<boolean> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      await send({ content, nonce, enforceNonce: true });
-      return true;
-    } catch (error) {
-      if (attempt === 2) {
-        console.error("Ticket filing message delivery failed after retries:", error);
-        return false;
-      }
-      await wait(500 * (attempt + 1));
-    }
-  }
-  return false;
-}
-
-function ticketFilingNonce(ticketNumber: number, kind: "receipt" | "questions"): string {
-  return `t${ticketNumber}-${kind}`;
-}
-
 /**
- * Visible filing-time follow-up for the missing-context questions the game
- * backend flagged at creation (Track1 companion to AHDGame #2393). Pure so it
- * is unit-testable. Posted as its own channel message AFTER the direct
- * receipt post in createTicket, so the link is delivered exactly once and the
- * questions are never silent.
+ * Compact filing-time questions for the persistent intake card. Pure so the
+ * prompt can be tested and is never emitted as a separate channel message.
  */
 export function buildFilingQuestionsMessage(
   contextQuestions?: string[],
@@ -359,21 +674,29 @@ export async function reconcileTicketChannels(guild: Guild): Promise<void> {
     const previous = getTicketByChannel(guild.id, channel.id);
     if (
       previous?.ticketNumber === ticketNumber &&
-      previous.apiTicketNumber === ticketNumber
+      previous.apiTicketNumber === ticketNumber &&
+      previous.intakeCardMessageId
     )
       continue;
     try {
-      const messages = await channel.messages.fetch({ limit: 30 });
-      const opening = [...messages.values()]
+      const messages = await channel.messages.fetch({ limit: 100 });
+      const embeds = [...messages.values()]
         .filter((message) => message.embeds.length > 0)
         .sort((a, b) => a.createdTimestamp - b.createdTimestamp)[0];
+      const allEmbeds = [...messages.values()].filter((message) => message.embeds.length > 0).sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+      const opening = embeds;
+      const card = [...allEmbeds].reverse().find((message) =>
+        message.embeds[0].fields.some((item) => ["intake", "affected page", "affected page / issue", "page to confirm", "platform to confirm", "platform and versions"].includes(item.name.toLowerCase()))
+      ) ?? opening;
       const embed = opening?.embeds[0];
       const fields = embed?.fields ?? [];
       const field = (name: string) =>
         fields.find((item) => item.name.toLowerCase() === name.toLowerCase())
           ?.value;
-      const reporter = field("Reporter") ?? field("Opened by");
-      const reporterId = reporter?.match(/\d{15,22}/)?.[0];
+      const reporter = field("Reporter");
+      const openedBy = field("Opened by") ?? "";
+      const openedByIds = [...openedBy.matchAll(/\d{15,22}/g)].map((match) => match[0]);
+      const reporterId = reporter?.match(/\d{15,22}/)?.[0] ?? (openedBy.toLowerCase().includes("on behalf") ? openedByIds.at(-1) : openedByIds[0]);
       const claimedById = field("Claimed by")?.match(/\d{15,22}/)?.[0];
       const reporterPermission = channel.permissionOverwrites.cache.find(
         (overwrite) =>
@@ -396,6 +719,13 @@ export async function reconcileTicketChannels(guild: Guild): Promise<void> {
       )?.value as TicketPlatform | undefined;
       const subject = field("Subject") ?? previous?.subject;
       const description = embed?.description ?? previous?.description;
+      const cardFields = card?.embeds[0].fields ?? [];
+      const cardField = (name: string) => cardFields.find((item) => item.name.toLowerCase() === name.toLowerCase())?.value;
+      const pageField = cardField("Affected page / issue") ?? cardField("Affected page") ?? cardField("Page to confirm");
+      const candidateMatch = pageField?.match(/https?:\/\/[^\s)]+/i)?.[0];
+      const receiptMatch = cardField("Receipt")?.match(/https?:\/\/[^\s)]+/i)?.[0];
+      const envLines = (cardField("Platform and versions") ?? cardField("Platform to confirm"))?.split("\n") ?? [];
+      const intakeStatus = cardField("Intake")?.toLowerCase() ?? "";
 
       addTicket(guild.id, {
         ...previous,
@@ -417,8 +747,68 @@ export async function reconcileTicketChannels(guild: Guild): Promise<void> {
           ? { claimedByUserId: claimedById }
           : {}),
         ...(opening ? { embedMessageId: opening.id } : {}),
+        ...(card ? { intakeCardMessageId: card.id } : {}),
+        ...(candidateMatch ? { intakeCandidatePageUrl: candidateMatch } : {}),
+        ...(pageField && !candidateMatch ? { intakePageDescription: pageField.replace(/\s*·\s*(?:confirmed|please confirm)\s*$/i, "") } : {}),
+        ...(intakeStatus.includes("waiting for your corrected") ? { intakeAwaitingReply: "page" as const } : {}),
+        ...(receiptMatch ? { intakeReceiptUrl: receiptMatch } : {}),
+        ...(envLines[0] ? { intakePlatformLabel: normalizeTicketPlatformLabel(envLines[0]) } : {}),
+        ...(envLines[1] ? { intakeGameVersion: envLines[1].replace(/^Game:\s*/i, "") } : {}),
+        ...(envLines[2] ? { intakeClientVersion: envLines[2].replace(/^Client:\s*/i, "") } : {}),
+        ...(intakeStatus.includes("page confirmed") || intakeStatus === "details confirmed" ? { intakePageConfirmed: true } : {}),
+        ...(envLines[3]?.toLowerCase().includes("confirmed") && !envLines[3]?.toLowerCase().includes("please") || intakeStatus.includes("platform confirmed") || intakeStatus === "details confirmed" ? { intakePlatformConfirmed: true } : {}),
         apiTicketNumber: ticketNumber,
       });
+      if (card) {
+        const stored = getTicketByChannel(guild.id, channel.id);
+        if (stored) {
+          const context = await getTicketIntakeContext(ticketNumber, channel.id);
+          const serverIntake = context?.intake;
+          const suggestion = context?.intakeSuggestion;
+          if (context?.discordUserId) stored.userId = context.discordUserId;
+          stored.intakeCardMessageId = serverIntake?.cardMessageId ?? card.id;
+          stored.intakeReceiptUrl = serverIntake?.receiptUrl ?? stored.intakeReceiptUrl;
+          stored.intakeCandidatePageUrl = serverIntake ? serverIntake.candidatePageUrl ?? undefined : stored.intakeCandidatePageUrl ?? suggestion?.candidatePageUrl ?? undefined;
+          stored.intakePageDescription = serverIntake ? serverIntake.pageDescription ?? undefined : stored.intakePageDescription;
+          stored.intakePlatformLabel = serverIntake?.platformLabel ?? stored.intakePlatformLabel ?? (suggestion?.platformLabel ? normalizeTicketPlatformLabel(suggestion.platformLabel) : undefined);
+          stored.intakeGameVersion = serverIntake?.gameVersion ?? stored.intakeGameVersion ?? suggestion?.gameVersion ?? undefined;
+          stored.intakeClientVersion = serverIntake?.clientVersion ?? stored.intakeClientVersion ?? suggestion?.clientVersion ?? undefined;
+          stored.intakePageConfirmed = serverIntake?.pageConfirmed ?? stored.intakePageConfirmed;
+          stored.intakePlatformConfirmed = serverIntake?.platformConfirmed ?? stored.intakePlatformConfirmed;
+          stored.intakeAwaitingReply = serverIntake ? serverIntake.awaitingReply ?? null : stored.intakeAwaitingReply;
+          stored.intakeRevision = serverIntake?.revision ?? stored.intakeRevision;
+          stored.intakeReceiptUrl = stored.intakeReceiptUrl ?? await getTicketReceiptUrl(ticketNumber);
+          addTicket(guild.id, stored);
+          const seeded = await apiUpdateTicket({
+            action: "intake", ticketNumber, discordChannelId: channel.id,
+            intake: {
+              cardMessageId: card.id,
+              receiptUrl: stored.intakeReceiptUrl ?? null,
+              candidatePageUrl: stored.intakeCandidatePageUrl ?? null,
+              pageDescription: stored.intakePageDescription ?? null,
+              platformLabel: stored.intakePlatformLabel ?? null,
+              gameVersion: stored.intakeGameVersion ?? null,
+              clientVersion: stored.intakeClientVersion ?? null,
+            },
+          });
+          if (seeded?.intake) {
+            stored.intakePageConfirmed = seeded.intake.pageConfirmed ?? stored.intakePageConfirmed;
+            stored.intakePlatformConfirmed = seeded.intake.platformConfirmed ?? stored.intakePlatformConfirmed;
+            stored.intakeAwaitingReply = seeded.intake.awaitingReply ?? stored.intakeAwaitingReply;
+            stored.intakeRevision = seeded.intake.revision ?? stored.intakeRevision;
+            addTicket(guild.id, stored);
+          }
+          await card.edit({
+            embeds: [intakeEmbed(stored, EmbedBuilder.from(card.embeds[0]))],
+            components: [
+              ...(stored.embedMessageId === card.id ? [buildTicketActionRow(Boolean(stored.claimedByUserId))] : []),
+              buildIntakeActionRow(stored.ticketNumber, stored),
+            ],
+          }).catch((error) => console.error(`Could not restore intake card for ticket #${ticketNumber}:`, error));
+          if (!card.reactions.cache.some((item) => item.emoji.name === "✅")) await card.react("✅").catch(() => {});
+          if (!card.reactions.cache.some((item) => item.emoji.name === "❌")) await card.react("❌").catch(() => {});
+        }
+      }
     } catch (error) {
       console.error(`Could not rehydrate ticket channel ${channel.id}:`, error);
       if (!previous) {
@@ -606,10 +996,43 @@ export async function createTicket(
 
     embed.setFooter({ text: "ahousedividedgame.com" }).setTimestamp();
 
+    const candidatePageUrl = ticketCandidatePage(details?.description);
+    const provisionalTicket = {
+      userId, category, channelId: channel.id, createdAt: new Date().toISOString(), ticketNumber,
+      subject: details?.subject, description: details?.description, platform: details?.platform,
+      intakeCandidatePageUrl: candidatePageUrl,
+      intakePlatformLabel: details?.platform ? normalizeTicketPlatformLabel(formatTicketPlatform(details.platform)) : undefined,
+      intakeGameVersion: "version unknown", intakeClientVersion: "version unknown",
+    };
     const embedMessage = await channel.send({
-      embeds: [embed],
+      embeds: [intakeEmbed(provisionalTicket, embed)],
       components: [buildTicketActionRow(false)],
     });
+
+    const ticketRecord: Ticket = {
+      userId,
+      category,
+      channelId: channel.id,
+      createdAt: new Date().toISOString(),
+      ticketNumber,
+      subject: details?.subject,
+      description: details?.description,
+      platform: details?.platform,
+      embedMessageId: embedMessage.id,
+      intakeCardMessageId: embedMessage.id,
+      intakeReceiptUrl: undefined,
+      intakeCandidatePageUrl: candidatePageUrl,
+      intakePlatformLabel: details?.platform ? normalizeTicketPlatformLabel(formatTicketPlatform(details.platform)) : undefined,
+      intakeGameVersion: "version unknown",
+      intakeClientVersion: "version unknown",
+    };
+    addTicket(guild.id, ticketRecord);
+    await embedMessage.edit({
+      embeds: [intakeEmbed(ticketRecord, EmbedBuilder.from(embedMessage.embeds[0]))],
+      components: [buildTicketActionRow(false), buildIntakeActionRow(ticketNumber, ticketRecord)],
+    }).catch((error) => console.error(`Could not activate intake card for #${paddedNum}:`, error));
+    await embedMessage.react("✅").catch(() => {});
+    await embedMessage.react("❌").catch(() => {});
 
     // Moderation pings mods, bug reports ping the dev team. Mechanics-help
     // tickets ping nobody — staff still have channel access via the overwrites
@@ -626,27 +1049,7 @@ export async function createTicket(
 
     // Paths that never showed the picker (reaction panels, the text-only
     // fallback modal) still have to ask, or the ticket arrives unreproducible.
-    if (categoryNeedsPlatform(category) && !details?.platform) {
-      await channel
-        .send(
-          `<@${userId}> one more thing before we dig in: where are you playing? ` +
-            `${PLATFORM_PROMPT_OPTIONS}.`,
-        )
-        .catch(() => {});
-    }
-
-    const ticketRecord = {
-      userId,
-      category,
-      channelId: channel.id,
-      createdAt: new Date().toISOString(),
-      ticketNumber,
-      subject: details?.subject,
-      description: details?.description,
-      platform: details?.platform,
-      embedMessageId: embedMessage.id,
-    };
-    addTicket(guild.id, ticketRecord);
+    // Platform and page confirmation live on the persistent intake card above.
 
     // Mirror into the game backend using the shared atomic number reservation.
     const openerName = sanitizeDisplayName(guild, userId, username);
@@ -690,12 +1093,45 @@ export async function createTicket(
           }
           const failedMessages: string[] = [];
           if (receiptUrl) {
-            const receiptDelivered = await sendTicketMessageWithRetry(
-              (options) => channel.send(options),
-              `Your support receipt: ${receiptUrl}`,
-              ticketFilingNonce(res.ticketNumber, "receipt"),
-            );
-            if (!receiptDelivered) failedMessages.push("the receipt link");
+            ticketRecord.intakeReceiptUrl = receiptUrl;
+            const intakeContext = await getTicketIntakeContext(res.ticketNumber, channel.id);
+            const suggestion = intakeContext?.intakeSuggestion;
+            ticketRecord.intakeCandidatePageUrl = ticketRecord.intakeCandidatePageUrl ?? suggestion?.candidatePageUrl ?? undefined;
+            ticketRecord.intakePlatformLabel = ticketRecord.intakePlatformLabel ?? (suggestion?.platformLabel ? normalizeTicketPlatformLabel(suggestion.platformLabel) : undefined);
+            ticketRecord.intakeGameVersion = suggestion?.gameVersion ?? ticketRecord.intakeGameVersion;
+            ticketRecord.intakeClientVersion = suggestion?.clientVersion ?? ticketRecord.intakeClientVersion;
+            const intakeSeed = await apiUpdateTicket({
+              action: "intake",
+              ticketNumber: res.ticketNumber,
+              discordChannelId: channel.id,
+              intake: {
+                cardMessageId: embedMessage.id,
+                receiptUrl,
+                candidatePageUrl: ticketRecord.intakeCandidatePageUrl ?? null,
+                platformLabel: ticketRecord.intakePlatformLabel ?? null,
+                gameVersion: ticketRecord.intakeGameVersion === "version unknown" ? suggestion?.gameVersion ?? null : ticketRecord.intakeGameVersion ?? null,
+                clientVersion: ticketRecord.intakeClientVersion === "version unknown" ? suggestion?.clientVersion ?? null : ticketRecord.intakeClientVersion ?? null,
+              },
+            });
+            if (!intakeSeed) console.error(`Could not seed intake state for ticket #${res.ticketNumber}`);
+            if (intakeSeed?.intake) {
+              ticketRecord.intakePageConfirmed = intakeSeed.intake.pageConfirmed ?? false;
+              ticketRecord.intakePlatformConfirmed = intakeSeed.intake.platformConfirmed ?? false;
+            }
+            const currentCard = await channel.messages.fetch(embedMessage.id).catch(() => null);
+            if (currentCard) {
+              const base = currentCard.embeds[0] ? EmbedBuilder.from(currentCard.embeds[0]) : undefined;
+              const cardEmbed = intakeEmbed(ticketRecord, base);
+              const missingDetails = buildFilingQuestionsMessage(res.contextQuestions);
+              if (missingDetails) cardEmbed.addFields({ name: "Details needed", value: missingDetails.slice(0, 1000), inline: false });
+              await currentCard.edit({
+                embeds: [cardEmbed],
+                components: [buildTicketActionRow(false), buildIntakeActionRow(ticketNumber, ticketRecord)],
+              }).catch(() => failedMessages.push("the receipt link on the intake card"));
+            } else {
+              failedMessages.push("the receipt link on the intake card");
+            }
+            addTicket(guild.id, ticketRecord);
           } else {
             console.error(
               `Receipt link unavailable for newly created ticket #${res.ticketNumber}`,
@@ -721,22 +1157,6 @@ export async function createTicket(
             );
           }
 
-          // Filing-time context prompt: the backend may flag missing context
-          // at creation — ask visibly NOW while the reporter is still in the
-          // channel. Questions only; the receipt link above already posted, so
-          // it is never duplicated here. Still posted when the receipt lookup
-          // failed.
-          const questionsMessage = buildFilingQuestionsMessage(
-            res.contextQuestions,
-          );
-          if (questionsMessage) {
-            const questionsDelivered = await sendTicketMessageWithRetry(
-              (options) => channel.send(options),
-              questionsMessage,
-              ticketFilingNonce(res.ticketNumber, "questions"),
-            );
-            if (!questionsDelivered) failedMessages.push("filing questions");
-          }
           if (failedMessages.length) {
             await alertDeliveryFailure(
               guild,

@@ -75,6 +75,8 @@ export interface UpdateTicketResponse {
   resolutionDelivered?: boolean;
   finalOutcome?: string;
   resolutionVersion?: string | number | null;
+  intake?: TicketIntakeSnapshot;
+  alreadyRecorded?: boolean;
 }
 
 interface TicketReceiptUrlResponse {
@@ -83,6 +85,7 @@ interface TicketReceiptUrlResponse {
 
 export type UpdateTicketAction =
   | "append"
+  | "intake"
   | "status"
   | "close"
   | "retriage"
@@ -99,6 +102,60 @@ export interface UpdateTicketPayload {
   status?: string;
   closedBy?: string;
   resolution?: string;
+  intake?: {
+    cardMessageId?: string;
+    receiptUrl?: string | null;
+    candidatePageUrl?: string | null;
+    pageDescription?: string | null;
+    platformLabel?: string | null;
+    gameVersion?: string | null;
+    clientVersion?: string | null;
+  };
+  interaction?: {
+    interactionId: string;
+    reporterDiscordId: string;
+    action: "confirm_page" | "decline_page" | "change_page" | "confirm_platform" | "edit_details";
+    value?: string;
+  };
+}
+
+export interface TicketIntakeSnapshot {
+  cardMessageId?: string;
+  receiptUrl?: string | null;
+  candidatePageUrl?: string | null;
+  pageDescription?: string | null;
+  platformLabel?: string | null;
+  gameVersion?: string | null;
+  clientVersion?: string | null;
+  awaitingReply?: "page" | "details" | null;
+  revision?: number;
+  pageConfirmed?: boolean;
+  platformConfirmed?: boolean;
+}
+
+export interface TicketIntakeContextResponse {
+  ticketNumber: number;
+  discordChannelId?: string;
+  discordUserId?: string;
+  intake?: TicketIntakeSnapshot;
+  intakeSuggestion?: {
+    candidatePageUrl?: string | null;
+    platformLabel?: string | null;
+    gameVersion?: string | null;
+    clientVersion?: string | null;
+  };
+}
+
+export async function getTicketIntakeContext(ticketNumber: number, discordChannelId: string): Promise<TicketIntakeContextResponse | undefined> {
+  if (!apiConfigured()) return undefined;
+  try {
+    return await apiFetch<TicketIntakeContextResponse>(
+      `${TICKETS_ENDPOINT}?ticketNumber=${encodeURIComponent(String(ticketNumber))}&discordChannelId=${encodeURIComponent(discordChannelId)}`,
+    );
+  } catch (err) {
+    console.error("[ticketsApi] getTicketIntakeContext failed:", err);
+    return undefined;
+  }
 }
 
 /** True only when the game API is configured — otherwise we skip the sync silently. */
