@@ -137,6 +137,7 @@ export interface TicketIntakeContextResponse {
   ticketNumber: number;
   discordChannelId?: string;
   discordUserId?: string;
+  status?: string;
   intake?: TicketIntakeSnapshot;
   intakeSuggestion?: {
     candidatePageUrl?: string | null;

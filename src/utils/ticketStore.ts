@@ -30,6 +30,8 @@ export interface Ticket {
   embedMessageId?: string;
   /** Persistent player-facing intake card, edited in place after each response. */
   intakeCardMessageId?: string;
+  /** Schema version of the currently adopted persistent intake controls. */
+  intakeCardVersion?: number;
   intakeCandidatePageUrl?: string;
   intakePageDescription?: string;
   intakeAwaitingReply?: "page" | "details" | null;
@@ -44,6 +46,29 @@ export interface Ticket {
   intakeInteractionIds?: string[];
   /** Ticket number assigned by the game backend (MongoDB sync), if mirrored */
   apiTicketNumber?: number;
+  /** Durable close intent. Retained until the backend confirms close. */
+  pendingClose?: {
+    closerId: string;
+    closerTag: string;
+    resolution: string;
+    createdAt: string;
+    channelReceiptMessageId?: string;
+    dmMessageId?: string;
+    transcriptMessageId?: string;
+  };
+  pendingMerge?: {
+    targetChannelId: string;
+    targetTicketNumber: number;
+    targetApiTicketNumber?: number;
+    targetUserId: string;
+    targetCategory: TicketCategory;
+    staffTag: string;
+    staffId: string;
+    reason: string;
+    createdAt: string;
+  };
+  /** A Discord channel was deleted outside the bot; keep the conversation state explicit. */
+  missingConversation?: { detectedAt: string; eventId: string };
 }
 
 interface TicketData {

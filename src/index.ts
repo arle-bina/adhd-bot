@@ -36,6 +36,8 @@ import {
   handleTicketIntakeComponent,
   handleTicketIntakeReaction,
   consumeTicketIntakeReply,
+  retryPendingTicketLifecycle,
+  recordMissingTicketConversation,
 } from "./utils/tickets.js";
 import {
   getChannelConfig,
@@ -172,10 +174,22 @@ client.once("ready", () => {
   });
 
   for (const guild of client.guilds.cache.values()) {
-    void reconcileTicketChannels(guild).catch((error) => {
-      console.error(`Ticket channel reconciliation failed for guild ${guild.id}:`, error);
+    void (async () => {
+      await reconcileTicketChannels(guild).catch((error) => {
+        console.error(`Ticket channel reconciliation failed for guild ${guild.id}:`, error);
+      });
+      await retryPendingTicketLifecycle(guild);
+    })().catch((error) => {
+      console.error(`Ticket startup reconciliation failed for guild ${guild.id}:`, error);
     });
   }
+  setInterval(() => {
+    for (const guild of client.guilds.cache.values()) {
+      void retryPendingTicketLifecycle(guild).catch((error) => {
+        console.error(`Pending ticket lifecycle retry failed for guild ${guild.id}:`, error);
+      });
+    }
+  }, 3 * 60 * 1000);
 
   // Deliver fired Ask watchlist alerts by DM.
   startAskWatchPoller(client);
@@ -600,6 +614,14 @@ client.once("ready", () => {
   };
   setTimeout(deliverBroadcastDms, 60 * 1000);
   setInterval(deliverBroadcastDms, 3 * 60 * 1000);
+});
+
+// Preserve a durable record when a ticket conversation disappears outside the bot.
+client.on("channelDelete", async (channel) => {
+  if (channel.type !== ChannelType.GuildText) return;
+  await recordMissingTicketConversation(channel as TextChannel).catch((error) => {
+    console.error(`Ticket channel deletion recording failed for ${channel.id}:`, error);
+  });
 });
 
 // Track messages for server stats + content filter
