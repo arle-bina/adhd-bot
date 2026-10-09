@@ -6,7 +6,7 @@ describe("buildFilingQuestionsMessage", () => {
     const msg = buildFilingQuestionsMessage([
       "Please reply with the affected page's in-game link.",
     ]);
-    expect(msg).toContain("We need one more detail");
+    expect(msg).toContain("Please confirm these details so we can investigate:");
     expect(msg).toContain("- Please reply with the affected page's in-game link.");
     expect(msg).toContain("Reply here with the missing link");
   });
@@ -17,10 +17,10 @@ describe("buildFilingQuestionsMessage", () => {
     expect(msg).not.toContain("receipt");
   });
 
-  it("caps at three questions and ignores blanks", () => {
-    const msg = buildFilingQuestionsMessage(["  ", "q1", "q2", "q3", "q4"]);
-    expect(msg).toContain("- q3");
-    expect(msg).not.toContain("- q4");
+  it("caps at four questions and ignores blanks", () => {
+    const msg = buildFilingQuestionsMessage(["  ", "q1", "q2", "q3", "q4", "q5"]);
+    expect(msg).toContain("- q4");
+    expect(msg).not.toContain("- q5");
   });
 
   it("returns null when there is nothing to ask", () => {

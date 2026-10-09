@@ -25,7 +25,8 @@ import {
   removeTicket,
   claimTicket,
   getTicketByChannel,
-  getNextTicketNumber,
+  getTicketNumberFloor,
+  setTicketNumberFloor,
   getCategoryId,
   setCategoryId,
   isPanel,
@@ -37,9 +38,11 @@ import {
   categoryNeedsPlatform,
   formatTicketPlatform,
   type TicketPlatform,
+  TICKET_PLATFORMS,
 } from "./ticketPlatform.js";
 import {
   createTicket as apiCreateTicket,
+  reserveTicketNumber as apiReserveTicketNumber,
   getTicketReceiptUrl,
   updateTicket as apiUpdateTicket,
   type GameTicketCategory,
@@ -259,6 +262,55 @@ async function alertSyncFailure(
     );
 }
 
+async function alertDeliveryFailure(
+  guild: Guild,
+  channelId: string,
+  ticketNumber: number,
+  username: string,
+  failedMessages: string[],
+): Promise<void> {
+  const logChannelId =
+    process.env.TICKET_LOG_CHANNEL_ID ?? "1483974417628270593";
+  const logChannel = guild.channels.cache.get(logChannelId) as
+    TextChannel | undefined;
+  const modRoleId = moderatorRoleId();
+  const ping = modRoleId ? `<@&${modRoleId}> ` : "";
+  await logChannel
+    ?.send(
+      `${ping}⚠️ Ticket #${String(ticketNumber).padStart(4, "0")} was created, but Discord could not deliver ${failedMessages.join(" and ")} to its channel (<#${channelId}>, ${username}). Please inspect the channel and deliver the missing message manually.`,
+    )
+    .catch((err) =>
+      console.error("Failed to post ticket delivery-failure alert:", err),
+    );
+}
+
+/** Retry one filing message with a stable Discord nonce to deduplicate ambiguous timeouts. */
+export async function sendTicketMessageWithRetry(
+  send: (options: { content: string; nonce: string; enforceNonce: true }) => Promise<unknown>,
+  content: string,
+  nonce: string,
+  wait: (ms: number) => Promise<void> = (ms) =>
+    new Promise((resolve) => setTimeout(resolve, ms)),
+): Promise<boolean> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await send({ content, nonce, enforceNonce: true });
+      return true;
+    } catch (error) {
+      if (attempt === 2) {
+        console.error("Ticket filing message delivery failed after retries:", error);
+        return false;
+      }
+      await wait(500 * (attempt + 1));
+    }
+  }
+  return false;
+}
+
+function ticketFilingNonce(ticketNumber: number, kind: "receipt" | "questions"): string {
+  return `t${ticketNumber}-${kind}`;
+}
+
 /**
  * Visible filing-time follow-up for the missing-context questions the game
  * backend flagged at creation (Track1 companion to AHDGame #2393). Pure so it
@@ -272,10 +324,10 @@ export function buildFilingQuestionsMessage(
   const questions = (contextQuestions ?? [])
     .map((q) => q.trim())
     .filter(Boolean)
-    .slice(0, 3);
+    .slice(0, 4);
   if (!questions.length) return null;
   return [
-    "We need one more detail to work this report:",
+    "Please confirm these details so we can investigate:",
     "",
     ...questions.map((q) => `- ${q}`),
     "",
@@ -283,6 +335,111 @@ export function buildFilingQuestionsMessage(
   ]
     .join("\n")
     .slice(0, 1900);
+}
+
+export function ticketNumberFromChannelName(name: string): number | null {
+  const match = /^(?:closed-)?ticket-[a-z0-9-]+-(\d+)$/i.exec(name);
+  if (!match) return null;
+  const number = Number(match[1]);
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
+}
+
+/** Rehydrate locally-created ticket records for channels opened by staff tools. */
+export async function reconcileTicketChannels(guild: Guild): Promise<void> {
+  const channels = await guild.channels.fetch();
+  let highest = getTicketNumberFloor(guild.id);
+  for (const channel of channels.values()) {
+    if (!channel || channel.type !== ChannelType.GuildText) continue;
+    const nameMatch = /^ticket-[a-z0-9-]+-(\d+)$/i.exec(channel.name);
+    if (!nameMatch) continue;
+    const ticketNumber = Number(nameMatch[1]);
+    if (!Number.isSafeInteger(ticketNumber) || ticketNumber < 1) continue;
+    highest = Math.max(highest, ticketNumber);
+
+    const previous = getTicketByChannel(guild.id, channel.id);
+    if (
+      previous?.ticketNumber === ticketNumber &&
+      previous.apiTicketNumber === ticketNumber
+    )
+      continue;
+    try {
+      const messages = await channel.messages.fetch({ limit: 30 });
+      const opening = [...messages.values()]
+        .filter((message) => message.embeds.length > 0)
+        .sort((a, b) => a.createdTimestamp - b.createdTimestamp)[0];
+      const embed = opening?.embeds[0];
+      const fields = embed?.fields ?? [];
+      const field = (name: string) =>
+        fields.find((item) => item.name.toLowerCase() === name.toLowerCase())
+          ?.value;
+      const reporter = field("Reporter") ?? field("Opened by");
+      const reporterId = reporter?.match(/\d{15,22}/)?.[0];
+      const claimedById = field("Claimed by")?.match(/\d{15,22}/)?.[0];
+      const reporterPermission = channel.permissionOverwrites.cache.find(
+        (overwrite) =>
+          overwrite.type === 1 && overwrite.id !== guild.client.user?.id,
+      );
+      const categoryText =
+        field("Category")?.toLowerCase() ?? embed?.title?.toLowerCase() ?? "";
+      const category: TicketCategory = categoryText.includes("moderation")
+        ? "moderation"
+        : categoryText.includes("suggest")
+          ? "suggestion"
+          : categoryText.includes("bug")
+            ? "bug"
+            : "mechanics";
+      const platformText = field("Platform")?.toLowerCase();
+      const platform = TICKET_PLATFORMS.find(
+        (option) =>
+          option.label.toLowerCase() === platformText ||
+          option.value === platformText,
+      )?.value as TicketPlatform | undefined;
+      const subject = field("Subject") ?? previous?.subject;
+      const description = embed?.description ?? previous?.description;
+
+      addTicket(guild.id, {
+        ...previous,
+        userId:
+          reporterId ?? previous?.userId ?? reporterPermission?.id ?? "unknown",
+        category: previous?.category ?? category,
+        channelId: channel.id,
+        createdAt:
+          previous?.createdAt ??
+          opening?.createdAt.toISOString() ??
+          new Date().toISOString(),
+        ticketNumber,
+        ...(subject ? { subject } : {}),
+        ...(description ? { description } : {}),
+        ...((platform ?? previous?.platform)
+          ? { platform: platform ?? previous?.platform }
+          : {}),
+        ...(claimedById && !previous?.claimedByUserId
+          ? { claimedByUserId: claimedById }
+          : {}),
+        ...(opening ? { embedMessageId: opening.id } : {}),
+        apiTicketNumber: ticketNumber,
+      });
+    } catch (error) {
+      console.error(`Could not rehydrate ticket channel ${channel.id}:`, error);
+      if (!previous) {
+        addTicket(guild.id, {
+          userId: "unknown",
+          category: "mechanics",
+          channelId: channel.id,
+          createdAt: new Date().toISOString(),
+          ticketNumber,
+          apiTicketNumber: ticketNumber,
+        });
+      } else if (previous.ticketNumber !== ticketNumber) {
+        addTicket(guild.id, {
+          ...previous,
+          ticketNumber,
+          apiTicketNumber: ticketNumber,
+        });
+      }
+    }
+  }
+  setTicketNumberFloor(guild.id, highest);
 }
 
 export async function createTicket(
@@ -339,8 +496,17 @@ export async function createTicket(
       };
     }
 
+    const channels = await guild.channels.fetch();
+    const discordFloor = [...channels.values()].reduce((floor, channel) => {
+      if (!channel || channel.type !== ChannelType.GuildText) return floor;
+      const number = ticketNumberFromChannelName(channel.name);
+      return number ? Math.max(floor, number) : floor;
+    }, getTicketNumberFloor(guild.id));
+    // The shared game counter is authoritative for every ticket creator. Fail
+    // closed here so a backend outage can never create a duplicate channel.
+    const ticketNumber = await apiReserveTicketNumber(discordFloor);
+    setTicketNumberFloor(guild.id, ticketNumber);
     const categoryId = await getOrCreateCategory(guild);
-    const ticketNumber = getNextTicketNumber(guild.id);
     const paddedNum = String(ticketNumber).padStart(4, "0");
     const channelName = `ticket-${category}-${sanitizeUsername(username)}-${paddedNum}`;
 
@@ -482,8 +648,7 @@ export async function createTicket(
     };
     addTicket(guild.id, ticketRecord);
 
-    // Best-effort mirror into the game backend (MongoDB). Non-fatal: the local
-    // tickets.json store above is the source of truth for the Discord UX.
+    // Mirror into the game backend using the shared atomic number reservation.
     const openerName = sanitizeDisplayName(guild, userId, username);
     const title = (details?.subject?.trim() || `${config.label}`).slice(0, 200);
     const body =
@@ -505,9 +670,8 @@ export async function createTicket(
       discordUserId: userId,
       discordUsername: username,
       discordDisplayName: openerName,
-      // This channel's number is the source of truth: send it so the backend
-      // (ops dashboard / support MCP) stores the exact number shown in Discord
-      // instead of minting its own and drifting apart from the channel name.
+      // The shared reservation is authoritative; send its number so the backend
+      // stores the same value shown in Discord.
       ticketNumber,
     })
       .then(async (res) => {
@@ -524,26 +688,19 @@ export async function createTicket(
             receiptUrl = await getTicketReceiptUrl(res.ticketNumber);
             if (receiptUrl) break;
           }
+          const failedMessages: string[] = [];
           if (receiptUrl) {
-            await channel
-              .send(`Your support receipt: ${receiptUrl}`)
-              .catch((err) => {
-                console.error(
-                  `Failed to post ticket #${res.ticketNumber} receipt in its channel:`,
-                  err,
-                );
-              });
+            const receiptDelivered = await sendTicketMessageWithRetry(
+              (options) => channel.send(options),
+              `Your support receipt: ${receiptUrl}`,
+              ticketFilingNonce(res.ticketNumber, "receipt"),
+            );
+            if (!receiptDelivered) failedMessages.push("the receipt link");
           } else {
             console.error(
               `Receipt link unavailable for newly created ticket #${res.ticketNumber}`,
             );
-            await alertSyncFailure(
-              guild,
-              channel.id,
-              ticketNumber,
-              category,
-              username,
-            );
+            failedMessages.push("the receipt link (receipt URL unavailable)");
           }
 
           // The backend persists the number we sent, so res.ticketNumber should
@@ -573,12 +730,21 @@ export async function createTicket(
             res.contextQuestions,
           );
           if (questionsMessage) {
-            await channel.send(questionsMessage).catch((err) => {
-              console.error(
-                `Failed to post filing questions for ticket #${res.ticketNumber}:`,
-                err,
-              );
-            });
+            const questionsDelivered = await sendTicketMessageWithRetry(
+              (options) => channel.send(options),
+              questionsMessage,
+              ticketFilingNonce(res.ticketNumber, "questions"),
+            );
+            if (!questionsDelivered) failedMessages.push("filing questions");
+          }
+          if (failedMessages.length) {
+            await alertDeliveryFailure(
+              guild,
+              channel.id,
+              res.ticketNumber,
+              username,
+              failedMessages,
+            );
           }
         } else {
           // apiCreateTicket already retried internally; a final undefined here means
@@ -1069,7 +1235,17 @@ export async function handleClaimTicket(
   interaction: ButtonInteraction | ChatInputCommandInteraction,
 ): Promise<void> {
   const guild = channel.guild;
-  const ticket = getTicketByChannel(guild.id, channel.id);
+  let ticket = getTicketByChannel(guild.id, channel.id);
+  const channelNumber = Number(
+    channel.name.match(/^ticket-[a-z0-9-]+-(\d+)$/i)?.[1],
+  );
+  if (
+    /^ticket-[a-z0-9-]+-\d+$/i.test(channel.name) &&
+    (!ticket || ticket.ticketNumber !== channelNumber)
+  ) {
+    await reconcileTicketChannels(guild);
+    ticket = getTicketByChannel(guild.id, channel.id);
+  }
 
   if (!ticket) {
     const msg = "This channel is not a ticket.";
@@ -1166,7 +1342,17 @@ export async function handleTicketCloseModalSubmit(
       ? interaction.member
       : await interaction.guild.members.fetch(interaction.user.id);
 
-  const ticket = getTicketByChannel(interaction.guild.id, channelId);
+  let ticket = getTicketByChannel(interaction.guild.id, channelId);
+  const channelNumber = Number(
+    textChannel.name.match(/^ticket-[a-z0-9-]+-(\d+)$/i)?.[1],
+  );
+  if (
+    /^ticket-[a-z0-9-]+-\d+$/i.test(textChannel.name) &&
+    (!ticket || ticket.ticketNumber !== channelNumber)
+  ) {
+    await reconcileTicketChannels(interaction.guild);
+    ticket = getTicketByChannel(interaction.guild.id, channelId);
+  }
   if (!ticket) {
     await interaction.reply({
       content: "This ticket is already closed or is not a ticket channel.",

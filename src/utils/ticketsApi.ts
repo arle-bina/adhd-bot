@@ -7,6 +7,7 @@
 import { apiFetch, apiPost, apiPatch, opsApiFetch } from "./api-base.js";
 
 const TICKETS_ENDPOINT = "/api/discord-bot/tickets";
+const TICKET_RESERVATION_ENDPOINT = "/api/discord-bot/tickets/reserve";
 
 /** Backend ticket category enum. */
 export type GameTicketCategory =
@@ -53,6 +54,18 @@ export interface CreateTicketResponse {
   contextKey?: string | null;
   /** Player-facing questions to post in the channel immediately. */
   contextQuestions?: string[];
+}
+
+/** Reserve a globally unique number before creating a Discord ticket channel. */
+export async function reserveTicketNumber(discordFloor: number): Promise<number> {
+  if (!apiConfigured()) throw new Error("Ticket number reservation requires the game API");
+  const result = await apiPost<{ ticketNumber: number }>(TICKET_RESERVATION_ENDPOINT, {
+    discordFloor,
+  });
+  if (!Number.isSafeInteger(result.ticketNumber) || result.ticketNumber <= discordFloor) {
+    throw new Error("Game API returned an invalid ticket number reservation");
+  }
+  return result.ticketNumber;
 }
 
 export interface UpdateTicketResponse {
