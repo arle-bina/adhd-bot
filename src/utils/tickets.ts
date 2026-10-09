@@ -288,6 +288,13 @@ export function buildFilingQuestionsMessage(
     .slice(0, 1900);
 }
 
+export function ticketNumberFromChannelName(name: string): number | null {
+  const match = /^(?:closed-)?ticket-[a-z0-9-]+-(\d+)$/i.exec(name);
+  if (!match) return null;
+  const number = Number(match[1]);
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
+}
+
 /** Rehydrate locally-created ticket records for channels opened by staff tools. */
 export async function reconcileTicketChannels(guild: Guild): Promise<void> {
   const channels = await guild.channels.fetch();
@@ -439,8 +446,8 @@ export async function createTicket(
     const channels = await guild.channels.fetch();
     const discordFloor = [...channels.values()].reduce((floor, channel) => {
       if (!channel || channel.type !== ChannelType.GuildText) return floor;
-      const match = /^ticket-[a-z0-9-]+-(\d+)$/i.exec(channel.name);
-      return match ? Math.max(floor, Number(match[1])) : floor;
+      const number = ticketNumberFromChannelName(channel.name);
+      return number ? Math.max(floor, number) : floor;
     }, getTicketNumberFloor(guild.id));
     // The shared game counter is authoritative for every ticket creator. Fail
     // closed here so a backend outage can never create a duplicate channel.
