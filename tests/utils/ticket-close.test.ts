@@ -248,7 +248,7 @@ describe("handleTicketCloseModalSubmit", () => {
       resolution: "The ticket was closed by the reporter.",
     }));
     expect(interaction.editReply).toHaveBeenCalledWith({
-      content: "The channel could not be closed. Please retry; the staff transcript records the outcome.",
+      content: "The close could not be saved to the support system, so the ticket remains open. I saved the retry request; please try again shortly.",
     });
   });
 

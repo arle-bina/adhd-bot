@@ -175,20 +175,30 @@ function buildIntakeActionRow(ticketNumber: number, ticket: NonNullable<ReturnTy
 }
 export const buildTicketIntakeButtons = buildIntakeActionRow;
 
-function buildIntakeModal(action: "change_page" | "edit_details", ticketNumber: number, ticket: NonNullable<ReturnType<typeof getTicketByChannel>>): ModalBuilder {
-  const page = true;
+function buildIntakeModal(ticketNumber: number, ticket: NonNullable<ReturnType<typeof getTicketByChannel>>): ModalBuilder {
   const input = new TextInputBuilder()
-    .setCustomId(page ? "intake_page_url" : "intake_environment")
+    .setCustomId("intake_page_url")
     .setLabel("Page link or menu / issue")
     .setPlaceholder("https://ahousedividedgame.com/... or describe the affected menu")
     .setStyle(TextInputStyle.Short)
     .setMaxLength(500)
     .setRequired(true);
-  if (page && ticket.intakeCandidatePageUrl) input.setValue(ticket.intakeCandidatePageUrl.slice(0, 500));
+  if (ticket.intakeCandidatePageUrl) input.setValue(ticket.intakeCandidatePageUrl.slice(0, 500));
+  const environment = new TextInputBuilder()
+    .setCustomId("intake_environment")
+    .setLabel("Platform and versions (optional)")
+    .setPlaceholder("Android, game 1.13.0, client version unknown")
+    .setStyle(TextInputStyle.Short)
+    .setMaxLength(180)
+    .setRequired(false);
+  environment.setValue([ticket.intakePlatformLabel ?? ticket.platform ?? "", ticket.intakeGameVersion ? `game ${ticket.intakeGameVersion}` : "", ticket.intakeClientVersion ? `client ${ticket.intakeClientVersion}` : ""].filter(Boolean).join(", ").slice(0, 180));
   return new ModalBuilder()
-    .setCustomId(`${INTAKE_ID_PREFIX}:modal:${action}:${ticketNumber}`)
-    .setTitle("Correct the page or issue")
-    .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+    .setCustomId(`${INTAKE_ID_PREFIX}:modal:change_page:${ticketNumber}`)
+    .setTitle("Correct page and optional platform details")
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(input),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(environment),
+    );
 }
 
 function ticketCandidatePage(description?: string): string | undefined {
@@ -425,7 +435,7 @@ export async function handleTicketIntakeComponent(interaction: ButtonInteraction
     const action = interaction.customId.split(":")[1] as IntakeAction | "confirm_all";
     if (!["confirm_all", "decline_page", "change_page"].includes(action)) return true;
     if (action === "change_page") {
-      await interaction.showModal(buildIntakeModal(action, ticketNumber!, ticket));
+      await interaction.showModal(buildIntakeModal(ticketNumber!, ticket));
       return true;
     }
     if (action === "confirm_all" && !(ticket.intakeCandidatePageUrl ?? ticket.intakePageDescription ?? ticketCandidatePage(ticket.description))) {
@@ -469,6 +479,7 @@ export async function handleTicketIntakeComponent(interaction: ButtonInteraction
     return true;
   }
   const value = interaction.fields.getTextInputValue("intake_page_url").trim();
+  const environment = interaction.fields.getTextInputValue("intake_environment").trim();
   if (value.length < 3) {
     await interaction.reply({ content: "Please enter a little more detail.", ephemeral: true });
     return true;
@@ -494,8 +505,15 @@ export async function handleTicketIntakeComponent(interaction: ButtonInteraction
     ticket.intakePageConfirmed = true;
     ticket.intakeAwaitingReply = null;
   }
+  if (environment) {
+    Object.assign(ticket, parseTicketEnvironment(environment));
+    ticket.intakePlatformConfirmed = true;
+  }
   await interaction.deferReply({ ephemeral: true });
-  await persistIntakeInteraction(interaction.guild.id, ticket, interaction.id, action, value);
+  await persistIntakeInteraction(interaction.guild.id, ticket, `${interaction.id}:page`, action, value);
+  if (environment) {
+    await persistIntakeInteraction(interaction.guild.id, ticket, `${interaction.id}:platform`, "edit_details");
+  }
   const cardId = ticket.intakeCardMessageId ?? ticket.embedMessageId;
   const card = cardId ? await interaction.channel.messages.fetch(cardId).catch(() => null) : null;
   if (card) {
