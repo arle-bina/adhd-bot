@@ -876,8 +876,16 @@ export async function createTicket(
         activeCount++;
         if (!firstActiveChannelId) firstActiveChannelId = t.channelId;
       } else {
-        // Stale — clean up
-        removeTicket(guild.id, t.channelId);
+        // A missing channel may represent an unconfirmed close/merge or an
+        // externally deleted conversation. Keep its durable record for retry
+        // and reconciliation; never infer resolution from channel absence.
+        if (!t.pendingClose && !t.pendingMerge && !t.missingConversation) {
+          t.missingConversation = {
+            detectedAt: new Date().toISOString(),
+            eventId: `missing-channel:${t.channelId}`,
+          };
+          addTicket(guild.id, t);
+        }
       }
     }
 
@@ -1366,6 +1374,15 @@ async function finalizeTicketCloseImpl(
   const config = CATEGORY_CONFIG[ticket.category];
   const paddedNum = String(ticket.ticketNumber).padStart(4, "0");
   const apiTicketNumber = ticket.apiTicketNumber ?? ticket.ticketNumber;
+  ticket.pendingClose ??= {
+    closerId: closer.id,
+    resolution: resolutionMessage || "The ticket was closed by the reporter.",
+    createdAt: new Date().toISOString(),
+  };
+  resolutionMessage = ticket.pendingClose.resolution;
+  // Save the exact intent before touching Discord. A restart can safely retry
+  // the backend close using the same outcome and stable delivery nonces.
+  addTicket(guild.id, ticket);
   const created = new Date(ticket.createdAt);
   const duration = Math.floor((Date.now() - created.getTime()) / 60000);
   const durationStr =
@@ -1426,7 +1443,7 @@ async function finalizeTicketCloseImpl(
     })
     .setTimestamp();
 
-  let transcript = buildTranscriptText(
+  const transcript = buildTranscriptText(
     ticket,
     closer.id,
     messages,
@@ -1438,6 +1455,30 @@ async function finalizeTicketCloseImpl(
     resolutionMessage || "The ticket was closed by the reporter.";
   const playerFollowUp =
     "If the issue is still present, open a new support ticket and mention this report.";
+  // Mirror the final outcome when a backend record exists. Discord tickets
+  // that failed their initial sync must still be closable from the local store.
+  const persisted = await apiUpdateTicket({
+    ticketNumber: apiTicketNumber,
+    discordChannelId: channel.id,
+    action: "close",
+    closedBy: ticket.pendingClose.closerId,
+    resolution: ticket.pendingClose.resolution,
+  });
+  if (!persisted?.ok) {
+    console.warn(
+      `Ticket #${paddedNum} close: backend resolution persist did not confirm — ` +
+        `retaining the ticket channel and retry intent.`,
+    );
+    return {
+      ticketUpdated: false,
+      receiptLinkAvailable: Boolean(receiptUrl),
+      channelReceiptDelivered: false,
+      channelClosed: false,
+      dmDelivered: false,
+    };
+  }
+  addTicket(guild.id, ticket);
+  playerResolution = persisted?.finalOutcome || playerResolution;
   const resolutionText = [
     `<@${ticket.userId}>`,
     "",
@@ -1452,28 +1493,6 @@ async function finalizeTicketCloseImpl(
   const receiptMessage = receiptUrl
     ? appendReceiptLink(resolutionText, receiptUrl, 1900)
     : resolutionText.slice(0, 1900);
-
-  // Mirror the final outcome when a backend record exists. Discord tickets
-  // that failed their initial sync must still be closable from the local store.
-  const persisted = await apiUpdateTicket({
-    discordChannelId: channel.id,
-    action: "close",
-    closedBy: closer.id,
-    resolution: playerResolution,
-  });
-  if (!persisted) {
-    console.warn(
-      `Ticket #${paddedNum} close: backend resolution persist did not confirm — ` +
-        `closing the Discord channel and retaining the staff transcript.`,
-    );
-    logEmbed.addFields({
-      name: "Backend sync",
-      value: "Unavailable; reconcile from this transcript",
-    });
-    transcript +=
-      "\nBackend sync: unavailable at close; reconcile this ticket from the transcript.";
-  }
-  playerResolution = persisted?.finalOutcome || playerResolution;
 
   let channelReceiptDelivered = Boolean(persisted?.channelUpdatePosted);
   let channelReceiptMessageId: string | undefined;
@@ -1652,6 +1671,86 @@ async function finalizeTicketCloseImpl(
   };
 }
 
+/** Retry close intents left by a transient API failure or a process restart. */
+export async function retryPendingTicketLifecycle(guild: Guild): Promise<void> {
+  for (const ticket of Object.values(getTickets(guild.id))) {
+    const key = `${guild.id}:${ticket.channelId}`;
+    if (activeLifecycleRetries.has(key)) continue;
+    activeLifecycleRetries.add(key);
+    try {
+      if (ticket.pendingClose) {
+        const channel = await guild.channels.fetch(ticket.channelId).catch(() => null);
+        if (channel?.type === ChannelType.GuildText) {
+          const closer = await guild.members.fetch(ticket.pendingClose.closerId).catch(() => null);
+          if (closer) {
+            await finalizeTicketClose(channel, closer, ticket, ticket.pendingClose.resolution).catch((error) =>
+              console.error(`Pending close retry failed for #${ticket.ticketNumber}:`, error),
+            );
+          }
+        } else {
+          const saved = await apiUpdateTicket({
+            ticketNumber: ticket.apiTicketNumber ?? ticket.ticketNumber,
+            discordChannelId: ticket.channelId,
+            action: "close",
+            closedBy: ticket.pendingClose.closerId,
+            resolution: ticket.pendingClose.resolution,
+          });
+          if (saved?.ok) removeTicket(guild.id, ticket.channelId);
+        }
+      } else if (ticket.pendingMerge) {
+        const sourceChannel = await guild.channels.fetch(ticket.channelId).catch(() => null);
+        const targetChannel = await guild.channels.fetch(ticket.pendingMerge.targetChannelId).catch(() => null);
+        const targetTicket = getTicketByChannel(guild.id, ticket.pendingMerge.targetChannelId);
+        const staff = await guild.members.fetch(ticket.pendingMerge.staffId).catch(() => null);
+        if (sourceChannel?.type === ChannelType.GuildText && targetChannel?.type === ChannelType.GuildText && targetTicket && staff) {
+          await mergeTickets(sourceChannel, targetChannel, ticket, targetTicket, staff, ticket.pendingMerge.reason).catch((error) =>
+            console.error(`Pending merge retry failed for #${ticket.ticketNumber}:`, error),
+          );
+        } else if (!sourceChannel && targetTicket) {
+          const synchronized = await syncMergedTicket(ticket, targetTicket, ticket.pendingMerge.reason);
+          if (synchronized) removeTicket(guild.id, ticket.channelId);
+        }
+      } else if (ticket.missingConversation) {
+        await appendMissingConversationEvidence(ticket);
+      }
+    } catch (error) {
+      console.error(`Ticket lifecycle retry failed for #${ticket.ticketNumber}:`, error);
+    } finally {
+      activeLifecycleRetries.delete(key);
+    }
+  }
+}
+
+async function appendMissingConversationEvidence(ticket: Ticket): Promise<void> {
+  if (!ticket.missingConversation) return;
+  const canonicalNumber = ticket.apiTicketNumber ?? ticket.ticketNumber;
+  const saved = await apiUpdateTicket({
+    ticketNumber: canonicalNumber,
+    discordChannelId: ticket.channelId,
+    action: "append",
+    message: {
+      discordMessageId: ticket.missingConversation.eventId,
+      authorId: "discord-bot",
+      authorName: "Ticket lifecycle monitor",
+      content: `Ticket channel ${ticket.channelId} was deleted outside the bot. The conversation is unavailable; this does not resolve the ticket.`,
+      createdAt: ticket.missingConversation.detectedAt,
+    },
+  });
+  if (!saved?.ok) console.error(`Could not record missing conversation for ticket #${canonicalNumber}; local evidence retained.`);
+}
+
+const activeLifecycleRetries = new Set<string>();
+
+/** Record unexpected channel removal without turning an active ticket into a resolution. */
+export async function recordMissingTicketConversation(channel: TextChannel): Promise<void> {
+  const ticket = getTicketByChannel(channel.guild.id, channel.id);
+  if (!ticket || ticket.pendingClose || ticket.pendingMerge || ticket.missingConversation) return;
+  const eventId = `channel-deleted-${ticket.apiTicketNumber ?? ticket.ticketNumber}-${channel.id}`.slice(0, 64);
+  ticket.missingConversation = { detectedAt: new Date().toISOString(), eventId };
+  addTicket(channel.guild.id, ticket);
+  await appendMissingConversationEvidence(ticket);
+}
+
 export async function handleClaimTicket(
   channel: TextChannel,
   claimer: GuildMember,
@@ -1822,6 +1921,8 @@ export async function handleTicketCloseModalSubmit(
     let reply: string;
     if (result.alreadyInProgress) {
       reply = "This ticket is already being closed.";
+    } else if (!result.ticketUpdated && !result.channelClosed) {
+      reply = "The close could not be saved to the support system, so the ticket remains open. I saved the retry request; please try again shortly.";
     } else if (!result.channelClosed) {
       reply =
         "The channel could not be closed. Please retry; the staff transcript records the outcome.";
@@ -1967,6 +2068,39 @@ export interface MergeResult {
   reason?: string;
 }
 
+/** Close the source and append a deterministic merge event to the target. */
+async function syncMergedTicket(
+  source: Ticket,
+  target: Ticket,
+  reason: string,
+): Promise<boolean> {
+  const sourceNumber = source.apiTicketNumber ?? source.ticketNumber;
+  const targetNumber = target.apiTicketNumber ?? target.ticketNumber;
+  const resolution = `Merged into ticket #${target.ticketNumber}: ${reason}`;
+  const closed = await apiUpdateTicket({
+    ticketNumber: sourceNumber,
+    discordChannelId: source.channelId,
+    action: "close",
+    closedBy: source.pendingMerge?.staffId,
+    resolution,
+  });
+  if (!closed?.ok) return false;
+  const eventId = `merge-${sourceNumber}-into-${targetNumber}`.slice(0, 64);
+  const recorded = await apiUpdateTicket({
+    ticketNumber: targetNumber,
+    discordChannelId: target.channelId,
+    action: "append",
+    message: {
+      discordMessageId: eventId,
+      authorId: source.pendingMerge?.staffId ?? "discord-bot",
+      authorName: "Ticket merge",
+      content: `Ticket #${source.ticketNumber} was merged into this ticket. Reason: ${reason}`,
+      createdAt: source.pendingMerge?.createdAt ?? new Date().toISOString(),
+    },
+  });
+  return Boolean(recorded?.ok);
+}
+
 export async function mergeTickets(
   sourceChannel: TextChannel,
   targetChannel: TextChannel,
@@ -1982,6 +2116,32 @@ export async function mergeTickets(
   const targetPadded = String(targetTicket.ticketNumber).padStart(4, "0");
 
   try {
+    if (sourceTicket.pendingMerge && sourceTicket.pendingMerge.targetChannelId !== targetChannel.id) {
+      return { success: false, reason: `This ticket already has a pending merge into #${sourceTicket.pendingMerge.targetTicketNumber}.` };
+    }
+    sourceTicket.pendingMerge ??= {
+      targetChannelId: targetChannel.id,
+      targetTicketNumber: targetTicket.ticketNumber,
+      targetApiTicketNumber: targetTicket.apiTicketNumber,
+      staffId: staffMember.id,
+      reason,
+      createdAt: new Date().toISOString(),
+    };
+    reason = sourceTicket.pendingMerge.reason;
+    addTicket(guild.id, sourceTicket);
+    const mergeNonce = (kind: string) => ticketResolutionNonce(
+      `tm${kind}`,
+      sourceTicket.apiTicketNumber ?? sourceTicket.ticketNumber,
+      sourceTicket.pendingMerge?.createdAt,
+    );
+    const backendMerged = await syncMergedTicket(sourceTicket, targetTicket, reason);
+    if (!backendMerged) {
+      return {
+        success: false,
+        reason: "The game ticket records could not be synchronized. The source channel and retry intent were preserved.",
+      };
+    }
+
     // 1. Grant source user access to target channel
     await targetChannel.permissionOverwrites.edit(sourceTicket.userId, {
       ViewChannel: true,
@@ -2007,7 +2167,7 @@ export async function mergeTickets(
       });
     }
 
-    await targetChannel.send({ embeds: [headerEmbed] });
+    await targetChannel.send({ embeds: [headerEmbed], nonce: mergeNonce("h"), enforceNonce: true });
 
     // Collect all messages into transcript chunks (no pings)
     const lines: string[] = [];
@@ -2056,6 +2216,8 @@ export async function mergeTickets(
           .send({
             embeds: [transcriptEmbed],
             allowedMentions: { parse: [] },
+            nonce: mergeNonce(`t${i}`),
+            enforceNonce: true,
           })
           .catch(() => {});
       }
@@ -2065,6 +2227,8 @@ export async function mergeTickets(
     await targetChannel.send({
       content: `<@${sourceTicket.userId}> Your ticket has been merged here — please continue the conversation in this channel.`,
       allowedMentions: { users: [sourceTicket.userId] },
+      nonce: mergeNonce("n"),
+      enforceNonce: true,
     });
 
     // 4. DM the source opener
@@ -2086,7 +2250,7 @@ export async function mergeTickets(
         });
       }
 
-      await sourceUser.send({ embeds: [dmEmbed] });
+      await sourceUser.send({ embeds: [dmEmbed], nonce: mergeNonce("d"), enforceNonce: true });
     } catch {
       // DMs may be disabled
     }
@@ -2124,7 +2288,7 @@ export async function mergeTickets(
         });
       }
 
-      await logChannel.send({ embeds: [mergeEmbed] }).catch(() => {});
+      await logChannel.send({ embeds: [mergeEmbed], nonce: mergeNonce("l"), enforceNonce: true }).catch(() => {});
     }
 
     // 6. Record the merge on the target ticket so closure DMs reach the source opener
@@ -2142,12 +2306,10 @@ export async function mergeTickets(
     });
 
     // 7. Remove source ticket from store and delete channel
+    await sourceChannel.delete(
+      `Ticket #${sourcePadded} merged into #${targetPadded} by ${staffMember.user.tag}`,
+    );
     removeTicket(guild.id, sourceTicket.channelId);
-    await sourceChannel
-      .delete(
-        `Ticket #${sourcePadded} merged into #${targetPadded} by ${staffMember.user.tag}`,
-      )
-      .catch(() => {});
 
     return { success: true };
   } catch (error) {

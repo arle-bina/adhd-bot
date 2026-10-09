@@ -21,13 +21,16 @@ vi.mock("../../src/utils/ticketsApi.js", () => ({
 vi.mock("../../src/utils/ticketStore.js", async (importActual) => {
   const actual =
     await importActual<typeof import("../../src/utils/ticketStore.js")>();
-  return { ...actual, getTicketByChannel: vi.fn(), removeTicket: vi.fn() };
+  return { ...actual, getTicketByChannel: vi.fn(), getTickets: vi.fn(), removeTicket: vi.fn() };
 });
 
 import {
   closeTicket,
   closeLegacyNamedTicketChannel,
   handleTicketCloseModalSubmit,
+  mergeTickets,
+  recordMissingTicketConversation,
+  retryPendingTicketLifecycle,
   TICKET_CLOSE_MODAL_PREFIX,
 } from "../../src/utils/tickets.js";
 import * as ticketStore from "../../src/utils/ticketStore.js";
@@ -228,22 +231,92 @@ describe("handleTicketCloseModalSubmit", () => {
     });
   });
 
-  it("closes an unsynced ticket and flags the staff transcript", async () => {
+  it("keeps an unsynced ticket open with a durable close retry intent", async () => {
     const { interaction, channel, ticket, opener } = buildScene();
     vi.mocked(ticketStore.getTicketByChannel).mockReturnValue(ticket as never);
     vi.mocked(ticketsApi.updateTicket).mockResolvedValueOnce(undefined);
 
     await handleTicketCloseModalSubmit(interaction as never);
 
-    expect(channel.send).toHaveBeenCalled();
+    expect(channel.send).not.toHaveBeenCalled();
     expect(channel.setName).not.toHaveBeenCalled();
-    expect(channel.delete).toHaveBeenCalled();
-    expect(opener.send).toHaveBeenCalled();
-    expect(ticketStore.removeTicket).toHaveBeenCalled();
+    expect(channel.delete).not.toHaveBeenCalled();
+    expect(opener.send).not.toHaveBeenCalled();
+    expect(ticketStore.removeTicket).not.toHaveBeenCalled();
+    expect(ticket).toHaveProperty("pendingClose", expect.objectContaining({
+      closerId: "u1",
+      resolution: "The ticket was closed by the reporter.",
+    }));
     expect(interaction.editReply).toHaveBeenCalledWith({
-      content:
-        "Ticket closed in Discord. Backend sync failed and the staff transcript is flagged for reconciliation.",
+      content: "The channel could not be closed. Please retry; the staff transcript records the outcome.",
     });
+  });
+
+  it("does not delete a merge source when the backend close is unconfirmed", async () => {
+    vi.mocked(ticketsApi.updateTicket).mockResolvedValueOnce(undefined);
+    const sourceChannel = { id: "source", guild: { id: "g1" }, delete: vi.fn() };
+    const targetChannel = { id: "target" };
+    const sourceTicket = { channelId: "source", ticketNumber: 41, userId: "u1" };
+    const targetTicket = { channelId: "target", ticketNumber: 42, userId: "u2" };
+    const staff = { id: "staff", user: { tag: "staff#1" } };
+
+    const result = await mergeTickets(
+      sourceChannel as never,
+      targetChannel as never,
+      sourceTicket as never,
+      targetTicket as never,
+      staff as never,
+      "same issue",
+    );
+
+    expect(result.success).toBe(false);
+    expect(sourceTicket).toHaveProperty("pendingMerge");
+    expect(sourceChannel.delete).not.toHaveBeenCalled();
+  });
+
+  it("retains a missing-conversation flag and appends deterministic evidence", async () => {
+    const { guild, ticket } = buildScene();
+    vi.mocked(ticketStore.getTicketByChannel).mockReturnValue(ticket as never);
+    const deletedChannel = { ...buildScene().channel, guild };
+
+    await recordMissingTicketConversation(deletedChannel as never);
+
+    expect(ticket).toHaveProperty("missingConversation");
+    expect(ticketsApi.updateTicket).toHaveBeenCalledWith(expect.objectContaining({
+      action: "append",
+      ticketNumber: 42,
+      discordChannelId: "c1",
+      message: expect.objectContaining({
+        discordMessageId: expect.stringMatching(/^channel-deleted-42-c1$/),
+        content: expect.stringContaining("does not resolve the ticket"),
+      }),
+    }));
+  });
+
+  it("retries missing-conversation evidence with the original event ID", async () => {
+    const ticket = {
+      userId: "u1",
+      category: "bug" as const,
+      channelId: "c1",
+      createdAt: new Date().toISOString(),
+      ticketNumber: 42,
+      missingConversation: {
+        detectedAt: "2026-10-09T12:00:00.000Z",
+        eventId: "channel-deleted-42-c1",
+      },
+    };
+    vi.mocked(ticketStore.getTickets).mockReturnValue({ c1: ticket } as never);
+    const guild = { id: "g1" };
+
+    await retryPendingTicketLifecycle(guild as never);
+    await retryPendingTicketLifecycle(guild as never);
+
+    const appends = vi.mocked(ticketsApi.updateTicket).mock.calls
+      .map(([payload]) => payload)
+      .filter((payload) => payload.action === "append");
+    expect(appends).toHaveLength(2);
+    expect(appends[0]?.message?.discordMessageId).toBe("channel-deleted-42-c1");
+    expect(appends[1]?.message?.discordMessageId).toBe("channel-deleted-42-c1");
   });
 
   it("does not post a second channel receipt when Ops already sent the final update", async () => {

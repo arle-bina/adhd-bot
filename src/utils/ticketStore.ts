@@ -44,6 +44,22 @@ export interface Ticket {
   intakeInteractionIds?: string[];
   /** Ticket number assigned by the game backend (MongoDB sync), if mirrored */
   apiTicketNumber?: number;
+  /** Durable close intent. Retained until the backend confirms close. */
+  pendingClose?: {
+    closerId: string;
+    resolution: string;
+    createdAt: string;
+  };
+  pendingMerge?: {
+    targetChannelId: string;
+    targetTicketNumber: number;
+    targetApiTicketNumber?: number;
+    staffId: string;
+    reason: string;
+    createdAt: string;
+  };
+  /** A Discord channel was deleted outside the bot; keep the conversation state explicit. */
+  missingConversation?: { detectedAt: string; eventId: string };
 }
 
 interface TicketData {
