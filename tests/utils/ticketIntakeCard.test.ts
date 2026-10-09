@@ -54,13 +54,13 @@ describe("persistent ticket intake card", () => {
     expect(normalizeTicketIntakeSeedVersions("version unknown", "unknown", "1.12.0", "2.3.4"))
       .toEqual({ gameVersion: "1.12.0", clientVersion: "2.3.4" });
 
-    const seededTicket = { intakeReceiptUrl: "https://ops.example/t/opaque" };
+    const seededTicket: { intakeSeeded?: boolean; intakeCardVersion?: number; intakeReceiptUrl: string } = { intakeReceiptUrl: "https://ops.example/t/opaque" };
     expect(markTicketIntakeSeeded(seededTicket, { ok: true, intake: { receiptUrl: seededTicket.intakeReceiptUrl } }, true)).toBe(true);
     expect(seededTicket).toMatchObject({ intakeReceiptUrl: "https://ops.example/t/opaque", intakeSeeded: true, intakeCardVersion: 2 });
   });
 
   it("builds a durable seed payload with the receipt and no invalid unknown version strings", () => {
-    const ticket = {
+    const ticket: Parameters<typeof buildTicketIntakeSeedPayload>[0] & { intakeSeeded?: boolean; intakeCardVersion?: number } = {
       ticketNumber: 1446,
       apiTicketNumber: 1446,
       channelId: "ticket-channel",
@@ -108,12 +108,12 @@ describe("persistent ticket intake card", () => {
     expect(JSON.stringify(embed)).not.toContain("recent visits");
 
     const buttons = buildTicketIntakeButtons(1440, ticket).toJSON().components;
-    expect(buttons.map((button) => button.custom_id)).toEqual([
+    expect(buttons.map((button) => "custom_id" in button ? button.custom_id : undefined)).toEqual([
       "ticket_intake:confirm_all:1440",
       "ticket_intake:decline_page:1440",
       "ticket_intake:change_page:1440",
     ]);
-    expect(buttons.map((button) => button.label)).toEqual([
+    expect(buttons.map((button) => "label" in button ? button.label : undefined)).toEqual([
       "Confirm page and platform",
       "Wrong page / issue",
       "Paste link or describe",
