@@ -60,6 +60,9 @@ export interface Ticket {
     targetChannelId: string;
     targetTicketNumber: number;
     targetApiTicketNumber?: number;
+    targetUserId: string;
+    targetCategory: TicketCategory;
+    staffTag: string;
     staffId: string;
     reason: string;
     createdAt: string;

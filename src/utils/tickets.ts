@@ -864,6 +864,12 @@ export async function reconcileTicketChannels(guild: Guild): Promise<void> {
     }
   }
   setTicketNumberFloor(guild.id, highest);
+  const inventory = new Set(channels.keys());
+  for (const ticket of Object.values(getTickets(guild.id))) {
+    if (!inventory.has(ticket.channelId) && !ticket.pendingClose && !ticket.pendingMerge) {
+      await flagMissingTicketConversation(guild.id, ticket);
+    }
+  }
 }
 
 export async function createTicket(
@@ -907,16 +913,8 @@ export async function createTicket(
         activeCount++;
         if (!firstActiveChannelId) firstActiveChannelId = t.channelId;
       } else {
-        // A missing channel may represent an unconfirmed close/merge or an
-        // externally deleted conversation. Keep its durable record for retry
-        // and reconciliation; never infer resolution from channel absence.
-        if (!t.pendingClose && !t.pendingMerge && !t.missingConversation) {
-          t.missingConversation = {
-            detectedAt: new Date().toISOString(),
-            eventId: `missing-channel:${t.channelId}`,
-          };
-          addTicket(guild.id, t);
-        }
+        // Cache absence is not proof the Discord channel was deleted. Keep the
+        // record; a full channel inventory verifies absence during reconciliation.
       }
     }
 
@@ -1766,7 +1764,10 @@ export async function retryPendingTicketLifecycle(guild: Guild): Promise<void> {
             });
             dmRecorded = Boolean(marker?.ok);
           }
-          if (channelReceiptRecorded && dmRecorded) removeTicket(guild.id, ticket.channelId);
+          // The channel is positively confirmed deleted, so its receipt cannot
+          // be posted there. Keep its API resolution and DM, then retire the
+          // local outbox once the player notification is durably acknowledged.
+          if (dmRecorded) removeTicket(guild.id, ticket.channelId);
         }
       } else if (ticket.pendingMerge) {
         const sourceFetch = await fetchChannelForLifecycleRetry(guild, ticket.channelId);
@@ -1778,13 +1779,25 @@ export async function retryPendingTicketLifecycle(guild: Guild): Promise<void> {
         const sourceChannel = sourceFetch.channel;
         const targetChannel = targetFetch.channel;
         const targetTicket = getTicketByChannel(guild.id, ticket.pendingMerge.targetChannelId);
-        const staff = await guild.members.fetch(ticket.pendingMerge.staffId).catch(() => null);
-        if (sourceChannel?.type === ChannelType.GuildText && targetChannel?.type === ChannelType.GuildText && targetTicket && staff) {
+        const staff = await guild.members.fetch(ticket.pendingMerge.staffId).catch(() => null) ?? {
+          id: ticket.pendingMerge.staffId,
+          user: { tag: ticket.pendingMerge.staffTag },
+          client: guild.client,
+        } as GuildMember;
+        if (sourceChannel?.type === ChannelType.GuildText && targetChannel?.type === ChannelType.GuildText && targetTicket) {
           await mergeTickets(sourceChannel, targetChannel, ticket, targetTicket, staff, ticket.pendingMerge.reason).catch((error) =>
             console.error(`Pending merge retry failed for #${ticket.ticketNumber}:`, error),
           );
-        } else if (sourceFetch.missing && targetChannel && targetTicket) {
-          const synchronized = await syncMergedTicket(ticket, targetTicket, ticket.pendingMerge.reason);
+        } else if (sourceFetch.missing) {
+          const targetForSync: Ticket = targetTicket ?? {
+            userId: ticket.pendingMerge.targetUserId,
+            category: ticket.pendingMerge.targetCategory,
+            channelId: ticket.pendingMerge.targetChannelId,
+            createdAt: ticket.pendingMerge.createdAt,
+            ticketNumber: ticket.pendingMerge.targetTicketNumber,
+            apiTicketNumber: ticket.pendingMerge.targetApiTicketNumber,
+          };
+          const synchronized = await syncMergedTicket(ticket, targetForSync, ticket.pendingMerge.reason);
           if (synchronized) removeTicket(guild.id, ticket.channelId);
         }
       } else if (ticket.missingConversation) {
@@ -1816,6 +1829,16 @@ async function appendMissingConversationEvidence(ticket: Ticket): Promise<void> 
   if (!saved?.ok) console.error(`Could not record missing conversation for ticket #${canonicalNumber}; local evidence retained.`);
 }
 
+async function flagMissingTicketConversation(guildId: string, ticket: Ticket): Promise<void> {
+  if (ticket.pendingClose || ticket.pendingMerge || ticket.missingConversation) return;
+  ticket.missingConversation = {
+    detectedAt: new Date().toISOString(),
+    eventId: `channel-deleted-${ticket.apiTicketNumber ?? ticket.ticketNumber}-${ticket.channelId}`.slice(0, 64),
+  };
+  addTicket(guildId, ticket);
+  await appendMissingConversationEvidence(ticket);
+}
+
 const activeLifecycleRetries = new Set<string>();
 
 function isUnknownDiscordChannel(error: unknown): boolean {
@@ -1838,11 +1861,8 @@ async function fetchChannelForLifecycleRetry(guild: Guild, channelId: string) {
 /** Record unexpected channel removal without turning an active ticket into a resolution. */
 export async function recordMissingTicketConversation(channel: TextChannel): Promise<void> {
   const ticket = getTicketByChannel(channel.guild.id, channel.id);
-  if (!ticket || ticket.pendingClose || ticket.pendingMerge || ticket.missingConversation) return;
-  const eventId = `channel-deleted-${ticket.apiTicketNumber ?? ticket.ticketNumber}-${channel.id}`.slice(0, 64);
-  ticket.missingConversation = { detectedAt: new Date().toISOString(), eventId };
-  addTicket(channel.guild.id, ticket);
-  await appendMissingConversationEvidence(ticket);
+  if (!ticket) return;
+  await flagMissingTicketConversation(channel.guild.id, ticket);
 }
 
 export async function handleClaimTicket(
@@ -2217,6 +2237,9 @@ export async function mergeTickets(
       targetChannelId: targetChannel.id,
       targetTicketNumber: targetTicket.ticketNumber,
       targetApiTicketNumber: targetTicket.apiTicketNumber,
+      targetUserId: targetTicket.userId,
+      targetCategory: targetTicket.category,
+      staffTag: staffMember.user.tag,
       staffId: staffMember.id,
       reason,
       createdAt: new Date().toISOString(),

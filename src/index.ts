@@ -175,7 +175,9 @@ client.once("ready", () => {
 
   for (const guild of client.guilds.cache.values()) {
     void (async () => {
-      await reconcileTicketChannels(guild);
+      await reconcileTicketChannels(guild).catch((error) => {
+        console.error(`Ticket channel reconciliation failed for guild ${guild.id}:`, error);
+      });
       await retryPendingTicketLifecycle(guild);
     })().catch((error) => {
       console.error(`Ticket startup reconciliation failed for guild ${guild.id}:`, error);
