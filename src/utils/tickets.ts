@@ -175,14 +175,14 @@ function buildIntakeActionRow(ticketNumber: number, ticket: NonNullable<ReturnTy
 }
 export const buildTicketIntakeButtons = buildIntakeActionRow;
 
-function buildIntakeModal(ticketNumber: number, ticket: NonNullable<ReturnType<typeof getTicketByChannel>>): ModalBuilder {
+function buildIntakeModal(action: "change_page" | "edit_details", ticketNumber: number, ticket: NonNullable<ReturnType<typeof getTicketByChannel>>): ModalBuilder {
   const input = new TextInputBuilder()
     .setCustomId("intake_page_url")
     .setLabel("Page link or menu / issue")
     .setPlaceholder("https://ahousedividedgame.com/... or describe the affected menu")
     .setStyle(TextInputStyle.Short)
     .setMaxLength(500)
-    .setRequired(true);
+    .setRequired(action === "change_page");
   if (ticket.intakeCandidatePageUrl) input.setValue(ticket.intakeCandidatePageUrl.slice(0, 500));
   const environment = new TextInputBuilder()
     .setCustomId("intake_environment")
@@ -190,11 +190,11 @@ function buildIntakeModal(ticketNumber: number, ticket: NonNullable<ReturnType<t
     .setPlaceholder("Android, game 1.13.0, client version unknown")
     .setStyle(TextInputStyle.Short)
     .setMaxLength(180)
-    .setRequired(false);
+    .setRequired(action === "edit_details");
   environment.setValue([ticket.intakePlatformLabel ?? ticket.platform ?? "", ticket.intakeGameVersion ? `game ${ticket.intakeGameVersion}` : "", ticket.intakeClientVersion ? `client ${ticket.intakeClientVersion}` : ""].filter(Boolean).join(", ").slice(0, 180));
   return new ModalBuilder()
     .setCustomId(`${INTAKE_ID_PREFIX}:modal:change_page:${ticketNumber}`)
-    .setTitle("Correct page and optional platform details")
+    .setTitle(action === "change_page" ? "Correct page and optional platform details" : "Correct platform details")
     .addComponents(
       new ActionRowBuilder<TextInputBuilder>().addComponents(input),
       new ActionRowBuilder<TextInputBuilder>().addComponents(environment),
@@ -433,16 +433,16 @@ export async function handleTicketIntakeComponent(interaction: ButtonInteraction
 
   if (interaction.isButton()) {
     const action = interaction.customId.split(":")[1] as IntakeAction | "confirm_all";
-    if (!["confirm_all", "decline_page", "change_page"].includes(action)) return true;
-    if (action === "change_page") {
-      await interaction.showModal(buildIntakeModal(ticketNumber!, ticket));
+    if (!["confirm_all", "confirm_page", "confirm_platform", "decline_page", "change_page", "edit_details"].includes(action)) return true;
+    if (action === "change_page" || action === "edit_details") {
+      await interaction.showModal(buildIntakeModal(action, ticketNumber!, ticket));
       return true;
     }
-    if (action === "confirm_all" && !(ticket.intakeCandidatePageUrl ?? ticket.intakePageDescription ?? ticketCandidatePage(ticket.description))) {
+    if ((action === "confirm_all" || action === "confirm_page") && !(ticket.intakeCandidatePageUrl ?? ticket.intakePageDescription ?? ticketCandidatePage(ticket.description))) {
       await interaction.reply({ content: "No page is listed yet. Paste a link or describe the page first.", ephemeral: true });
       return true;
     }
-    if (action === "confirm_all" && ticket.intakeAwaitingReply === "page") {
+    if ((action === "confirm_all" || action === "confirm_page") && ticket.intakeAwaitingReply === "page") {
       await interaction.reply({ content: "Please reply with the corrected page or issue details first.", ephemeral: true });
       return true;
     }
@@ -451,12 +451,19 @@ export async function handleTicketIntakeComponent(interaction: ButtonInteraction
       ticket.intakePageConfirmed = false;
       ticket.intakeAwaitingReply = "page";
       await persistIntakeInteraction(interaction.guild.id, ticket, interaction.id, "decline_page");
-    } else {
+    } else if (action === "confirm_all") {
       ticket.intakePageConfirmed = true;
       ticket.intakePlatformConfirmed = true;
       ticket.intakeAwaitingReply = null;
       await persistIntakeInteraction(interaction.guild.id, ticket, `${interaction.id}:page`, "confirm_page");
       await persistIntakeInteraction(interaction.guild.id, ticket, `${interaction.id}:platform`, "confirm_platform");
+    } else if (action === "confirm_page") {
+      ticket.intakePageConfirmed = true;
+      ticket.intakeAwaitingReply = null;
+      await persistIntakeInteraction(interaction.guild.id, ticket, interaction.id, "confirm_page");
+    } else if (action === "confirm_platform") {
+      ticket.intakePlatformConfirmed = true;
+      await persistIntakeInteraction(interaction.guild.id, ticket, interaction.id, "confirm_platform");
     }
   const cardId = ticket.intakeCardMessageId ?? ticket.embedMessageId;
   const card = cardId ? await interaction.channel.messages.fetch(cardId).catch(() => null) : null;
@@ -473,18 +480,18 @@ export async function handleTicketIntakeComponent(interaction: ButtonInteraction
 }
 
   const parts = interaction.customId.split(":");
-  const action = parts[2] as "change_page";
-  if (action !== "change_page") {
+  const action = parts[2] as "change_page" | "edit_details";
+  if (action !== "change_page" && action !== "edit_details") {
     await interaction.reply({ content: "This intake action is no longer available.", ephemeral: true });
     return true;
   }
   const value = interaction.fields.getTextInputValue("intake_page_url").trim();
   const environment = interaction.fields.getTextInputValue("intake_environment").trim();
-  if (value.length < 3) {
+  if ((action === "change_page" && value.length < 3) || (action === "edit_details" && environment.length < 3)) {
     await interaction.reply({ content: "Please enter a little more detail.", ephemeral: true });
     return true;
   }
-  if (action === "change_page") {
+  if (action === "change_page" && value) {
     let parsed: URL | undefined;
     try { parsed = new URL(value); } catch { parsed = undefined; }
     if (parsed && (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password || !/(^|\.)ahousedividedgame\.com$/i.test(parsed.hostname))) {
@@ -510,9 +517,11 @@ export async function handleTicketIntakeComponent(interaction: ButtonInteraction
     ticket.intakePlatformConfirmed = true;
   }
   await interaction.deferReply({ ephemeral: true });
-  await persistIntakeInteraction(interaction.guild.id, ticket, `${interaction.id}:page`, action, value);
+  if (action === "change_page") {
+    await persistIntakeInteraction(interaction.guild.id, ticket, `${interaction.id}:page`, "change_page", value);
+  }
   if (environment) {
-    await persistIntakeInteraction(interaction.guild.id, ticket, `${interaction.id}:platform`, "edit_details");
+    await persistIntakeInteraction(interaction.guild.id, ticket, action === "edit_details" ? interaction.id : `${interaction.id}:platform`, "edit_details");
   }
   const cardId = ticket.intakeCardMessageId ?? ticket.embedMessageId;
   const card = cardId ? await interaction.channel.messages.fetch(cardId).catch(() => null) : null;
@@ -696,9 +705,10 @@ export async function reconcileTicketChannels(guild: Guild): Promise<void> {
     if (
       previous?.ticketNumber === ticketNumber &&
       previous.apiTicketNumber === ticketNumber &&
-      previous.intakeCardMessageId
-    )
-      continue;
+      previous.intakeCardVersion === 2
+    ) continue;
+    // Unversioned cards receive a silent adoption pass that replaces old
+    // controls in place and fills in a receipt URL without a new message.
     try {
       const messages = await channel.messages.fetch({ limit: 100 });
       const embeds = [...messages.values()]
@@ -825,6 +835,9 @@ export async function reconcileTicketChannels(guild: Guild): Promise<void> {
               ...(stored.embedMessageId === card.id ? [buildTicketActionRow(Boolean(stored.claimedByUserId))] : []),
               buildIntakeActionRow(stored.ticketNumber, stored),
             ],
+          }).then(() => {
+            stored.intakeCardVersion = 2;
+            addTicket(guild.id, stored);
           }).catch((error) => console.error(`Could not restore intake card for ticket #${ticketNumber}:`, error));
           if (!card.reactions.cache.some((item) => item.emoji.name === "✅")) await card.react("✅").catch(() => {});
           if (!card.reactions.cache.some((item) => item.emoji.name === "❌")) await card.react("❌").catch(() => {});
@@ -1059,6 +1072,9 @@ export async function createTicket(
     await embedMessage.edit({
       embeds: [intakeEmbed(ticketRecord, EmbedBuilder.from(embedMessage.embeds[0]))],
       components: [buildTicketActionRow(false), buildIntakeActionRow(ticketNumber, ticketRecord)],
+    }).then(() => {
+      ticketRecord.intakeCardVersion = 2;
+      addTicket(guild.id, ticketRecord);
     }).catch((error) => console.error(`Could not activate intake card for #${paddedNum}:`, error));
     await embedMessage.react("✅").catch(() => {});
     await embedMessage.react("❌").catch(() => {});
@@ -1394,6 +1410,7 @@ async function finalizeTicketCloseImpl(
   const apiTicketNumber = ticket.apiTicketNumber ?? ticket.ticketNumber;
   ticket.pendingClose ??= {
     closerId: closer.id,
+    closerTag: closer.user.tag,
     resolution: resolutionMessage || "The ticket was closed by the reporter.",
     createdAt: new Date().toISOString(),
   };
@@ -1473,8 +1490,8 @@ async function finalizeTicketCloseImpl(
     resolutionMessage || "The ticket was closed by the reporter.";
   const playerFollowUp =
     "If the issue is still present, open a new support ticket and mention this report.";
-  // Mirror the final outcome when a backend record exists. Discord tickets
-  // that failed their initial sync must still be closable from the local store.
+  // The backend must confirm this outcome before any player receipt or channel
+  // deletion. An unsynced ticket keeps its channel and durable retry intent.
   const persisted = await apiUpdateTicket({
     ticketNumber: apiTicketNumber,
     discordChannelId: channel.id,
@@ -1512,9 +1529,9 @@ async function finalizeTicketCloseImpl(
     ? appendReceiptLink(resolutionText, receiptUrl, 1900)
     : resolutionText.slice(0, 1900);
 
-  let channelReceiptDelivered = Boolean(persisted?.channelUpdatePosted);
-  let channelReceiptMessageId: string | undefined;
-  if (!channelReceiptDelivered) {
+  let channelReceiptDelivered = Boolean(persisted.channelUpdatePosted || ticket.pendingClose?.channelReceiptMessageId);
+  let channelReceiptMessageId = ticket.pendingClose?.channelReceiptMessageId;
+  if (!persisted.channelUpdatePosted && !channelReceiptMessageId) {
     try {
       const channelReceipt = await channel.send({
         content: receiptMessage,
@@ -1527,27 +1544,29 @@ async function finalizeTicketCloseImpl(
         enforceNonce: true,
       });
       channelReceiptMessageId = channelReceipt.id;
+      ticket.pendingClose.channelReceiptMessageId = channelReceipt.id;
+      addTicket(guild.id, ticket);
       channelReceiptDelivered = true;
     } catch (err) {
       console.warn("Ticket channel receipt post failed:", err);
     }
   }
 
-  if (persisted && !persisted.channelUpdatePosted) {
-    if (channelReceiptDelivered) {
-      const channelReceiptRecorded = await apiUpdateTicket({
-        discordChannelId: channel.id,
-        action: "resolution-channel-delivered",
-        ...(channelReceiptMessageId
-          ? { messageId: channelReceiptMessageId }
-          : {}),
-      });
-      if (!channelReceiptRecorded) {
-        console.warn(
-          `Ticket #${paddedNum} channel receipt marker did not persist; the resolution sweep may retry it.`,
-        );
-      }
+  let channelReceiptRecorded = Boolean(persisted.channelUpdatePosted);
+  if (!channelReceiptRecorded && channelReceiptDelivered && channelReceiptMessageId) {
+    const channelReceiptMarker = await apiUpdateTicket({
+      ticketNumber: apiTicketNumber,
+      discordChannelId: channel.id,
+      action: "resolution-channel-delivered",
+      messageId: channelReceiptMessageId,
+    });
+    channelReceiptRecorded = Boolean(channelReceiptMarker?.ok);
+    if (!channelReceiptRecorded) {
+      console.warn(`Ticket #${paddedNum} channel receipt marker did not persist; retaining the channel and retry intent.`);
     }
+  }
+  if (!channelReceiptRecorded) {
+    return { ticketUpdated: true, receiptLinkAvailable: Boolean(receiptUrl), channelReceiptDelivered, channelClosed: false, dmDelivered: false };
   }
 
   const logChannelId =
@@ -1555,14 +1574,23 @@ async function finalizeTicketCloseImpl(
   if (logChannelId) {
     const logChannel = guild.channels.cache.get(logChannelId) as
       TextChannel | undefined;
-    if (logChannel) {
+    if (logChannel && !ticket.pendingClose?.transcriptMessageId) {
       const buffer = Buffer.from(transcript, "utf-8");
-      await logChannel
+      const transcriptMessage = await logChannel
         .send({
           embeds: [logEmbed],
           files: [{ attachment: buffer, name: `ticket-${paddedNum}.txt` }],
+          nonce: ticketResolutionNonce("tl", apiTicketNumber, ticket.pendingClose?.createdAt),
+          enforceNonce: true,
         })
-        .catch((err) => console.error("Failed to post transcript:", err));
+        .catch((err) => {
+          console.error("Failed to post transcript:", err);
+          return null;
+        });
+      if (transcriptMessage) {
+        ticket.pendingClose.transcriptMessageId = transcriptMessage.id;
+        addTicket(guild.id, ticket);
+      }
     }
   }
 
@@ -1571,22 +1599,14 @@ async function finalizeTicketCloseImpl(
     await closeTicketChannel(channel, ticket.ticketNumber);
     channelClosed = true;
   } catch (err) {
-    console.warn(
-      `Ticket #${paddedNum} outcome was saved, but the channel could not be closed:`,
-      err,
-    );
-    return {
-      ticketUpdated: Boolean(persisted),
-      receiptLinkAvailable: Boolean(receiptUrl),
-      channelReceiptDelivered,
-      channelClosed: false,
-      dmDelivered: false,
-    };
+    console.warn(`Ticket #${paddedNum} outcome was saved, but the channel could not be closed:`, err);
+    return { ticketUpdated: true, receiptLinkAvailable: Boolean(receiptUrl), channelReceiptDelivered, channelClosed: false, dmDelivered: false };
   }
 
-  let dmDelivered = Boolean(persisted?.resolutionDelivered);
+  let dmMarkerRecorded = Boolean(persisted.resolutionDelivered);
+  let dmDelivered = dmMarkerRecorded || Boolean(ticket.pendingClose?.dmMessageId);
   try {
-    if (!dmDelivered) {
+    if (!dmMarkerRecorded && !ticket.pendingClose?.dmMessageId) {
       const opener = await closer.client.users.fetch(ticket.userId);
       const header = `Your **${config.label}** ticket has been closed by ${closer.user.tag}.`;
       const dmText = [
@@ -1615,7 +1635,7 @@ async function finalizeTicketCloseImpl(
         });
       }
 
-      await opener.send({
+      const dm = await opener.send({
         embeds: [dmEmbed],
         nonce: ticketResolutionNonce(
           "td",
@@ -1624,18 +1644,20 @@ async function finalizeTicketCloseImpl(
         ),
         enforceNonce: true,
       });
+      ticket.pendingClose.dmMessageId = dm.id;
+      addTicket(guild.id, ticket);
       dmDelivered = true;
-      if (persisted) {
-        const dmMarker = await apiUpdateTicket({
-          discordChannelId: channel.id,
-          action: "resolution-dm-delivered",
-        });
-        if (!dmMarker) {
-          console.warn(
-            `Ticket #${paddedNum} DM was sent, but its delivery marker did not persist.`,
-          );
-        }
-      }
+    }
+    if (!dmMarkerRecorded && ticket.pendingClose?.dmMessageId) {
+      const dmMarker = await apiUpdateTicket({
+        ticketNumber: apiTicketNumber,
+        discordChannelId: channel.id,
+        action: "resolution-dm-delivered",
+        messageId: ticket.pendingClose.dmMessageId,
+      });
+      dmMarkerRecorded = Boolean(dmMarker?.ok);
+      dmDelivered = dmDelivered || dmMarkerRecorded;
+      if (!dmMarkerRecorded) console.warn(`Ticket #${paddedNum} DM was sent, but its delivery marker did not persist; retaining retry intent.`);
     }
   } catch (err) {
     console.warn(
@@ -1679,7 +1701,11 @@ async function finalizeTicketCloseImpl(
   }
 
   // The transcript and player DM preserve the outcome after channel deletion.
-  if (channelClosed) removeTicket(guild.id, channel.id);
+  // If DM delivery or its marker is still pending, retain the outbox even
+  // though the resolved channel is gone. The periodic retry records any
+  // known message ID, while the API's pending-resolution sweep handles sends
+  // that Discord rejected (for example, closed DMs).
+  if (channelClosed && dmMarkerRecorded) removeTicket(guild.id, channel.id);
   return {
     ticketUpdated: Boolean(persisted),
     receiptLinkAvailable: Boolean(receiptUrl),
@@ -1697,15 +1723,21 @@ export async function retryPendingTicketLifecycle(guild: Guild): Promise<void> {
     activeLifecycleRetries.add(key);
     try {
       if (ticket.pendingClose) {
-        const channel = await guild.channels.fetch(ticket.channelId).catch(() => null);
-        if (channel?.type === ChannelType.GuildText) {
-          const closer = await guild.members.fetch(ticket.pendingClose.closerId).catch(() => null);
-          if (closer) {
-            await finalizeTicketClose(channel, closer, ticket, ticket.pendingClose.resolution).catch((error) =>
-              console.error(`Pending close retry failed for #${ticket.ticketNumber}:`, error),
-            );
-          }
-        } else {
+        const fetched = await fetchChannelForLifecycleRetry(guild, ticket.channelId);
+        if (fetched.error || (!fetched.channel && !fetched.missing)) {
+          console.error(`Could not verify ticket channel #${ticket.ticketNumber}; retaining close intent.`, fetched.error);
+          continue;
+        }
+        if (fetched.channel?.type === ChannelType.GuildText) {
+          const closer = await guild.members.fetch(ticket.pendingClose.closerId).catch(() => null) ?? {
+            id: ticket.pendingClose.closerId,
+            user: { tag: ticket.pendingClose.closerTag },
+            client: guild.client,
+          } as GuildMember;
+          await finalizeTicketClose(fetched.channel, closer, ticket, ticket.pendingClose.resolution).catch((error) =>
+            console.error(`Pending close retry failed for #${ticket.ticketNumber}:`, error),
+          );
+        } else if (fetched.missing) {
           const saved = await apiUpdateTicket({
             ticketNumber: ticket.apiTicketNumber ?? ticket.ticketNumber,
             discordChannelId: ticket.channelId,
@@ -1713,18 +1745,45 @@ export async function retryPendingTicketLifecycle(guild: Guild): Promise<void> {
             closedBy: ticket.pendingClose.closerId,
             resolution: ticket.pendingClose.resolution,
           });
-          if (saved?.ok) removeTicket(guild.id, ticket.channelId);
+          if (!saved?.ok) continue;
+          let channelReceiptRecorded = Boolean(saved.channelUpdatePosted);
+          if (!channelReceiptRecorded && ticket.pendingClose.channelReceiptMessageId) {
+            const marker = await apiUpdateTicket({
+              ticketNumber: ticket.apiTicketNumber ?? ticket.ticketNumber,
+              discordChannelId: ticket.channelId,
+              action: "resolution-channel-delivered",
+              messageId: ticket.pendingClose.channelReceiptMessageId,
+            });
+            channelReceiptRecorded = Boolean(marker?.ok);
+          }
+          let dmRecorded = Boolean(saved.resolutionDelivered);
+          if (!dmRecorded && ticket.pendingClose.dmMessageId) {
+            const marker = await apiUpdateTicket({
+              ticketNumber: ticket.apiTicketNumber ?? ticket.ticketNumber,
+              discordChannelId: ticket.channelId,
+              action: "resolution-dm-delivered",
+              messageId: ticket.pendingClose.dmMessageId,
+            });
+            dmRecorded = Boolean(marker?.ok);
+          }
+          if (channelReceiptRecorded && dmRecorded) removeTicket(guild.id, ticket.channelId);
         }
       } else if (ticket.pendingMerge) {
-        const sourceChannel = await guild.channels.fetch(ticket.channelId).catch(() => null);
-        const targetChannel = await guild.channels.fetch(ticket.pendingMerge.targetChannelId).catch(() => null);
+        const sourceFetch = await fetchChannelForLifecycleRetry(guild, ticket.channelId);
+        const targetFetch = await fetchChannelForLifecycleRetry(guild, ticket.pendingMerge.targetChannelId);
+        if (sourceFetch.error || targetFetch.error || (!targetFetch.channel && !targetFetch.missing)) {
+          console.error(`Could not verify merge channels for #${ticket.ticketNumber}; retaining merge intent.`, sourceFetch.error ?? targetFetch.error);
+          continue;
+        }
+        const sourceChannel = sourceFetch.channel;
+        const targetChannel = targetFetch.channel;
         const targetTicket = getTicketByChannel(guild.id, ticket.pendingMerge.targetChannelId);
         const staff = await guild.members.fetch(ticket.pendingMerge.staffId).catch(() => null);
         if (sourceChannel?.type === ChannelType.GuildText && targetChannel?.type === ChannelType.GuildText && targetTicket && staff) {
           await mergeTickets(sourceChannel, targetChannel, ticket, targetTicket, staff, ticket.pendingMerge.reason).catch((error) =>
             console.error(`Pending merge retry failed for #${ticket.ticketNumber}:`, error),
           );
-        } else if (!sourceChannel && targetTicket) {
+        } else if (sourceFetch.missing && targetChannel && targetTicket) {
           const synchronized = await syncMergedTicket(ticket, targetTicket, ticket.pendingMerge.reason);
           if (synchronized) removeTicket(guild.id, ticket.channelId);
         }
@@ -1758,6 +1817,23 @@ async function appendMissingConversationEvidence(ticket: Ticket): Promise<void> 
 }
 
 const activeLifecycleRetries = new Set<string>();
+
+function isUnknownDiscordChannel(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const value = error as { code?: number | string; rawError?: { code?: number | string }; status?: number };
+  return [value.code, value.rawError?.code].some((code) => code === 10003 || code === "10003") ||
+    (value.status === 404 && /unknown channel/i.test(String((error as Error).message ?? "")));
+}
+
+async function fetchChannelForLifecycleRetry(guild: Guild, channelId: string) {
+  try {
+    const channel = await guild.channels.fetch(channelId);
+    return { channel: channel ?? null, missing: false, error: null };
+  } catch (error) {
+    if (isUnknownDiscordChannel(error)) return { channel: null, missing: true, error: null };
+    return { channel: null, missing: false, error };
+  }
+}
 
 /** Record unexpected channel removal without turning an active ticket into a resolution. */
 export async function recordMissingTicketConversation(channel: TextChannel): Promise<void> {

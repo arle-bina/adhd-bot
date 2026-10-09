@@ -48,7 +48,7 @@ function buildScene() {
       ),
     },
     user: { id: "u1", tag: "opener#0001" },
-    send: vi.fn(async () => undefined),
+    send: vi.fn(async () => ({ id: "dm-posted" })),
     client: { users: { fetch: vi.fn() } },
   };
   opener.client.users.fetch.mockResolvedValue(opener);
@@ -138,7 +138,7 @@ describe("handleTicketCloseModalSubmit", () => {
       expect.objectContaining({ action: "resolution-channel-delivered" }),
     );
     expect(ticketsApi.updateTicket).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "resolution-dm-delivered" }),
+      expect.objectContaining({ action: "resolution-dm-delivered", messageId: "dm-posted" }),
     );
     expect(channel.delete).toHaveBeenCalled();
     expect(channel.send).toHaveBeenCalledWith(
@@ -214,7 +214,7 @@ describe("handleTicketCloseModalSubmit", () => {
     });
   });
 
-  it("closes the ticket and DMs the outcome when its channel post fails", async () => {
+  it("keeps the ticket open when its channel receipt cannot be delivered", async () => {
     const { interaction, channel, ticket, opener } = buildScene();
     vi.mocked(ticketStore.getTicketByChannel).mockReturnValue(ticket as never);
     vi.mocked(channel.send as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
@@ -223,11 +223,12 @@ describe("handleTicketCloseModalSubmit", () => {
 
     await handleTicketCloseModalSubmit(interaction as never);
 
-    expect(ticketStore.removeTicket).toHaveBeenCalled();
-    expect(channel.delete).toHaveBeenCalled();
-    expect(opener.send).toHaveBeenCalled();
+    expect(ticketStore.removeTicket).not.toHaveBeenCalled();
+    expect(channel.delete).not.toHaveBeenCalled();
+    expect(opener.send).not.toHaveBeenCalled();
+    expect(ticket).toHaveProperty("pendingClose");
     expect(interaction.editReply).toHaveBeenCalledWith({
-      content: "Ticket closed. The opener was sent the final outcome via DM.",
+      content: "The channel could not be closed. Please retry; the staff transcript records the outcome.",
     });
   });
 
@@ -317,6 +318,58 @@ describe("handleTicketCloseModalSubmit", () => {
     expect(appends).toHaveLength(2);
     expect(appends[0]?.message?.discordMessageId).toBe("channel-deleted-42-c1");
     expect(appends[1]?.message?.discordMessageId).toBe("channel-deleted-42-c1");
+  });
+
+  it("retains a pending close when channel lookup fails transiently", async () => {
+    const ticket = {
+      userId: "u1",
+      category: "bug" as const,
+      channelId: "c1",
+      createdAt: new Date().toISOString(),
+      ticketNumber: 42,
+      pendingClose: {
+        closerId: "u1",
+        closerTag: "opener#0001",
+        resolution: "Done",
+        createdAt: "2026-10-09T12:00:00.000Z",
+      },
+    };
+    vi.mocked(ticketStore.getTickets).mockReturnValue({ c1: ticket } as never);
+    const guild = {
+      id: "g1",
+      channels: { fetch: vi.fn(async () => { throw Object.assign(new Error("Missing Access"), { code: 50013 }); }) },
+    };
+
+    await retryPendingTicketLifecycle(guild as never);
+
+    expect(ticketsApi.updateTicket).not.toHaveBeenCalled();
+    expect(ticketStore.removeTicket).not.toHaveBeenCalled();
+  });
+
+  it("only treats Discord Unknown Channel as proof a pending close channel disappeared", async () => {
+    const ticket = {
+      userId: "u1",
+      category: "bug" as const,
+      channelId: "c1",
+      createdAt: new Date().toISOString(),
+      ticketNumber: 42,
+      pendingClose: {
+        closerId: "u1",
+        closerTag: "opener#0001",
+        resolution: "Done",
+        createdAt: "2026-10-09T12:00:00.000Z",
+      },
+    };
+    vi.mocked(ticketStore.getTickets).mockReturnValue({ c1: ticket } as never);
+    const guild = {
+      id: "g1",
+      channels: { fetch: vi.fn(async () => { throw Object.assign(new Error("Unknown Channel"), { code: 10003 }); }) },
+    };
+
+    await retryPendingTicketLifecycle(guild as never);
+
+    expect(ticketsApi.updateTicket).toHaveBeenCalledWith(expect.objectContaining({ action: "close", ticketNumber: 42 }));
+    expect(ticketStore.removeTicket).not.toHaveBeenCalled();
   });
 
   it("does not post a second channel receipt when Ops already sent the final update", async () => {

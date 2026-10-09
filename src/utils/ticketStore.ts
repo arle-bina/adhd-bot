@@ -30,6 +30,8 @@ export interface Ticket {
   embedMessageId?: string;
   /** Persistent player-facing intake card, edited in place after each response. */
   intakeCardMessageId?: string;
+  /** Schema version of the currently adopted persistent intake controls. */
+  intakeCardVersion?: number;
   intakeCandidatePageUrl?: string;
   intakePageDescription?: string;
   intakeAwaitingReply?: "page" | "details" | null;
@@ -47,8 +49,12 @@ export interface Ticket {
   /** Durable close intent. Retained until the backend confirms close. */
   pendingClose?: {
     closerId: string;
+    closerTag: string;
     resolution: string;
     createdAt: string;
+    channelReceiptMessageId?: string;
+    dmMessageId?: string;
+    transcriptMessageId?: string;
   };
   pendingMerge?: {
     targetChannelId: string;
