@@ -266,59 +266,83 @@ export function ticketIntakeReactionAction(
   return null;
 }
 
-const pendingIntakeSyncs = new Set<string>();
+const ticketIntakeLocks = new Map<string, Promise<void>>();
+
+async function withTicketIntakeLock<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const previous = ticketIntakeLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => { release = resolve; });
+  ticketIntakeLocks.set(key, current);
+  await previous;
+  try {
+    return await work();
+  } finally {
+    release();
+    if (ticketIntakeLocks.get(key) === current) ticketIntakeLocks.delete(key);
+  }
+}
+
+function mergeTicketIntakeState(target: Ticket, source: Ticket): void {
+  if (Object.prototype.hasOwnProperty.call(source, "intakeCandidatePageUrl")) target.intakeCandidatePageUrl = source.intakeCandidatePageUrl;
+  if (Object.prototype.hasOwnProperty.call(source, "intakePageDescription")) target.intakePageDescription = source.intakePageDescription;
+  if (Object.prototype.hasOwnProperty.call(source, "intakeAwaitingReply")) target.intakeAwaitingReply = source.intakeAwaitingReply;
+  if (Object.prototype.hasOwnProperty.call(source, "intakeRevision")) target.intakeRevision = source.intakeRevision;
+  if (Object.prototype.hasOwnProperty.call(source, "intakeReceiptUrl")) target.intakeReceiptUrl = source.intakeReceiptUrl;
+  if (Object.prototype.hasOwnProperty.call(source, "intakePageConfirmed")) target.intakePageConfirmed = source.intakePageConfirmed;
+  if (Object.prototype.hasOwnProperty.call(source, "intakePlatformConfirmed")) target.intakePlatformConfirmed = source.intakePlatformConfirmed;
+  if (Object.prototype.hasOwnProperty.call(source, "intakePlatformLabel")) target.intakePlatformLabel = source.intakePlatformLabel;
+  if (Object.prototype.hasOwnProperty.call(source, "intakeGameVersion")) target.intakeGameVersion = source.intakeGameVersion;
+  if (Object.prototype.hasOwnProperty.call(source, "intakeClientVersion")) target.intakeClientVersion = source.intakeClientVersion;
+}
 
 async function flushPendingIntakeInteraction(
   guildId: string,
-  ticket: Ticket,
+  channelId: string,
   interactionId: string,
 ): Promise<boolean> {
+  const ticket = getTicketByChannel(guildId, channelId);
+  if (!ticket) return false;
   const pending = ticket.pendingIntakeInteractions?.find((item) => item.interactionId === interactionId);
   if (!pending) return ticket.intakeInteractionIds?.includes(interactionId) ?? false;
-  const syncKey = `${guildId}:${ticket.channelId}:${interactionId}`;
-  if (pendingIntakeSyncs.has(syncKey)) return false;
-  pendingIntakeSyncs.add(syncKey);
-  try {
-    let saved;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      saved = await apiUpdateTicket({
-        action: "intake",
-        ticketNumber: ticket.apiTicketNumber ?? ticket.ticketNumber,
-        discordChannelId: ticket.channelId,
-        intake: {
-          gameVersion: pending.gameVersion !== undefined ? pending.gameVersion : ticketApiVersion(ticket.intakeGameVersion),
-          clientVersion: pending.clientVersion !== undefined ? pending.clientVersion : ticketApiVersion(ticket.intakeClientVersion),
-        },
-        interaction: pending,
-      });
-      if (saved?.ok === true) break;
-      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
-    }
-    if (saved?.ok !== true) {
-      console.error(`Could not mirror intake interaction ${interactionId} for ticket #${ticket.ticketNumber}; it remains queued for retry`);
-      return false;
-    }
-
-    ticket.pendingIntakeInteractions = ticket.pendingIntakeInteractions?.filter((item) => item.interactionId !== interactionId);
-    ticket.intakeInteractionIds = [...(ticket.intakeInteractionIds ?? []), interactionId].slice(-100);
-    if (saved.intake) {
-      ticket.intakeCardMessageId = saved.intake.cardMessageId ?? ticket.intakeCardMessageId;
-      ticket.intakeReceiptUrl = saved.intake.receiptUrl ?? ticket.intakeReceiptUrl;
-      ticket.intakeCandidatePageUrl = saved.intake.candidatePageUrl ?? undefined;
-      ticket.intakePlatformLabel = saved.intake.platformLabel ?? undefined;
-      ticket.intakeGameVersion = saved.intake.gameVersion ?? undefined;
-      ticket.intakeClientVersion = saved.intake.clientVersion ?? undefined;
-      ticket.intakePageDescription = saved.intake.pageDescription ?? undefined;
-      ticket.intakeAwaitingReply = saved.intake.awaitingReply ?? null;
-      ticket.intakeRevision = saved.intake.revision ?? ticket.intakeRevision;
-      ticket.intakePageConfirmed = saved.intake.pageConfirmed ?? ticket.intakePageConfirmed;
-      ticket.intakePlatformConfirmed = saved.intake.platformConfirmed ?? ticket.intakePlatformConfirmed;
-    }
-    addTicket(guildId, ticket);
-    return true;
-  } finally {
-    pendingIntakeSyncs.delete(syncKey);
+  let saved;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    saved = await apiUpdateTicket({
+      action: "intake",
+      ticketNumber: ticket.apiTicketNumber ?? ticket.ticketNumber,
+      discordChannelId: ticket.channelId,
+      intake: {
+        gameVersion: pending.gameVersion !== undefined ? pending.gameVersion : ticketApiVersion(ticket.intakeGameVersion),
+        clientVersion: pending.clientVersion !== undefined ? pending.clientVersion : ticketApiVersion(ticket.intakeClientVersion),
+      },
+      interaction: pending,
+    });
+    if (saved?.ok === true) break;
+    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
   }
+  if (saved?.ok !== true) {
+    console.error(`Could not mirror intake interaction ${interactionId} for ticket #${ticket.ticketNumber}; it remains queued for retry`);
+    return false;
+  }
+
+  const latest = getTicketByChannel(guildId, channelId);
+  if (!latest) return false;
+  latest.pendingIntakeInteractions = latest.pendingIntakeInteractions?.filter((item) => item.interactionId !== interactionId);
+  latest.intakeInteractionIds = [...(latest.intakeInteractionIds ?? []), interactionId].slice(-100);
+  if (saved.intake) {
+    latest.intakeCardMessageId = saved.intake.cardMessageId ?? latest.intakeCardMessageId;
+    latest.intakeReceiptUrl = saved.intake.receiptUrl ?? latest.intakeReceiptUrl;
+    latest.intakeCandidatePageUrl = saved.intake.candidatePageUrl ?? undefined;
+    latest.intakePlatformLabel = saved.intake.platformLabel ?? undefined;
+    latest.intakeGameVersion = saved.intake.gameVersion ?? undefined;
+    latest.intakeClientVersion = saved.intake.clientVersion ?? undefined;
+    latest.intakePageDescription = saved.intake.pageDescription ?? undefined;
+    latest.intakeAwaitingReply = saved.intake.awaitingReply ?? null;
+    latest.intakeRevision = saved.intake.revision ?? latest.intakeRevision;
+    latest.intakePageConfirmed = saved.intake.pageConfirmed ?? latest.intakePageConfirmed;
+    latest.intakePlatformConfirmed = saved.intake.platformConfirmed ?? latest.intakePlatformConfirmed;
+  }
+  addTicket(guildId, latest);
+  return true;
 }
 
 export async function persistTicketIntakeInteraction(
@@ -328,37 +352,49 @@ export async function persistTicketIntakeInteraction(
   action: string,
   value?: string,
 ): Promise<boolean> {
-  if (ticket.intakeInteractionIds?.includes(interactionId)) return true;
-  if (!ticket.pendingIntakeInteractions?.some((item) => item.interactionId === interactionId)) {
-    const versions = normalizeTicketIntakeSeedVersions(ticket.intakeGameVersion, ticket.intakeClientVersion);
-    ticket.pendingIntakeInteractions = [
-      ...(ticket.pendingIntakeInteractions ?? []),
+  const lockKey = `${guildId}:${ticket.channelId}`;
+  const latest = getTicketByChannel(guildId, ticket.channelId) ?? { ...ticket };
+  mergeTicketIntakeState(latest, ticket);
+  if (latest.intakeInteractionIds?.includes(interactionId)) return true;
+  if (!latest.pendingIntakeInteractions?.some((item) => item.interactionId === interactionId)) {
+    const versions = normalizeTicketIntakeSeedVersions(latest.intakeGameVersion, latest.intakeClientVersion);
+    latest.pendingIntakeInteractions = [
+      ...(latest.pendingIntakeInteractions ?? []),
       {
         interactionId,
-        reporterDiscordId: ticket.userId,
+        reporterDiscordId: latest.userId,
         action: action as IntakeAction,
-        ...((action === "edit_details" ? ticket.intakePlatformLabel : value)
-          ? { value: action === "edit_details" ? ticket.intakePlatformLabel : value }
+        ...((action === "edit_details" ? latest.intakePlatformLabel : value)
+          ? { value: action === "edit_details" ? latest.intakePlatformLabel : value }
           : {}),
         ...versions,
       },
     ];
   }
-  addTicket(guildId, ticket);
-  await flushPendingIntakeInteractions(guildId, ticket);
-  return ticket.intakeInteractionIds?.includes(interactionId) ?? false;
+  addTicket(guildId, latest);
+
+  return withTicketIntakeLock(lockKey, async () => {
+    const current = getTicketByChannel(guildId, ticket.channelId);
+    if (!current) return false;
+    await flushPendingIntakeInteractionsUnlocked(guildId, current);
+    const afterSync = getTicketByChannel(guildId, ticket.channelId);
+    return afterSync?.intakeInteractionIds?.includes(interactionId) ?? false;
+  });
 }
 
-async function flushPendingIntakeInteractions(guildId: string, ticket: Ticket): Promise<void> {
+async function flushPendingIntakeInteractionsUnlocked(guildId: string, ticket: Ticket): Promise<void> {
   for (const pending of [...(ticket.pendingIntakeInteractions ?? [])]) {
-    const synced = await flushPendingIntakeInteraction(guildId, ticket, pending.interactionId);
+    const synced = await flushPendingIntakeInteraction(guildId, ticket.channelId, pending.interactionId);
     if (!synced) break;
   }
 }
 
 export async function retryPendingTicketIntake(guildId: string): Promise<void> {
   for (const ticket of Object.values(getTickets(guildId))) {
-    await flushPendingIntakeInteractions(guildId, ticket);
+    await withTicketIntakeLock(`${guildId}:${ticket.channelId}`, async () => {
+      const latest = getTicketByChannel(guildId, ticket.channelId);
+      if (latest) await flushPendingIntakeInteractionsUnlocked(guildId, latest);
+    });
   }
 }
 

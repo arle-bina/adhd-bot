@@ -13,6 +13,7 @@ vi.mock("../../src/utils/ticketStore.js", async (importOriginal) => {
       state.tickets[guildId] ??= {};
       state.tickets[guildId][ticket.channelId] = JSON.parse(JSON.stringify(ticket)) as Record<string, unknown>;
     }),
+    getTicketByChannel: vi.fn((guildId: string, channelId: string) => state.tickets[guildId]?.[channelId]),
     getTickets: vi.fn((guildId: string) => state.tickets[guildId] ?? {}),
   };
 });
@@ -95,5 +96,64 @@ describe("ticket intake sync outbox", () => {
     expect(synced.intakeInteractionIds).toEqual(["interaction-1", "interaction-2"]);
     expect(synced.intakeReceiptUrl).toBe("https://ops.lakesidegames.net/t/opaque");
     expect(synced.intakeClientVersion).toBe("2.3.4");
+  });
+
+  it("preserves an overlapping claim and newly queued interaction while an API write is in flight", async () => {
+    const ticket: Ticket = {
+      userId: "reporter-1",
+      category: "bug",
+      channelId: "channel-race",
+      createdAt: "2026-10-09T12:00:00.000Z",
+      ticketNumber: 1447,
+      apiTicketNumber: 1447,
+      intakeCandidatePageUrl: "https://ahousedividedgame.com/market",
+    };
+    let resolveFirst!: (value: unknown) => void;
+    let resolveSecond!: (value: unknown) => void;
+    let notifyStart!: () => void;
+    let notifySecondStart!: () => void;
+    const apiStarted = new Promise<void>((resolve) => { notifyStart = resolve; });
+    const secondApiStarted = new Promise<void>((resolve) => { notifySecondStart = resolve; });
+    state.updateTicket
+      .mockImplementationOnce(() => {
+        notifyStart();
+        return new Promise((resolve) => { resolveFirst = resolve; });
+      })
+      .mockImplementationOnce(() => {
+        notifySecondStart();
+        return new Promise((resolve) => { resolveSecond = resolve; });
+      });
+
+    const first = persistTicketIntakeInteraction("guild-1", ticket, "interaction-first", "confirm_page");
+    await apiStarted;
+
+    const inFlightRecord = state.tickets["guild-1"]["channel-race"] as Ticket;
+    inFlightRecord.claimedByUserId = "staff-7";
+    state.tickets["guild-1"]["channel-race"] = JSON.parse(JSON.stringify(inFlightRecord)) as Ticket;
+    const secondTicket = { ...inFlightRecord, intakePlatformLabel: "iOS Safari" };
+    const second = persistTicketIntakeInteraction("guild-1", secondTicket, "interaction-second", "edit_details");
+    await Promise.resolve();
+    expect(state.updateTicket).toHaveBeenCalledTimes(1);
+    expect((state.tickets["guild-1"]["channel-race"] as Ticket).pendingIntakeInteractions?.map((item) => item.interactionId))
+      .toEqual(["interaction-first", "interaction-second"]);
+
+    resolveFirst({ ok: true, intake: { pageConfirmed: true, candidatePageUrl: "https://ahousedividedgame.com/market" } });
+    await secondApiStarted;
+    await expect(first).resolves.toBe(true);
+    const afterFirstAck = state.tickets["guild-1"]["channel-race"] as Ticket;
+    expect(afterFirstAck.claimedByUserId).toBe("staff-7");
+    expect(afterFirstAck.pendingIntakeInteractions?.map((item) => item.interactionId)).toEqual(["interaction-second"]);
+    expect(afterFirstAck.intakeInteractionIds).toEqual(["interaction-first"]);
+
+    resolveSecond({ ok: true, intake: { platformLabel: "iOS Safari" } });
+    await expect(second).resolves.toBe(true);
+
+    const latest = state.tickets["guild-1"]["channel-race"] as Ticket;
+    expect(latest.claimedByUserId).toBe("staff-7");
+    expect(latest.intakeInteractionIds).toEqual(["interaction-first", "interaction-second"]);
+    expect(latest.pendingIntakeInteractions).toEqual([]);
+    expect(state.updateTicket.mock.calls.map(([payload]) => payload.interaction.interactionId))
+      .toEqual(["interaction-first", "interaction-second"]);
+    expect(state.updateTicket.mock.calls[1]?.[0].interaction.value).toBe("iOS Safari");
   });
 });
