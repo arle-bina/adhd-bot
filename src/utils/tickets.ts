@@ -325,6 +325,7 @@ export async function reconcileTicketChannels(guild: Guild): Promise<void> {
           ?.value;
       const reporter = field("Reporter") ?? field("Opened by");
       const reporterId = reporter?.match(/\d{15,22}/)?.[0];
+      const claimedById = field("Claimed by")?.match(/\d{15,22}/)?.[0];
       const reporterPermission = channel.permissionOverwrites.cache.find(
         (overwrite) =>
           overwrite.type === 1 && overwrite.id !== guild.client.user?.id,
@@ -362,6 +363,9 @@ export async function reconcileTicketChannels(guild: Guild): Promise<void> {
         ...(description ? { description } : {}),
         ...((platform ?? previous?.platform)
           ? { platform: platform ?? previous?.platform }
+          : {}),
+        ...(claimedById && !previous?.claimedByUserId
+          ? { claimedByUserId: claimedById }
           : {}),
         ...(opening ? { embedMessageId: opening.id } : {}),
         apiTicketNumber: ticketNumber,
