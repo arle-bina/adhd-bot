@@ -15,6 +15,8 @@ import {
   extractTicketLinkTarget,
   ticketCandidatePage,
   ticketReceiptUrlFromField,
+  intakePageDescriptionFromField,
+  ticketReceiptNeedsAnnouncement,
 } from "../../src/utils/tickets.js";
 
 const ticket = {
@@ -171,5 +173,36 @@ describe("persistent ticket intake card", () => {
     expect(ticketIntakeReactionAction({ ...ticket, intakeAwaitingReply: "page" }, "✅")).toBeNull();
     expect(ticketIntakeReactionAction({ ...ticket, intakeAwaitingReply: "page" }, "❌")).toBeNull();
     expect(ticketIntakeReactionAction({ ...ticket, intakePageConfirmed: true }, "✅")).toBeNull();
+  });
+
+  it("never reads the card's own placeholder or prompt back as the player's page (ticket 1448)", () => {
+    expect(intakePageDescriptionFromField("No page detected · confirm or replace the suggested page · optional to confirm · optional to confirm")).toBeUndefined();
+    expect(intakePageDescriptionFromField("No page detected yet · paste a link or describe it")).toBeUndefined();
+    expect(intakePageDescriptionFromField("Which page or menu is affected? Reply here.")).toBeUndefined();
+    expect(intakePageDescriptionFromField("The market tab · optional to confirm · optional to confirm")).toBe("The market tab");
+    expect(intakePageDescriptionFromField("The market tab · confirmed")).toBe("The market tab");
+    expect(intakePageDescriptionFromField(null)).toBeUndefined();
+  });
+
+  it("renders the no-page card the same way however many recovery passes re-read it", () => {
+    const bare = { ...ticket, description: "Numbers do not add up.", intakeCandidatePageUrl: undefined };
+    const pageField = (t: typeof bare & { intakePageDescription?: string }) =>
+      buildTicketIntakeCardEmbed(t).data.fields?.find((f) => f.name === "Affected page / issue")?.value;
+    const first = pageField(bare);
+    let current: typeof bare & { intakePageDescription?: string } = bare;
+    for (let pass = 0; pass < 3; pass++) {
+      current = { ...current, intakePageDescription: intakePageDescriptionFromField(pageField(current)) };
+    }
+    expect(pageField(current)).toBe(first);
+    expect(first).not.toMatch(/optional to confirm.*optional to confirm/);
+  });
+
+  it("announces a receipt that was missing at creation exactly once", () => {
+    expect(ticketReceiptNeedsAnnouncement({ intakeReceiptPending: true })).toBe(false);
+    expect(ticketReceiptNeedsAnnouncement({ intakeReceiptPending: true, intakeReceiptUrl: "https://ops.example/t/opaque" })).toBe(true);
+    expect(ticketReceiptNeedsAnnouncement({ intakeReceiptPending: false, intakeReceiptUrl: "https://ops.example/t/opaque" })).toBe(false);
+    expect(ticketReceiptNeedsAnnouncement({ intakeReceiptUrl: "https://ops.example/t/opaque" })).toBe(false);
+    // A pending announcement keeps the recovery pass running until it posts.
+    expect(ticketIntakeCardNeedsRefresh({ ticketNumber: 1448, apiTicketNumber: 1448, intakeCardVersion: 2, intakeReceiptUrl: "https://ops.example/t/opaque", intakeSeeded: true, intakeReceiptPending: true }, 1448)).toBe(true);
   });
 });
