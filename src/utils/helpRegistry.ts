@@ -38,7 +38,14 @@ export const categories: Category[] = [
     emoji: "👤",
     color: 0x5865f2,
     description: "Look up politicians, compare them, and see how they rank.",
-    commands: ["profile", "leaderboard", "compare", "investor", "blackjack"],
+    commands: ["profile", "leaderboard", "compare", "investor"],
+  },
+  {
+    label: "Casino",
+    emoji: "🎰",
+    color: 0x0d3b2c,
+    description: "Play with your character's cash. Every game pays in your home currency.",
+    commands: ["casino", "blackjack", "slots", "roulette", "crash", "craps", "highlow", "race", "lottery", "poker"],
   },
   {
     label: "Politics",
@@ -153,10 +160,41 @@ export const extras: Record<string, HelpExtras> = {
     examples: ["/investor name:John Smith", "/investor user:@RainFrog", "/investor"],
     details: "Omit all options to look up yourself.",
   },
+  casino: {
+    examples: ["/casino"],
+    details: "The casino bank every house game pays from, your table limits, and the return each game pays over time.",
+  },
   blackjack: {
     examples: ["/blackjack pool", "/blackjack play wager:1000"],
     details:
-      "The wager is deducted when the hand starts and resolved when it ends. Natural blackjack pays 3:2.",
+      "The wager is deducted when the hand starts and resolved when it ends. Natural blackjack pays 3:2, less the house edge on winnings.",
+  },
+  slots: { examples: ["/slots stake:5000"], details: "Three reels. Three diamonds and a wild is the top line at 288x." },
+  roulette: {
+    examples: ["/roulette bet:Red stake:5000", "/roulette bet:Single number stake:1000 number:17"],
+    details: "Single-zero wheel. Zero loses every outside bet.",
+  },
+  crash: {
+    examples: ["/crash target:2 stake:5000"],
+    details: "Pick a cash-out multiplier first. If the rocket reaches it you are paid that multiple; if it crashes first you lose the stake.",
+  },
+  craps: { examples: ["/craps bet:Pass line stake:5000"], details: "The dice are rolled to a result in one go." },
+  highlow: {
+    examples: ["/highlow stake:5000"],
+    details: "Call each next card higher or lower; a tie loses. Cash out any time after a correct call. Idle hands cash out after ten minutes.",
+  },
+  race: {
+    examples: ["/race start", "/race bet racer:Dragon stake:5000"],
+    details: "Winners split everything bet on the race, less a 5% house cut. If nobody backed the winner, every stake is refunded.",
+  },
+  lottery: {
+    examples: ["/lottery buy tier:Low rollers tickets:5", "/lottery status"],
+    details: "Each draw runs for a day. One ticket wins 90% of the pot; more tickets mean better odds.",
+  },
+  poker: {
+    examples: ["/poker buyin:100000", "/poker buyin:100000 seats:4"],
+    details:
+      "No-limit hold'em against other players. The table pays out by final chip count; winners pay 5% of their profit. Blinds double every ten hands.",
   },
   elections: { examples: ["/elections", "/elections country:US state:CA"] },
   election: {

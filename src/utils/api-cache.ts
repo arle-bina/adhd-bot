@@ -14,6 +14,7 @@ const DENY_PREFIXES = [
   "/api/discord-bot/password-resets",
   "/api/discord-bot/broadcast-dms",
   "/api/discord-bot/blackjack",
+  "/api/discord-bot/casino",
   "/api/discord-bot/channel-config",
   "/api/discord-bot/ticket",
   "/api/tickets",

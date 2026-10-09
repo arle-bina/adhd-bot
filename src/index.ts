@@ -81,6 +81,7 @@ const __dirname = dirname(__filename);
 import { handleAskContinuation } from "./utils/ask-continuation.js";
 import { startAskWatchPoller } from "./utils/ask-watches.js";
 import { startPrefsNotifier } from "./utils/prefsNotifier.js";
+import { startCasinoScheduler } from "./utils/casinoScheduler.js";
 import { handleFeatureComponent } from "./utils/featureComponents.js";
 import { handleComponent as handlePrefsComponent } from "./commands/settings.js";
 import type { AutocompleteInteraction } from "discord.js";
@@ -174,6 +175,9 @@ client.once("ready", () => {
 
   // Learn which channels have a summoned Keir session, so only those are watched.
   startSummonRefresh();
+
+  // Draw lotteries at close and any race whose command process is gone.
+  startCasinoScheduler(client);
 
   // Load news/suggestions channel IDs from game config (admin panel webhook config)
   refreshChannelConfig();
