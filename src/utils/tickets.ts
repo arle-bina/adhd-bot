@@ -244,6 +244,22 @@ export function ticketReceiptUrlFromField(value?: string): string | undefined {
   }
 }
 
+const INTAKE_PAGE_STATUS_SUFFIX = /(?:\s*·\s*(?:confirmed|optional to confirm|please confirm))+\s*$/i;
+const INTAKE_PAGE_PLACEHOLDERS = [/^no page detected\b/i, /^which page or menu is affected\?/i];
+
+/**
+ * The player's own page description from an intake card's page field. The
+ * card's placeholder and reply prompt are the bot's words, not the player's:
+ * reading them back as a description made every recovery pass append another
+ * status suffix and let a ✅ "confirm" the placeholder as the page (ticket 1448).
+ */
+export function intakePageDescriptionFromField(value?: string | null): string | undefined {
+  if (!value) return undefined;
+  const text = value.replace(INTAKE_PAGE_STATUS_SUFFIX, "").trim();
+  if (!text || INTAKE_PAGE_PLACEHOLDERS.some((pattern) => pattern.test(text))) return undefined;
+  return text;
+}
+
 export function normalizeTicketPlatformLabel(value?: string | null): string {
   const label = String(value || "").toLowerCase();
   if (/android/.test(label)) return "Android";
@@ -261,7 +277,7 @@ function intakeEmbed(ticket: NonNullable<ReturnType<typeof getTicketByChannel>>,
   const retained = existing.filter((field) => !["Intake", "Affected page / issue", "Affected page", "Page to confirm", "Platform to confirm", "Platform and versions", "Receipt"].includes(field.name));
   embed.setFields([...retained,
     { name: "Intake", value: ticket.intakeAwaitingReply === "page" ? "Which page or menu is affected? Reply here." : ticket.intakePageConfirmed && ticket.intakePlatformConfirmed ? "Details confirmed" : `Page ${ticket.intakePageConfirmed ? "confirmed" : "optional to confirm"} · platform ${ticket.intakePlatformConfirmed ? "confirmed" : "optional to confirm"}`, inline: false },
-    { name: "Affected page / issue", value: ticket.intakeAwaitingReply === "page" ? "Which page or menu is affected? Reply here." : ticket.intakePageDescription ? `${ticket.intakePageDescription.slice(0, 900)} · ${ticket.intakePageConfirmed ? "confirmed" : "optional to confirm"}` : page ? `[${page}](${page}) · ${ticket.intakePageConfirmed ? "confirmed" : "optional to confirm"}` : "No page detected · confirm or replace the suggested page", inline: false },
+    { name: "Affected page / issue", value: ticket.intakeAwaitingReply === "page" ? "Which page or menu is affected? Reply here." : ticket.intakePageDescription ? `${ticket.intakePageDescription.slice(0, 900)} · ${ticket.intakePageConfirmed ? "confirmed" : "optional to confirm"}` : page ? `[${page}](${page}) · ${ticket.intakePageConfirmed ? "confirmed" : "optional to confirm"}` : "No page detected yet · paste a link or describe it", inline: false },
     { name: "Platform and versions", value: [ticket.intakePlatformLabel ?? (ticket.platform ? formatTicketPlatform(ticket.platform) : "Platform unknown"), `Game: ${ticket.intakeGameVersion ?? "version unknown"}`, `Client: ${ticket.intakeClientVersion ?? "version unknown"}`, `Status: ${ticket.intakePlatformConfirmed ? "confirmed" : "please confirm"}`].join("\n"), inline: false },
     { name: "Receipt", value: ticket.intakeReceiptUrl ? `[View ticket receipt](${ticket.intakeReceiptUrl})` : "Receipt link is being prepared", inline: false },
   ]);
@@ -814,14 +830,15 @@ export function ticketNumberFromChannelName(name: string): number | null {
 }
 
 export function ticketIntakeCardNeedsRefresh(
-  previous: { ticketNumber?: number; apiTicketNumber?: number; intakeCardVersion?: number; intakeReceiptUrl?: string; intakeSeeded?: boolean },
+  previous: { ticketNumber?: number; apiTicketNumber?: number; intakeCardVersion?: number; intakeReceiptUrl?: string; intakeSeeded?: boolean; intakeReceiptPending?: boolean },
   ticketNumber: number,
 ): boolean {
   return previous.ticketNumber !== ticketNumber
     || previous.apiTicketNumber !== ticketNumber
     || previous.intakeCardVersion !== 2
     || previous.intakeSeeded !== true
-    || !previous.intakeReceiptUrl;
+    || !previous.intakeReceiptUrl
+    || previous.intakeReceiptPending === true;
 }
 
 export function normalizeTicketIntakeSeedVersions(
@@ -859,6 +876,13 @@ export function buildTicketIntakeSeedPayload(
       ),
     },
   };
+}
+
+/** A receipt that was missing at creation has been found and not yet posted. */
+export function ticketReceiptNeedsAnnouncement(
+  ticket: Pick<Ticket, "intakeReceiptPending" | "intakeReceiptUrl">,
+): boolean {
+  return ticket.intakeReceiptPending === true && Boolean(ticket.intakeReceiptUrl);
 }
 
 export function markTicketIntakeSeeded(
@@ -959,7 +983,7 @@ export async function reconcileTicketChannels(guild: Guild): Promise<void> {
         ...(opening ? { embedMessageId: opening.id } : {}),
         ...(card ? { intakeCardMessageId: card.id } : {}),
         ...(candidateMatch ? { intakeCandidatePageUrl: candidateMatch } : {}),
-        ...(pageField && !candidateMatch ? { intakePageDescription: pageField.replace(/\s*·\s*(?:confirmed|please confirm)\s*$/i, "") } : {}),
+        ...(pageField && !candidateMatch ? { intakePageDescription: intakePageDescriptionFromField(pageField) } : {}),
         ...(intakeStatus.includes("waiting for your corrected") ? { intakeAwaitingReply: "page" as const } : {}),
         ...(receiptMatch ? { intakeReceiptUrl: receiptMatch } : {}),
         ...(envLines[0] ? { intakePlatformLabel: normalizeTicketPlatformLabel(envLines[0]) } : {}),
@@ -979,7 +1003,7 @@ export async function reconcileTicketChannels(guild: Guild): Promise<void> {
           stored.intakeCardMessageId = serverIntake?.cardMessageId ?? card.id;
           stored.intakeReceiptUrl = serverIntake?.receiptUrl ?? stored.intakeReceiptUrl;
           stored.intakeCandidatePageUrl = serverIntake ? serverIntake.candidatePageUrl ?? undefined : stored.intakeCandidatePageUrl ?? suggestion?.candidatePageUrl ?? undefined;
-          stored.intakePageDescription = serverIntake ? serverIntake.pageDescription ?? undefined : stored.intakePageDescription;
+          stored.intakePageDescription = intakePageDescriptionFromField(serverIntake ? serverIntake.pageDescription : stored.intakePageDescription);
           stored.intakePlatformLabel = serverIntake?.platformLabel ?? stored.intakePlatformLabel ?? (suggestion?.platformLabel ? normalizeTicketPlatformLabel(suggestion.platformLabel) : undefined);
           stored.intakeGameVersion = serverIntake ? serverIntake.gameVersion ?? undefined : stored.intakeGameVersion ?? suggestion?.gameVersion ?? undefined;
           stored.intakeClientVersion = serverIntake ? serverIntake.clientVersion ?? undefined : stored.intakeClientVersion ?? suggestion?.clientVersion ?? undefined;
@@ -1009,6 +1033,21 @@ export async function reconcileTicketChannels(guild: Guild): Promise<void> {
           });
           if (markTicketIntakeSeeded(stored, seeded, cardUpdated)) {
             addTicket(guild.id, stored);
+          }
+          if (cardUpdated && ticketReceiptNeedsAnnouncement(stored)) {
+            // Card edits do not notify, so a receipt filled in after creation
+            // would otherwise arrive silently (ticket 1448).
+            const announced = await channel.send({
+              content: `Your ticket receipt: ${stored.intakeReceiptUrl}`,
+              allowedMentions: { parse: [] },
+            }).then(() => true).catch((error) => {
+              console.error(`Could not announce the receipt for ticket #${ticketNumber}:`, error);
+              return false;
+            });
+            if (announced) {
+              stored.intakeReceiptPending = false;
+              addTicket(guild.id, stored);
+            }
           }
           if (!card.reactions.cache.some((item) => item.emoji.name === "✅")) await card.react("✅").catch(() => {});
           if (!card.reactions.cache.some((item) => item.emoji.name === "❌")) await card.react("❌").catch(() => {});
@@ -1301,8 +1340,13 @@ export async function createTicket(
             if (receiptUrl) break;
           }
           const failedMessages: string[] = [];
-          if (receiptUrl) {
-            ticketRecord.intakeReceiptUrl = receiptUrl;
+          // The visit context, the intake seed and the Details-needed questions
+          // do not depend on the receipt. Gating them on it skipped all three
+          // whenever the lookup failed (ticket 1448). The backend accepts the
+          // receipt later; recovery fills it in and announces it once.
+          if (receiptUrl) ticketRecord.intakeReceiptUrl = receiptUrl;
+          else ticketRecord.intakeReceiptPending = true;
+          {
             const intakeContext = await getTicketIntakeContext(res.ticketNumber, channel.id);
             const suggestion = intakeContext?.intakeSuggestion;
             ticketRecord.intakeCandidatePageUrl = ticketRecord.intakeCandidatePageUrl ?? suggestion?.candidatePageUrl ?? undefined;
@@ -1329,12 +1373,13 @@ export async function createTicket(
                 components: [buildTicketActionRow(false), buildIntakeActionRow(ticketNumber, ticketRecord)],
               }).then(() => {
                 markTicketIntakeSeeded(ticketRecord, intakeSeed, true);
-              }).catch(() => failedMessages.push("the receipt link on the intake card"));
+              }).catch(() => failedMessages.push("the intake card"));
             } else {
-              failedMessages.push("the receipt link on the intake card");
+              failedMessages.push("the intake card");
             }
             addTicket(guild.id, ticketRecord);
-          } else {
+          }
+          if (!receiptUrl) {
             console.error(
               `Receipt link unavailable for newly created ticket #${res.ticketNumber}`,
             );

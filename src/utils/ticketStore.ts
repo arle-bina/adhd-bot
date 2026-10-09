@@ -39,6 +39,8 @@ export interface Ticket {
   intakeAwaitingReply?: "page" | "details" | null;
   intakeRevision?: number;
   intakeReceiptUrl?: string;
+  /** The receipt link was missing at creation; recovery posts it once when found. */
+  intakeReceiptPending?: boolean;
   intakePageConfirmed?: boolean;
   intakePlatformConfirmed?: boolean;
   intakePlatformLabel?: string;
