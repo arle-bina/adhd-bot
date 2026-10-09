@@ -93,12 +93,19 @@ export function getTicketByNumber(guildId: string, ticketNumber: number): Ticket
   return Object.values(tickets).find((t) => t.ticketNumber === ticketNumber);
 }
 
-export function getNextTicketNumber(guildId: string): number {
+export function getTicketNumberFloor(guildId: string): number {
   const data = loadData();
-  const next = (data.counters[guildId] ?? 0) + 1;
-  data.counters[guildId] = next;
+  return Object.values(data.tickets[guildId] ?? {}).reduce(
+    (floor, ticket) => Math.max(floor, ticket.ticketNumber),
+    data.counters[guildId] ?? 0,
+  );
+}
+
+/** Remember a number reserved by the shared game counter or imported from Discord. */
+export function setTicketNumberFloor(guildId: string, floor: number): void {
+  const data = loadData();
+  data.counters[guildId] = Math.max(data.counters[guildId] ?? 0, floor);
   saveData(data);
-  return next;
 }
 
 export const MAX_TICKETS_PER_CATEGORY = 3;

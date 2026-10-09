@@ -32,6 +32,7 @@ import {
   TICKET_CLAIM_BUTTON_ID,
   handleClaimTicket,
   closeTicketChannel,
+  reconcileTicketChannels,
 } from "./utils/tickets.js";
 import {
   getChannelConfig,
@@ -166,6 +167,12 @@ client.once("ready", () => {
     activities: [{ name: "/ticket for support", type: ActivityType.Custom }],
     status: "online",
   });
+
+  for (const guild of client.guilds.cache.values()) {
+    void reconcileTicketChannels(guild).catch((error) => {
+      console.error(`Ticket channel reconciliation failed for guild ${guild.id}:`, error);
+    });
+  }
 
   // Deliver fired Ask watchlist alerts by DM.
   startAskWatchPoller(client);
