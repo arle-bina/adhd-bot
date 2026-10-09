@@ -53,7 +53,7 @@ describe("ticket intake sync outbox", () => {
     await vi.runAllTimersAsync();
     await expect(firstAttempt).resolves.toBe(false);
 
-    const persisted = state.tickets["guild-1"]["channel-1446"] as Ticket;
+    const persisted = state.tickets["guild-1"]["channel-1446"] as unknown as Ticket;
     expect(persisted.pendingIntakeInteractions).toEqual([{
       interactionId: "interaction-1",
       reporterDiscordId: "reporter-1",
@@ -83,7 +83,7 @@ describe("ticket intake sync outbox", () => {
     }));
     await retryPendingTicketIntake("guild-1");
 
-    const synced = state.tickets["guild-1"]["channel-1446"] as Ticket;
+    const synced = state.tickets["guild-1"]["channel-1446"] as unknown as Ticket;
     expect(state.updateTicket.mock.calls.slice(-2).map(([payload]) => payload.interaction.interactionId))
       .toEqual(["interaction-1", "interaction-2"]);
     expect(state.updateTicket.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({
@@ -127,20 +127,20 @@ describe("ticket intake sync outbox", () => {
     const first = persistTicketIntakeInteraction("guild-1", ticket, "interaction-first", "confirm_page");
     await apiStarted;
 
-    const inFlightRecord = state.tickets["guild-1"]["channel-race"] as Ticket;
+    const inFlightRecord = state.tickets["guild-1"]["channel-race"] as unknown as Ticket;
     inFlightRecord.claimedByUserId = "staff-7";
-    state.tickets["guild-1"]["channel-race"] = JSON.parse(JSON.stringify(inFlightRecord)) as Ticket;
+    state.tickets["guild-1"]["channel-race"] = JSON.parse(JSON.stringify(inFlightRecord)) as Record<string, unknown>;
     const secondTicket = { ...inFlightRecord, intakePlatformLabel: "iOS Safari" };
     const second = persistTicketIntakeInteraction("guild-1", secondTicket, "interaction-second", "edit_details");
     await Promise.resolve();
     expect(state.updateTicket).toHaveBeenCalledTimes(1);
-    expect((state.tickets["guild-1"]["channel-race"] as Ticket).pendingIntakeInteractions?.map((item) => item.interactionId))
+    expect((state.tickets["guild-1"]["channel-race"] as unknown as Ticket).pendingIntakeInteractions?.map((item) => item.interactionId))
       .toEqual(["interaction-first", "interaction-second"]);
 
     resolveFirst({ ok: true, intake: { pageConfirmed: true, candidatePageUrl: "https://ahousedividedgame.com/market" } });
     await secondApiStarted;
     await expect(first).resolves.toBe(true);
-    const afterFirstAck = state.tickets["guild-1"]["channel-race"] as Ticket;
+    const afterFirstAck = state.tickets["guild-1"]["channel-race"] as unknown as Ticket;
     expect(afterFirstAck.claimedByUserId).toBe("staff-7");
     expect(afterFirstAck.pendingIntakeInteractions?.map((item) => item.interactionId)).toEqual(["interaction-second"]);
     expect(afterFirstAck.intakeInteractionIds).toEqual(["interaction-first"]);
@@ -148,7 +148,7 @@ describe("ticket intake sync outbox", () => {
     resolveSecond({ ok: true, intake: { platformLabel: "iOS Safari" } });
     await expect(second).resolves.toBe(true);
 
-    const latest = state.tickets["guild-1"]["channel-race"] as Ticket;
+    const latest = state.tickets["guild-1"]["channel-race"] as unknown as Ticket;
     expect(latest.claimedByUserId).toBe("staff-7");
     expect(latest.intakeInteractionIds).toEqual(["interaction-first", "interaction-second"]);
     expect(latest.pendingIntakeInteractions).toEqual([]);
