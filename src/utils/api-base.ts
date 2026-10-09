@@ -121,24 +121,37 @@ async function apiFetchUncached<T>(pathname: string, params?: Record<string, str
 
 /** Rate-limited GET request to the ops dashboard's machine-only ticket API. */
 export async function opsApiFetch<T>(pathname: string): Promise<T> {
-  const baseUrl = process.env.OPS_DASHBOARD_URL;
+  const configuredBaseUrl = process.env.OPS_DASHBOARD_URL;
+  const baseUrl = configuredBaseUrl || "https://ops.lakesidegames.net";
   const token = process.env.DISCORD_BOT_TOKEN;
-  if (!baseUrl || !token) {
+  if (!token) {
     throw new Error("Ops dashboard ticket link configuration is missing");
   }
-  const url = new URL(pathname, baseUrl);
+  const canonicalBaseUrl = "https://ops.lakesidegames.net";
+  const configuredUrl = new URL(pathname, baseUrl);
+  const canonicalUrl = new URL(pathname, canonicalBaseUrl);
 
-  await acquire();
-  try {
-    const response = await fetch(url.toString(), {
-      headers: { Authorization: `Bot ${token}` },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    if (!response.ok) await throwApiError(response, pathname);
-    return response.json() as Promise<T>;
-  } finally {
-    release();
+  const request = async (url: URL): Promise<Response> => {
+    await acquire();
+    try {
+      return await fetch(url.toString(), {
+        headers: { Authorization: `Bot ${token}` },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+    } finally {
+      release();
+    }
+  };
+
+  let response = await request(configuredUrl);
+  const needsCanonicalRetry = [401, 403, 404].includes(response.status)
+    && configuredUrl.origin !== canonicalUrl.origin;
+  if (needsCanonicalRetry) {
+    await response.body?.cancel().catch(() => {});
+    response = await request(canonicalUrl);
   }
+  if (!response.ok) await throwApiError(response, pathname);
+  return response.json() as Promise<T>;
 }
 
 /** Rate-limited GET request without auth (public endpoints). */

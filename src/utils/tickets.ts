@@ -689,6 +689,16 @@ export function ticketNumberFromChannelName(name: string): number | null {
   return Number.isSafeInteger(number) && number > 0 ? number : null;
 }
 
+export function ticketIntakeCardNeedsRefresh(
+  previous: { ticketNumber?: number; apiTicketNumber?: number; intakeCardVersion?: number; intakeReceiptUrl?: string },
+  ticketNumber: number,
+): boolean {
+  return previous.ticketNumber !== ticketNumber
+    || previous.apiTicketNumber !== ticketNumber
+    || previous.intakeCardVersion !== 2
+    || !previous.intakeReceiptUrl;
+}
+
 /** Rehydrate locally-created ticket records for channels opened by staff tools. */
 export async function reconcileTicketChannels(guild: Guild): Promise<void> {
   const channels = await guild.channels.fetch();
@@ -702,11 +712,7 @@ export async function reconcileTicketChannels(guild: Guild): Promise<void> {
     highest = Math.max(highest, ticketNumber);
 
     const previous = getTicketByChannel(guild.id, channel.id);
-    if (
-      previous?.ticketNumber === ticketNumber &&
-      previous.apiTicketNumber === ticketNumber &&
-      previous.intakeCardVersion === 2
-    ) continue;
+    if (previous && !ticketIntakeCardNeedsRefresh(previous, ticketNumber)) continue;
     // Unversioned cards receive a silent adoption pass that replaces old
     // controls in place and fills in a receipt URL without a new message.
     try {

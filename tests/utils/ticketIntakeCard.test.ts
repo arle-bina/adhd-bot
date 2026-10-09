@@ -8,6 +8,7 @@ import {
   normalizeTicketApiVersion,
   parseTicketEnvironment,
   ticketIntakeReactionAction,
+  ticketIntakeCardNeedsRefresh,
 } from "../../src/utils/tickets.js";
 
 const ticket = {
@@ -25,6 +26,11 @@ const ticket = {
 };
 
 describe("persistent ticket intake card", () => {
+  it("keeps retrying card adoption until the durable receipt URL is present", () => {
+    expect(ticketIntakeCardNeedsRefresh({ ticketNumber: 1446, apiTicketNumber: 1446, intakeCardVersion: 2 }, 1446)).toBe(true);
+    expect(ticketIntakeCardNeedsRefresh({ ticketNumber: 1446, apiTicketNumber: 1446, intakeCardVersion: 2, intakeReceiptUrl: "https://ops.example/t/opaque" }, 1446)).toBe(false);
+  });
+
   it("shows one candidate, unknown versions, receipt and deterministic controls", () => {
     const embed = buildTicketIntakeCardEmbed(ticket, new EmbedBuilder().addFields({ name: "Status", value: "Assessment complete" })).toJSON();
     const fields = Object.fromEntries(embed.fields!.map((field) => [field.name, field.value]));
