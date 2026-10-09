@@ -301,7 +301,11 @@ export async function reconcileTicketChannels(guild: Guild): Promise<void> {
     highest = Math.max(highest, ticketNumber);
 
     const previous = getTicketByChannel(guild.id, channel.id);
-    if (previous?.ticketNumber === ticketNumber && previous.apiTicketNumber === ticketNumber) continue;
+    if (
+      previous?.ticketNumber === ticketNumber &&
+      previous.apiTicketNumber === ticketNumber
+    )
+      continue;
     try {
       const messages = await channel.messages.fetch({ limit: 30 });
       const opening = [...messages.values()]
@@ -310,13 +314,16 @@ export async function reconcileTicketChannels(guild: Guild): Promise<void> {
       const embed = opening?.embeds[0];
       const fields = embed?.fields ?? [];
       const field = (name: string) =>
-        fields.find((item) => item.name.toLowerCase() === name.toLowerCase())?.value;
+        fields.find((item) => item.name.toLowerCase() === name.toLowerCase())
+          ?.value;
       const reporter = field("Reporter") ?? field("Opened by");
       const reporterId = reporter?.match(/\d{15,22}/)?.[0];
       const reporterPermission = channel.permissionOverwrites.cache.find(
-        (overwrite) => overwrite.type === 1 && overwrite.id !== guild.client.user?.id,
+        (overwrite) =>
+          overwrite.type === 1 && overwrite.id !== guild.client.user?.id,
       );
-      const categoryText = field("Category")?.toLowerCase() ?? embed?.title?.toLowerCase() ?? "";
+      const categoryText =
+        field("Category")?.toLowerCase() ?? embed?.title?.toLowerCase() ?? "";
       const category: TicketCategory = categoryText.includes("moderation")
         ? "moderation"
         : categoryText.includes("suggest")
@@ -325,22 +332,30 @@ export async function reconcileTicketChannels(guild: Guild): Promise<void> {
             ? "bug"
             : "mechanics";
       const platformText = field("Platform")?.toLowerCase();
-      const platform = TICKET_PLATFORMS.find((option) =>
-        option.label.toLowerCase() === platformText || option.value === platformText,
+      const platform = TICKET_PLATFORMS.find(
+        (option) =>
+          option.label.toLowerCase() === platformText ||
+          option.value === platformText,
       )?.value as TicketPlatform | undefined;
       const subject = field("Subject") ?? previous?.subject;
       const description = embed?.description ?? previous?.description;
 
       addTicket(guild.id, {
         ...previous,
-        userId: reporterId ?? previous?.userId ?? reporterPermission?.id ?? "unknown",
+        userId:
+          reporterId ?? previous?.userId ?? reporterPermission?.id ?? "unknown",
         category: previous?.category ?? category,
         channelId: channel.id,
-        createdAt: previous?.createdAt ?? opening?.createdAt.toISOString() ?? new Date().toISOString(),
+        createdAt:
+          previous?.createdAt ??
+          opening?.createdAt.toISOString() ??
+          new Date().toISOString(),
         ticketNumber,
         ...(subject ? { subject } : {}),
         ...(description ? { description } : {}),
-        ...(platform ?? previous?.platform ? { platform: platform ?? previous?.platform } : {}),
+        ...((platform ?? previous?.platform)
+          ? { platform: platform ?? previous?.platform }
+          : {}),
         ...(opening ? { embedMessageId: opening.id } : {}),
         apiTicketNumber: ticketNumber,
       });
@@ -356,7 +371,11 @@ export async function reconcileTicketChannels(guild: Guild): Promise<void> {
           apiTicketNumber: ticketNumber,
         });
       } else if (previous.ticketNumber !== ticketNumber) {
-        addTicket(guild.id, { ...previous, ticketNumber, apiTicketNumber: ticketNumber });
+        addTicket(guild.id, {
+          ...previous,
+          ticketNumber,
+          apiTicketNumber: ticketNumber,
+        });
       }
     }
   }
@@ -419,10 +438,10 @@ export async function createTicket(
 
     const channels = await guild.channels.fetch();
     const discordFloor = [...channels.values()].reduce((floor, channel) => {
-        if (!channel || channel.type !== ChannelType.GuildText) return floor;
-        const match = /^ticket-[a-z0-9-]+-(\d+)$/i.exec(channel.name);
-        return match ? Math.max(floor, Number(match[1])) : floor;
-      }, getTicketNumberFloor(guild.id));
+      if (!channel || channel.type !== ChannelType.GuildText) return floor;
+      const match = /^ticket-[a-z0-9-]+-(\d+)$/i.exec(channel.name);
+      return match ? Math.max(floor, Number(match[1])) : floor;
+    }, getTicketNumberFloor(guild.id));
     // The shared game counter is authoritative for every ticket creator. Fail
     // closed here so a backend outage can never create a duplicate channel.
     const ticketNumber = await apiReserveTicketNumber(discordFloor);
@@ -1157,7 +1176,13 @@ export async function handleClaimTicket(
 ): Promise<void> {
   const guild = channel.guild;
   let ticket = getTicketByChannel(guild.id, channel.id);
-  if (!ticket && /^ticket-[a-z0-9-]+-\d+$/i.test(channel.name)) {
+  const channelNumber = Number(
+    channel.name.match(/^ticket-[a-z0-9-]+-(\d+)$/i)?.[1],
+  );
+  if (
+    /^ticket-[a-z0-9-]+-\d+$/i.test(channel.name) &&
+    (!ticket || ticket.ticketNumber !== channelNumber)
+  ) {
     await reconcileTicketChannels(guild);
     ticket = getTicketByChannel(guild.id, channel.id);
   }
@@ -1258,7 +1283,13 @@ export async function handleTicketCloseModalSubmit(
       : await interaction.guild.members.fetch(interaction.user.id);
 
   let ticket = getTicketByChannel(interaction.guild.id, channelId);
-  if (!ticket && /^ticket-[a-z0-9-]+-\d+$/i.test(textChannel.name)) {
+  const channelNumber = Number(
+    textChannel.name.match(/^ticket-[a-z0-9-]+-(\d+)$/i)?.[1],
+  );
+  if (
+    /^ticket-[a-z0-9-]+-\d+$/i.test(textChannel.name) &&
+    (!ticket || ticket.ticketNumber !== channelNumber)
+  ) {
     await reconcileTicketChannels(interaction.guild);
     ticket = getTicketByChannel(interaction.guild.id, channelId);
   }
