@@ -37,10 +37,14 @@ describe("persistent ticket intake card", () => {
 
     const buttons = buildTicketIntakeButtons(1440, ticket).toJSON().components;
     expect(buttons.map((button) => button.custom_id)).toEqual([
-      "ticket_intake:confirm_page:1440",
+      "ticket_intake:confirm_all:1440",
+      "ticket_intake:decline_page:1440",
       "ticket_intake:change_page:1440",
-      "ticket_intake:confirm_platform:1440",
-      "ticket_intake:edit_details:1440",
+    ]);
+    expect(buttons.map((button) => button.label)).toEqual([
+      "Confirm page and platform",
+      "Wrong page / issue",
+      "Paste link or describe",
     ]);
   });
 
