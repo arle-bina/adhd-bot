@@ -32,6 +32,7 @@ import {
   TICKET_CLAIM_BUTTON_ID,
   handleClaimTicket,
   closeTicketChannel,
+  fetchAllMessages,
   reconcileTicketChannels,
   handleTicketIntakeComponent,
   handleTicketIntakeReaction,
@@ -51,6 +52,7 @@ import {
 import { getBulkSyncRoles, type SyncRolesBulkUser } from "./utils/api.js";
 import { syncMemberRoles } from "./utils/roles.js";
 import { getTicketByChannel, removeTicket } from "./utils/ticketStore.js";
+import { postTicketClosureLog } from "./utils/ticketClosureLog.js";
 import type { TicketCategory } from "./utils/ticketStore.js";
 import { readTicketModalFields, showTicketModal } from "./utils/ticketModal.js";
 import {
@@ -462,6 +464,27 @@ client.once("ready", () => {
           }
 
           if (ticketChannel && plan.needsChannelClose) {
+            // The button close posts its transcript to #ticket-log before the
+            // channel goes; an API resolution must leave the same record.
+            const storedTicket = getTicketByChannel(ticketChannel.guild.id, ticketChannel.id);
+            const logPosted = await postTicketClosureLog(ticketChannel.guild, {
+              ticketNumber: ticket.ticketNumber,
+              category: storedTicket?.category ?? "bug",
+              userId: storedTicket?.userId ?? ticket.discordUserId,
+              createdAt: storedTicket?.createdAt ?? new Date().toISOString(),
+              subject: storedTicket?.subject,
+              description: storedTicket?.description,
+              closerId: client.user?.id ?? "resolution-bot",
+              resolutionMessage: ticket.message,
+              receiptUrl,
+              messages: await fetchAllMessages(ticketChannel, 500),
+            });
+            if (!logPosted) {
+              console.warn(
+                `Ticket #${ticket.ticketNumber} left open because its closure log could not be posted.`,
+              );
+              continue;
+            }
             await closeTicketChannel(ticketChannel, ticket.ticketNumber);
             if (getTicketByChannel(ticketChannel.guild.id, ticketChannel.id)) {
               removeTicket(ticketChannel.guild.id, ticketChannel.id);
