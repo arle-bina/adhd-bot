@@ -70,6 +70,7 @@ import {
 import { checkMessage } from "./utils/filter.js";
 import { buildWelcomeMessage } from "./utils/welcome.js";
 import { handleSummonMessage, startSummonRefresh } from "./utils/summon.js";
+import { handleDirectMessage } from "./utils/dmInbox.js";
 import { isBotEnabled } from "./utils/botState.js";
 import { isChannelBanned } from "./utils/channelBans.js";
 import {
@@ -111,8 +112,10 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.GuildModeration,
+    GatewayIntentBits.DirectMessages,
   ],
-  partials: [Partials.Message, Partials.Reaction],
+  // Channel partial: DM channels are not cached, so DM events need it.
+  partials: [Partials.Message, Partials.Reaction, Partials.Channel],
 });
 
 // Process-level safety net. Without these, an unhandled rejection (e.g. a
@@ -675,7 +678,12 @@ client.on("messageCreate", async (message) => {
     }
   }
 
-  if (message.author.bot || !message.guild) return;
+  // DMs to the bot go to the ops box inbox (fail-quiet).
+  if (!message.guild) {
+    void handleDirectMessage(message);
+    return;
+  }
+  if (message.author.bot) return;
   recordMessage(message.guild.id);
   // Summoned channels forward developer messages to the ops box (fail-quiet).
   void handleSummonMessage(message);
