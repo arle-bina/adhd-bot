@@ -71,6 +71,7 @@ import { checkMessage } from "./utils/filter.js";
 import { buildWelcomeMessage } from "./utils/welcome.js";
 import { handleSummonMessage, startSummonRefresh } from "./utils/summon.js";
 import { handleDirectMessage } from "./utils/dmInbox.js";
+import { DECISION_MODAL_PREFIX, DECISION_PREFIX, handleDecisionButton, handleDecisionModal } from "./utils/keirDecision.js";
 import { isBotEnabled } from "./utils/botState.js";
 import { isChannelBanned } from "./utils/channelBans.js";
 import {
@@ -1263,6 +1264,24 @@ client.on("guildMemberUpdate", async (oldMember, newMember) => {
 });
 
 client.on("interactionCreate", async (interaction) => {
+  // Keir decision DMs: Approve / Reject / Explain for the owner and delegate.
+  if (interaction.isButton() && interaction.customId.startsWith(DECISION_PREFIX)) {
+    try {
+      await handleDecisionButton(interaction);
+    } catch (error) {
+      console.error("Keir decision button error:", error);
+    }
+    return;
+  }
+  if (interaction.isModalSubmit() && interaction.customId.startsWith(DECISION_MODAL_PREFIX)) {
+    try {
+      await handleDecisionModal(interaction);
+    } catch (error) {
+      console.error("Keir decision modal error:", error);
+    }
+    return;
+  }
+
   if (
     (interaction.isButton() || interaction.isModalSubmit()) &&
     interaction.customId.startsWith("ticket_intake:")
