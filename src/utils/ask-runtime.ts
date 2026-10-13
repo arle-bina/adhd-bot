@@ -40,8 +40,13 @@ export interface AskResponse {
   liveDataUsed?: boolean;
   usedMcp?: boolean;
   model: string;
+  modelId?: string;
   modelName?: string;
   providerName?: string;
+  /** Comma-joined chain models skipped before the serving one, when it fell through. */
+  fellThrough?: string | null;
+  leadModelId?: string | null;
+  leadModelName?: string;
   usage?: AskUsage | { input: number; output: number };
   questionTrimmed?: boolean;
   followups?: string[];
@@ -85,9 +90,47 @@ function stripToolCalls(text: string): string {
     .trim();
 }
 
+function splitTableRow(line: string): string[] {
+  return line.trim().replace(/^\||\|$/g, "").split("|").map(cell => cell.trim());
+}
+
+const TABLE_SEPARATOR = /^\s*\|?[\s:|-]+\|[\s:|-]*$/;
+
+/**
+ * Discord does not render Markdown tables: players see raw pipe characters.
+ * The Discord prompt profile asks for lists, but cached or off-profile
+ * answers can still carry a table, so convert any that arrives into bullets.
+ * Two columns read as "name: value"; wider tables keep their headers inline.
+ */
+export function markdownTablesToLists(text: string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const header = lines[i];
+    const separator = lines[i + 1];
+    const isTable = header.trim().startsWith("|") && header.includes("|", 1)
+      && typeof separator === "string" && TABLE_SEPARATOR.test(separator) && separator.includes("-");
+    if (!isTable) { out.push(header); continue; }
+    const headers = splitTableRow(header);
+    i += 1; // consume the separator row
+    while (i + 1 < lines.length && lines[i + 1].trim().startsWith("|")) {
+      i += 1;
+      const cells = splitTableRow(lines[i]);
+      if (!cells.some(Boolean)) continue;
+      if (headers.length <= 2) {
+        out.push(cells[1] ? `- **${cells[0]}**: ${cells[1]}` : `- ${cells[0]}`);
+      } else {
+        const rest = headers.slice(1).map((h, j) => cells[j + 1] ? `${h} ${cells[j + 1]}` : "").filter(Boolean).join(" · ");
+        out.push(rest ? `- **${cells[0]}**: ${rest}` : `- ${cells[0]}`);
+      }
+    }
+  }
+  return out.join("\n");
+}
+
 /** Format the LLM answer for Discord. */
 export function formatForDiscord(answer: string): string {
-  return truncateDiscordCodeBlocks(stripToolCalls(stripPreamble(answer)), 30);
+  return truncateDiscordCodeBlocks(markdownTablesToLists(stripToolCalls(stripPreamble(answer))), 30);
 }
 
 function isQuotaUsage(usage: AskResponse["usage"]): usage is AskUsage {
@@ -111,6 +154,11 @@ export function askFooterText(result: AskResponse, context: AskFooterContext = {
   const requester = context.requester;
   if (requester?.characterCount && requester.characterCount > 1) {
     lines.push(`Answered as ${requester.characterName} (1 of ${requester.characterCount} characters; pick another with the character option)`);
+  }
+  // A fallback answer must not pass as the lead model's work: name both.
+  if (result.fellThrough) {
+    const lead = result.leadModelName || "The usual model";
+    lines.push(`${lead} was unavailable, so ${model || "a backup model"} answered this one. Double-check specifics.`);
   }
   if (result.questionTrimmed) lines.push("Your question was trimmed to 500 characters.");
   if (result.vizBlocked) lines.push("Charts and maps are a supporter feature; this answer is text only.");

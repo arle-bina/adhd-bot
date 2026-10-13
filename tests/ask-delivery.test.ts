@@ -1,7 +1,7 @@
 import { EventEmitter } from "events";
 import type { Message } from "discord.js";
 import { describe, expect, it } from "vitest";
-import { askFooterText, deliverAskAnswer, type AskMessagePayload, type AskResponse } from "../src/utils/ask-runtime.js";
+import { askFooterText, deliverAskAnswer, formatForDiscord, markdownTablesToLists, type AskMessagePayload, type AskResponse } from "../src/utils/ask-runtime.js";
 
 function fakeMessage(): Message {
   return {
@@ -42,5 +42,41 @@ describe("answer footer", () => {
 
   it("ignores token usage objects from older engines", () => {
     expect(askFooterText({ ...base, usage: { input: 10, output: 20 } })).not.toContain("questions left");
+  });
+
+  it("labels a fallback answer instead of passing it off as the lead", () => {
+    const text = askFooterText({
+      ...base, modelName: "DeepSeek Flash",
+      fellThrough: "muse-spark-1.3-contributor", leadModelName: "Muse Spark 1.3",
+    });
+    expect(text).toContain("Muse Spark 1.3 was unavailable, so DeepSeek Flash answered this one.");
+  });
+
+  it("stays silent about fallbacks when the lead served", () => {
+    expect(askFooterText({ ...base, fellThrough: null })).not.toContain("unavailable");
+  });
+});
+
+describe("discord table conversion", () => {
+  it("turns a two-column table into name: value bullets", () => {
+    const out = markdownTablesToLists("Seats by state:\n| State | Seats |\n|---|---|\n| Ohio | 14 |\n| Texas | 38 |\nDone.");
+    expect(out).toContain("- **Ohio**: 14");
+    expect(out).toContain("- **Texas**: 38");
+    expect(out).not.toContain("|---|");
+    expect(out).toContain("Done.");
+  });
+
+  it("keeps headers inline for wider tables", () => {
+    const out = markdownTablesToLists("| Corp | Revenue | Growth |\n|---|---|---|\n| Acme | $9B | +4% |");
+    expect(out).toContain("- **Acme**: Revenue $9B · Growth +4%");
+  });
+
+  it("leaves prose and pipes in prose untouched", () => {
+    const input = "Pick A | B when the vote splits.\nNo table here.";
+    expect(markdownTablesToLists(input)).toBe(input);
+  });
+
+  it("runs inside formatForDiscord", () => {
+    expect(formatForDiscord("| A | B |\n|---|---|\n| x | 1 |")).toContain("- **x**: 1");
   });
 });
