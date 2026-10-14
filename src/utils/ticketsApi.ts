@@ -11,7 +11,7 @@ const TICKET_RESERVATION_ENDPOINT = "/api/discord-bot/tickets/reserve";
 
 /** Backend ticket category enum. */
 export type GameTicketCategory =
-  "bug" | "moderation" | "account" | "gameplay" | "other";
+  "bug" | "moderation" | "account" | "gameplay" | "other" | "incident";
 
 export interface TicketApiMessage {
   discordMessageId?: string;
@@ -89,6 +89,7 @@ export type UpdateTicketAction =
   | "status"
   | "close"
   | "retriage"
+  | "merge"
   | "resolution-delivered"
   | "resolution-dm-delivered"
   | "resolution-channel-delivered";
@@ -102,6 +103,10 @@ export interface UpdateTicketPayload {
   status?: string;
   closedBy?: string;
   resolution?: string;
+  /** action "merge": the ticket this one is merged into. */
+  targetTicketNumber?: number;
+  mergedBy?: string;
+  reason?: string;
   intake?: {
     cardMessageId?: string;
     receiptUrl?: string | null;

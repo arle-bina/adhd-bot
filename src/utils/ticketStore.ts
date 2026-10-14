@@ -9,7 +9,8 @@ const __dirname = dirname(__filename);
 const DATA_DIR = join(__dirname, "..", "..", "data");
 const TICKET_FILE = join(DATA_DIR, "tickets.json");
 
-export type TicketCategory = "bug" | "suggestion" | "moderation" | "mechanics";
+/** `incident` is a staff-only catch-all (outages and similar) that repeat tickets merge into. */
+export type TicketCategory = "bug" | "suggestion" | "moderation" | "mechanics" | "incident";
 
 export interface Ticket {
   userId: string;
