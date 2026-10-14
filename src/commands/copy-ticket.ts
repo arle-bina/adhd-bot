@@ -16,6 +16,7 @@ const CATEGORY_LABELS: Record<TicketCategory, string> = {
   suggestion: "💡 Suggestion",
   moderation: "🛡️ Moderation Issue",
   mechanics: "🧩 Mechanics Help",
+  incident: "🚨 Incident",
 };
 
 export const data = new SlashCommandBuilder()

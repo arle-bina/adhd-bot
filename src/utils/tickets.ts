@@ -63,6 +63,7 @@ const CATEGORY_CONFIG: Record<
   suggestion: { label: "Suggestion", emoji: "💡", color: 0x57f287 },
   moderation: { label: "Moderation Issue", emoji: "🛡️", color: 0xfee75c },
   mechanics: { label: "Mechanics Help", emoji: "🧩", color: 0x5865f2 },
+  incident: { label: "Incident", emoji: "🚨", color: 0xd03b3b },
 };
 
 /** Map the bot's ticket categories onto the game backend enum (defaults to "other"). */
@@ -74,6 +75,8 @@ export function toGameCategory(category: TicketCategory): GameTicketCategory {
       return "moderation";
     case "mechanics":
       return "gameplay";
+    case "incident":
+      return "incident";
     default:
       // "suggestion" (and any future categories) have no backend equivalent
       return "other";
@@ -1082,6 +1085,22 @@ export async function reconcileTicketChannels(guild: Guild): Promise<void> {
   }
 }
 
+/**
+ * Guild-level staff check for actions with no ticket channel yet, such as
+ * opening an incident: Administrator, Manage Channels, Moderate Members, or the
+ * dev team or moderator role.
+ */
+export function memberIsTicketStaff(member: GuildMember): boolean {
+  if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
+  if (member.permissions.has(PermissionFlagsBits.ManageChannels)) return true;
+  if (member.permissions.has(PermissionFlagsBits.ModerateMembers)) return true;
+  const devId = devTeamRoleId();
+  if (devId && member.roles.cache.has(devId)) return true;
+  const modId = moderatorRoleId();
+  if (modId && member.roles.cache.has(modId)) return true;
+  return false;
+}
+
 export async function createTicket(
   guild: Guild,
   userId: string,
@@ -1109,6 +1128,14 @@ export async function createTicket(
         success: false,
         reason: "I need the **Manage Channels** permission to create tickets.",
       };
+    }
+
+    // Incidents are staff-only, whichever entry point asked (command, panel or reaction).
+    if (category === "incident") {
+      const opener = await guild.members.fetch(userId).catch(() => null);
+      if (!opener || !memberIsTicketStaff(opener)) {
+        return { success: false, reason: "Only moderators and developers can open an incident." };
+      }
     }
 
     // Per-category limit (with stale cleanup)
@@ -2626,7 +2653,17 @@ export async function mergeTickets(
       mergedFromUserIds: [...mergedIds],
     });
 
-    // 7. Remove source ticket from store and delete channel
+    // 7. Tell the backend, so the repeat ticket closes there too and both
+    // tickets record the link. Non-fatal: the Discord merge has already happened.
+    await apiUpdateTicket({
+      action: "merge",
+      ticketNumber: sourceTicket.apiTicketNumber ?? sourceTicket.ticketNumber,
+      targetTicketNumber: targetTicket.apiTicketNumber ?? targetTicket.ticketNumber,
+      mergedBy: staffMember.id,
+      reason: reason.slice(0, 500),
+    });
+
+    // 8. Remove source ticket from store and delete channel
     await sourceChannel.delete(
       `Ticket #${sourcePadded} merged into #${targetPadded} by ${staffMember.user.tag}`,
     );

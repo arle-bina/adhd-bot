@@ -5,7 +5,7 @@ import {
   StringSelectMenuBuilder,
   ComponentType,
 } from "discord.js";
-import { createTicket } from "../utils/tickets.js";
+import { createTicket, memberIsTicketStaff } from "../utils/tickets.js";
 import { readTicketModalFields, showTicketModal, ticketModalId } from "../utils/ticketModal.js";
 import type { TicketCategory } from "../utils/ticketStore.js";
 
@@ -21,6 +21,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     return;
   }
 
+  // Incidents are staff-only; createTicket checks again whatever the entry point.
+  const opener = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+  const isStaff = Boolean(opener && memberIsTicketStaff(opener));
   const selectRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId("ticket_category")
@@ -29,6 +32,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         { label: "Bug Report", value: "bug", emoji: "🐛", description: "Report a bug or issue" },
         { label: "Moderation Issue", value: "moderation", emoji: "🛡️", description: "Report a moderation concern" },
         { label: "Mechanics Help", value: "mechanics", emoji: "🧩", description: "Ask a question about how a game mechanic works" },
+        ...(isStaff
+          ? [{ label: "Incident", value: "incident", emoji: "🚨", description: "Staff only: an outage or problem many players hit" }]
+          : []),
       ),
   );
 

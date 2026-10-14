@@ -6,6 +6,7 @@ const CATEGORY_CONFIG: Record<TicketCategory, { label: string; emoji: string }> 
   suggestion: { label: "Suggestion", emoji: "💡" },
   moderation: { label: "Moderation Issue", emoji: "🛡️" },
   mechanics: { label: "Mechanics Question", emoji: "⚙️" },
+  incident: { label: "Incident", emoji: "🚨" },
 };
 
 export interface TicketClosureLogMessage {
