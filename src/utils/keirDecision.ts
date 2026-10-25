@@ -18,7 +18,8 @@ export const DECISION_PREFIX = "keir_decision:";
 export const DECISION_MODAL_PREFIX = "keir_decision_modal:";
 const OWNER_ID = "333052320252297216";
 const DELEGATE_ID = "565289871799746593";
-const CUSTOM_ID = /^keir_decision:(approve|reject|explain):([a-f0-9]{12})$/;
+export type DecisionVerdict = "approve" | "reject" | "explain" | `choose${1 | 2 | 3 | 4 | 5 | 6}`;
+const CUSTOM_ID = /^keir_decision:(approve|reject|explain|choose[1-6]):([a-f0-9]{12})$/;
 const MODAL_ID = /^keir_decision_modal:([a-f0-9]{12})$/;
 
 /** Who may answer: the owner, and the delegate who answers on the owner's behalf. */
@@ -27,14 +28,15 @@ export function decisionAnswerers(): string[] {
   return [...new Set([OWNER_ID, DELEGATE_ID, ...extra])];
 }
 
-export function parseDecisionButton(customId: string): { verdict: "approve" | "reject" | "explain"; id: string } | null {
+export function parseDecisionButton(customId: string): { verdict: DecisionVerdict; id: string } | null {
   const m = CUSTOM_ID.exec(customId);
-  return m ? { verdict: m[1] as "approve" | "reject" | "explain", id: m[2] } : null;
+  return m ? { verdict: m[1] as DecisionVerdict, id: m[2] } : null;
 }
 
 /** The verdict line the ops box parses. Its wording is a contract with the box. */
-export function verdictLine(verdict: "approve" | "reject" | "explain", userId: string, text = ""): string {
+export function verdictLine(verdict: DecisionVerdict, userId: string, text = ""): string {
   const stamp = `<t:${Math.floor(Date.now() / 1000)}:R>`;
+  if (/^choose[1-6]$/.test(verdict)) return `\n\n**Decision:** 🔹 Selected ${verdict.slice(-1)} by <@${userId}> ${stamp}`;
   if (verdict === "approve") return `\n\n**Decision:** ✅ Approved by <@${userId}> ${stamp}`;
   if (verdict === "reject") return `\n\n**Decision:** ❌ Rejected by <@${userId}> ${stamp}`;
   // Keep the explanation from smuggling a second verdict line.
@@ -57,17 +59,22 @@ export async function handleDecisionButton(interaction: ButtonInteraction): Prom
     await interaction.reply({ content: "This decision has already been answered.", ephemeral: true });
     return;
   }
+  const offered = interaction.message.components.some(row => "components" in row && row.components.some(component => "customId" in component && component.customId === interaction.customId));
+  if (!offered) {
+    await interaction.reply({ content: "That option is no longer available. Use the current choices.", ephemeral: true });
+    return;
+  }
   if (parsed.verdict === "explain") {
-    const modal = new ModalBuilder().setCustomId(`${DECISION_MODAL_PREFIX}${parsed.id}`).setTitle("Tell Keir what to do");
+    const modal = new ModalBuilder().setCustomId(`${DECISION_MODAL_PREFIX}${parsed.id}`).setTitle("Ask Keir or give another answer");
     modal.addComponents(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder().setCustomId("explain").setLabel("Your answer or instructions").setStyle(TextInputStyle.Paragraph).setMaxLength(1500).setRequired(true),
+        new TextInputBuilder().setCustomId("explain").setLabel("Your question or alternative answer").setStyle(TextInputStyle.Paragraph).setMaxLength(1500).setRequired(true),
       ),
     );
     await interaction.showModal(modal);
     return;
   }
-  await interaction.update({ content: (interaction.message.content + verdictLine(parsed.verdict, interaction.user.id)).slice(0, 2000), components: [] });
+  await interaction.update({ content: interaction.message.content + verdictLine(parsed.verdict, interaction.user.id), components: [] });
   await pokeSummon(interaction.channelId, interaction.message.id);
 }
 
@@ -82,7 +89,7 @@ export async function handleDecisionModal(interaction: ModalSubmitInteraction): 
     await interaction.reply({ content: "This decision has already been answered.", ephemeral: true });
     return;
   }
-  const text = interaction.fields.getTextInputValue("explain");
-  await interaction.update({ content: (message.content + verdictLine("explain", interaction.user.id, text)).slice(0, 2000), components: [] });
+  const text = interaction.fields.getTextInputValue("explain").slice(0, Math.max(0, 1800 - message.content.length));
+  await interaction.update({ content: message.content + verdictLine("explain", interaction.user.id, text), components: [] });
   await pokeSummon(interaction.channelId ?? message.channelId, message.id);
 }
