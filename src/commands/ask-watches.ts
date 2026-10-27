@@ -10,19 +10,19 @@ import { deleteAskWatch, listAskWatches, type AskWatch } from "../utils/ask-watc
 
 export const data = new SlashCommandBuilder()
   .setName("ask-watches")
-  .setDescription("See and remove your Ask watchlist alerts")
+  .setDescription("See and remove your Ask Keir watchlist alerts")
   .setDMPermission(false);
 
 const HOW_TO = "Create one by asking, for example `/ask question: watch USD/GBP above 1.30` or `/ask question: tell me about new US bills`. Alerts arrive by DM.";
 
 function describe(watches: AskWatch[], limit?: number): string {
-  if (!watches.length) return `You have no Ask watches.\n${HOW_TO}`;
+  if (!watches.length) return `You have no Ask Keir watches.\n${HOW_TO}`;
   const lines = watches.slice(0, 10).map((watch, index) => {
     const fired = watch.lastFiredAt ? `, last alert <t:${Math.floor(new Date(watch.lastFiredAt).getTime() / 1000)}:R>` : "";
     return `${index + 1}. ${String(watch.label).slice(0, 150)}${fired}`;
   });
   const cap = typeof limit === "number" ? ` (${watches.length} of ${limit})` : "";
-  return [`**Your Ask watches${cap}**`, ...lines, "", HOW_TO].join("\n");
+  return [`**Your Ask Keir watches${cap}**`, ...lines, "", HOW_TO].join("\n");
 }
 
 function rows(watches: AskWatch[], disabled = false): ActionRowBuilder<ButtonBuilder>[] {
@@ -43,7 +43,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     state = await listAskWatches(interaction.user.id);
   } catch (error) {
     console.error("[ask] watch list failed:", error instanceof Error ? error.message : String(error));
-    await interaction.editReply({ content: "Ask watches are unavailable right now. Try again later.", allowedMentions: ASK_MENTIONS });
+    await interaction.editReply({ content: "Ask Keir watches are unavailable right now. Try again later.", allowedMentions: ASK_MENTIONS });
     return;
   }
   const message = await interaction.editReply({ content: describe(state.watches, state.limit), components: rows(state.watches), allowedMentions: ASK_MENTIONS });

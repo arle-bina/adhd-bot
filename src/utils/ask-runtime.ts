@@ -279,8 +279,8 @@ async function renderAttachments(text: string): Promise<{ text: string; files: A
       files.push(new AttachmentBuilder(image, {
         name: `ask-${visualization.kind}-${visualization.index}.png`,
         description: visualization.kind === "map"
-          ? "Live A House Divided game map generated for this Ask response"
-          : "Chart generated for this Ask response",
+          ? "Live A House Divided game map generated for this Ask Keir response"
+          : "Chart generated for this Ask Keir response",
       }));
     } catch {
       body += "\n\n*(The requested visualization could not be rendered.)*";
@@ -391,7 +391,7 @@ async function deliverTo(sink: AskSink, target: AskDeliveryTarget, result: AskRe
       return;
     }
     if (kind !== "ask-report") return;
-    const modal = new ModalBuilder().setCustomId(`ask-report-modal:${target.scopeId}`).setTitle("Report an Ask answer");
+    const modal = new ModalBuilder().setCustomId(`ask-report-modal:${target.scopeId}`).setTitle("Report an Ask Keir answer");
     const reason = new TextInputBuilder().setCustomId("reason").setLabel("What was wrong?")
       .setStyle(TextInputStyle.Paragraph).setPlaceholder("Wrong data, irrelevant, missing context, etc.")
       .setRequired(false).setMaxLength(500);
@@ -407,7 +407,7 @@ async function deliverTo(sink: AskSink, target: AskDeliveryTarget, result: AskRe
         await rerender();
         // Only claim the review queue when the server says the report was
         // actually queued for staff review.
-        await submission.editReply({ content: sent.queued ? "Thanks, the issue is in the Ask review queue." : "Thanks, the report is recorded." });
+        await submission.editReply({ content: sent.queued ? "Thanks, the issue is in the Ask Keir review queue." : "Thanks, the report is recorded." });
       } else {
         await submission.editReply({ content: FEEDBACK_FAILED });
       }

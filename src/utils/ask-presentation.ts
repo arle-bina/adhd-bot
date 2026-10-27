@@ -73,4 +73,4 @@ export function askFollowupRow(id: string, questions: string[], disabled = false
   );
 }
 
-export const FEEDBACK_FAILED = "I couldn't record that just now. Ask's feedback service didn't accept it; try the button again in a minute.";
+export const FEEDBACK_FAILED = "I couldn't record that just now. Ask Keir's feedback service didn't accept it; try the button again in a minute.";
