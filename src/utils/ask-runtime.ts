@@ -377,13 +377,16 @@ async function deliverTo(sink: AskSink, target: AskDeliveryTarget, result: AskRe
       return;
     }
     if (kind === "ask-good") {
+      // Ack inside Discord's 3s window: the ask-site call can queue behind a
+      // running answer, and a late reply shows "Something went wrong".
+      await button.deferReply({ ephemeral: true });
       const sent = await submitFeedback(feedbackBody("up"));
       if (sent?.ok) {
         rated = "up";
         await rerender();
-        await button.reply({ content: "Thanks, recorded as helpful.", ephemeral: true });
+        await button.editReply({ content: "Thanks, recorded as helpful." });
       } else {
-        await button.reply({ content: FEEDBACK_FAILED, ephemeral: true });
+        await button.editReply({ content: FEEDBACK_FAILED });
       }
       return;
     }
@@ -397,15 +400,16 @@ async function deliverTo(sink: AskSink, target: AskDeliveryTarget, result: AskRe
     try {
       const submission = await button.awaitModalSubmit({ time: 5 * 60_000,
         filter: value => value.customId === `ask-report-modal:${target.scopeId}` && value.user.id === target.userId });
+      await submission.deferReply({ ephemeral: true });
       const sent = await submitFeedback(feedbackBody("down", submission.fields.getTextInputValue("reason")));
       if (sent?.ok) {
         rated = "down";
         await rerender();
         // Only claim the review queue when the server says the report was
         // actually queued for staff review.
-        await submission.reply({ content: sent.queued ? "Thanks, the issue is in the Ask review queue." : "Thanks, the report is recorded.", ephemeral: true });
+        await submission.editReply({ content: sent.queued ? "Thanks, the issue is in the Ask review queue." : "Thanks, the report is recorded." });
       } else {
-        await submission.reply({ content: FEEDBACK_FAILED, ephemeral: true });
+        await submission.editReply({ content: FEEDBACK_FAILED });
       }
     } catch { /* modal expiry needs no player-facing error */ }
   });
