@@ -32,9 +32,9 @@ export async function deleteAskWatch(discordId: string, id: string | number): Pr
 }
 
 export function watchAlertText(event: AskWatchEvent): string {
-  const label = String(event.label || "Your Ask watch").replace(/\s+/g, " ").slice(0, 200);
+  const label = String(event.label || "Your Ask Keir watch").replace(/\s+/g, " ").slice(0, 200);
   const body = String(event.message || "").trim().slice(0, 1500);
-  return [`**Ask watch alert:** ${label}`, body, "-# Manage watches with /ask-watches"].filter(Boolean).join("\n");
+  return [`**Ask Keir watch alert:** ${label}`, body, "-# Manage watches with /ask-watches"].filter(Boolean).join("\n");
 }
 
 const POLL_MS = Number(process.env.ASK_WATCH_POLL_MS || 5 * 60_000);

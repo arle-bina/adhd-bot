@@ -70,7 +70,7 @@ export function askChannelAllowed(channelId: string | null, isStaff: boolean): b
 export function askChannelHint(): string {
   const allowed = String(process.env.ASK_CHANNEL_IDS || "").split(",").map(id => id.trim()).filter(Boolean);
   return allowed.length
-    ? `Ask works in ${allowed.map(id => `<#${id}>`).join(", ")}, or use \`private: True\` to get an answer only you can see.`
+    ? `Ask Keir works in ${allowed.map(id => `<#${id}>`).join(", ")}, or use \`private: True\` to get an answer only you can see.`
     : "";
 }
 
@@ -99,13 +99,13 @@ export function askErrorMessage(error: unknown): string {
   const status = error instanceof ApiError ? error.status : 0;
   const text = error instanceof Error ? error.message : String(error ?? "");
   if (status === 429 || /\b429\b|rate.?limit|busy/i.test(text)) {
-    return "Ask is busy right now. Try again in a minute; this did not use one of your questions.";
+    return "Ask Keir is busy right now. Try again in a minute; this did not use one of your questions.";
   }
   if (status === 402 || /quota|daily limit|questions left|out of questions/i.test(text)) {
-    return "You have used today's Ask questions. They reset daily; supporters get more.";
+    return "You have used today's Ask Keir questions. They reset daily; supporters get more.";
   }
   if (status === 401 || status === 403) {
-    return "Ask could not verify this request. Try again later.";
+    return "Ask Keir could not verify this request. Try again later.";
   }
   if (/timeout|timed out|aborted/i.test(text)) {
     return "That answer took too long and was stopped. Try a narrower question, or ask again.";
@@ -113,5 +113,5 @@ export function askErrorMessage(error: unknown): string {
   if (status === 400 && /question required/i.test(text)) {
     return "That question was empty. Ask again with a question.";
   }
-  return "Ask could not answer that one. Try again in a moment; failed answers do not use your questions.";
+  return "Ask Keir could not answer that one. Try again in a moment; failed answers do not use your questions.";
 }

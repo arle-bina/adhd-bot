@@ -90,10 +90,10 @@ export const categories: Category[] = [
     commands: ["news", "turn", "wars"],
   },
   {
-    label: "Ask and Community",
+    label: "Ask Keir and Community",
     emoji: "💬",
     color: 0xeb459e,
-    description: "Ask the game assistant, send feedback, and have some fun.",
+    description: "Ask Keir about the game, send feedback, and have some fun.",
     commands: ["ask", "ask-watches", "summon", "suggest", "improve", "tarot"],
   },
   {

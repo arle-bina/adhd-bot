@@ -11,7 +11,7 @@ import { ASK_MAX_QUESTION, acquireAskSlot, askChannelAllowed, askChannelHint } f
 
 export const data = new SlashCommandBuilder()
   .setName("ask")
-  .setDescription("Ask about AHD mechanics or live game data")
+  .setDescription("Ask Keir about AHD mechanics or live game data")
   .setDMPermission(false)
   .addStringOption((opt) =>
     opt
@@ -23,7 +23,7 @@ export const data = new SlashCommandBuilder()
   .addStringOption((opt) =>
     opt
       .setName("mode")
-      .setDescription("How Ask should approach it. Defaults to automatic")
+      .setDescription("How Ask Keir should approach it. Defaults to automatic")
       .addChoices(
         { name: "Automatic", value: "auto" },
         { name: "Verify a claim", value: "verify" },
@@ -86,7 +86,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   const isStaff = Boolean(interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages));
 
   if (!isPrivate && !askChannelAllowed(interaction.channelId, isStaff)) {
-    await interaction.reply({ content: askChannelHint() || "Ask isn't available in this channel.", ephemeral: true });
+    await interaction.reply({ content: askChannelHint() || "Ask Keir isn't available in this channel.", ephemeral: true });
     return;
   }
   const gate = acquireAskSlot(interaction.user.id);
