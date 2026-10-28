@@ -12,7 +12,7 @@ import {
 import { apiPostAskSite, apiPostAskSiteStream } from "./api-base.js";
 import { AskProgressReporter, DiscordConversationTracker } from "./ask-progress.js";
 import { splitDiscordContent } from "./discord-content.js";
-import { extractAskVisualizations, renderAskMapPng, renderAskVisualizationPng, truncateDiscordCodeBlocks } from "./ask-visualizations.js";
+import { extractAskVisualizations, renderAskVisualization, truncateDiscordCodeBlocks } from "./ask-visualizations.js";
 import { askActions, askFollowupRow, asksForSources, compactSources, FEEDBACK_FAILED } from "./ask-presentation.js";
 import { ASK_MENTIONS } from "./ask-safety.js";
 import type { AskIdentity } from "./ask-context.js";
@@ -269,9 +269,7 @@ async function renderAttachments(text: string): Promise<{ text: string; files: A
   let body = extracted.text;
   for (const visualization of extracted.visualizations) {
     try {
-      const image = visualization.kind === "map"
-        ? await renderAskMapPng(visualization.source)
-        : renderAskVisualizationPng(visualization.source);
+      const image = await renderAskVisualization(visualization);
       if (!image) {
         body += `\n\n*(This answer includes a diagram Discord can't show. Open it on ${ASK_SITE_ORIGIN.replace(/^https?:\/\//, "")}.)*`;
         continue;

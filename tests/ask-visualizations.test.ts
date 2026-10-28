@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { extractAskVisualizations, renderAskMapPng, renderAskVisualizationPng, truncateDiscordCodeBlocks } from "../src/utils/ask-visualizations.js";
+import {
+  extractAskVisualizations, parsedFromSpec, renderAskChartRemote, renderAskMapPng, renderAskVisualization,
+  renderAskVisualizationPng, truncateDiscordCodeBlocks,
+} from "../src/utils/ask-visualizations.js";
 
 describe("Ask visualizations", () => {
   it("extracts one Mermaid block and keeps the surrounding answer", () => {
@@ -56,5 +59,43 @@ describe("Ask visualizations", () => {
     });
     await expect(renderAskMapPng(source, fetchMock as typeof fetch, "https://ask.example", "secret"))
       .resolves.toEqual(Buffer.from([137, 80, 78, 71]));
+  });
+
+  it("extracts an ask-chart block as a chart and never truncates its JSON", () => {
+    const spec = JSON.stringify({ title: "Egg Media", labels: Array.from({ length: 40 }, (_u, i) => `T${i}`), series: [{ values: Array.from({ length: 40 }, (_u, i) => i) }] }, null, 2);
+    const answer = `\`\`\`ask-chart\n${spec}\n\`\`\`\n\nRevenue is flat.`;
+    const result = extractAskVisualizations(truncateDiscordCodeBlocks(answer, 30));
+    expect(result.visualizations).toEqual([{ kind: "chart", source: spec, index: 1 }]);
+    expect(result.text).toBe("Revenue is flat.");
+  });
+
+  it("draws charts with Ask's renderer so Discord matches the web", async () => {
+    const png = new Uint8Array([137, 80, 78, 71]);
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("https://ask.example/api/chart/render?format=png");
+      expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer secret");
+      expect(JSON.parse(String(init?.body))).toEqual({ mermaid: "xychart-beta\n bar [1, 2]", width: 640 });
+      return new Response(png, { status: 200, headers: { "content-type": "image/png" } });
+    });
+    await expect(renderAskChartRemote({ mermaid: "xychart-beta\n bar [1, 2]" }, fetchMock as typeof fetch, "https://ask.example", "secret"))
+      .resolves.toEqual(Buffer.from(png));
+  });
+
+  it("falls back to the bot's own drawing when Ask is unreachable, and skips flowcharts", async () => {
+    const down = vi.fn(async () => { throw new Error("offline"); });
+    const spec = JSON.stringify({ title: "Revenue", kind: "bar", labels: ["A", "B"], series: [{ values: [3, 9] }] });
+    const chart = await renderAskVisualization({ kind: "chart", source: spec, index: 1 }, down as unknown as typeof fetch);
+    expect(chart?.subarray(0, 4)).toEqual(Buffer.from([137, 80, 78, 71]));
+    const mermaid = await renderAskVisualization({ kind: "mermaid", source: 'xychart-beta\n title "GDP"\n x-axis ["US", "UK"]\n bar [21.4, 2.8]', index: 1 }, down as unknown as typeof fetch);
+    expect(mermaid?.subarray(0, 4)).toEqual(Buffer.from([137, 80, 78, 71]));
+    expect(await renderAskVisualization({ kind: "mermaid", source: "flowchart TD\nA-->B", index: 1 }, down as unknown as typeof fetch)).toBeNull();
+    expect(down).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads shares and turn series from an ask-chart spec for the fallback", () => {
+    expect(parsedFromSpec(JSON.stringify({ partOfWhole: true, labels: ["Lab", "Con"], series: [{ values: [312, 241] }] }))?.kind).toBe("pie");
+    const line = parsedFromSpec(JSON.stringify({ kind: "multiples", labels: ["T1", "T2"], series: [{ values: [1, 2] }, { values: [20, 21] }] }));
+    expect(line).toMatchObject({ kind: "xy", series: [{ type: "line" }, { type: "line" }] });
+    expect(parsedFromSpec("not json")).toBeNull();
   });
 });
