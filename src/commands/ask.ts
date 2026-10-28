@@ -114,6 +114,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       scopeId: interaction.id,
       placeholder,
       more: payload => interaction.followUp({ ...safePayload(payload), ephemeral: isPrivate }),
+      editMore: (message, payload) => interaction.webhook.editMessage(message, payload),
     });
   } finally {
     gate.release();

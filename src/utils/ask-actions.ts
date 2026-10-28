@@ -5,6 +5,7 @@ import {
   EmbedBuilder,
   type Message,
   type MessageComponentInteraction,
+  type MessageEditOptions,
   type User,
 } from "discord.js";
 import { ApiError, apiPostAskSite } from "./api-base.js";
@@ -145,6 +146,9 @@ export async function cancelAskAction(actionId: string, discordId: string): Prom
   }
 }
 
+/** What the card edits change; also valid for an interaction webhook edit. */
+export type CardEdit = Pick<MessageEditOptions, "content" | "embeds" | "components" | "allowedMentions">;
+
 export interface AskActionContext {
   user: User;
   channelId: string;
@@ -156,11 +160,17 @@ export interface AskActionContext {
   /** Sends the offer text through the normal Ask flow. */
   runOfferFromButton: (question: string, button: MessageComponentInteraction) => Promise<void>;
   runOfferFromMessage: (question: string, message: Message) => Promise<void>;
+  /** Edits the card outside a button click. Defaults to a plain message edit, which cannot reach private cards. */
+  editCard?: (card: Message, payload: CardEdit) => Promise<unknown>;
   timeoutMs?: number;
 }
 
 function guarded(task: () => Promise<void>): void {
   task().catch(error => console.error("[ask] action control failed:", error instanceof Error ? error.message : String(error)));
+}
+
+function editCard(context: AskActionContext, card: Message, payload: CardEdit): Promise<unknown> {
+  return context.editCard ? context.editCard(card, payload) : card.edit(payload);
 }
 
 /** Wires a card's button collector and chat watch to one settle-once lifecycle. */
@@ -209,7 +219,7 @@ async function presentProposed(context: AskActionContext, action: ProposedAction
       allowedMentions: ASK_MENTIONS,
     };
     try {
-      await (button ? button.editReply(payload) : card.edit(payload));
+      await (button ? button.editReply(payload) : editCard(context, card, payload));
     } catch { /* message gone */ }
   };
   const confirm = async (button?: MessageComponentInteraction): Promise<ConfirmOutcome> => {
@@ -252,7 +262,7 @@ async function presentOffer(context: AskActionContext, offer: AskOffer): Promise
     context.isPrivate ? "Tap the button." : "Tap the button or reply yes."}`;
   const card = await context.post({ content: prompt, components: [offerRow(context.scopeId, offer)] });
   const disable = async () => {
-    try { await card.edit({ components: [offerRow(context.scopeId, offer, true)], allowedMentions: ASK_MENTIONS }); } catch { /* message gone */ }
+    try { await editCard(context, card, { components: [offerRow(context.scopeId, offer, true)], allowedMentions: ASK_MENTIONS }); } catch { /* message gone */ }
   };
   const flow = lifecycle(card, context, disable);
   flow.collector.on("collect", button => guarded(async () => {

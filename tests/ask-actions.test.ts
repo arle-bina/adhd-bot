@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import type { Message, MessageComponentInteraction, User } from "discord.js";
+import type { ActionRowBuilder, ButtonBuilder, Message, MessageComponentInteraction, User } from "discord.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const postAsk = vi.fn();
@@ -9,7 +9,7 @@ vi.mock("../src/utils/api-base.js", async importOriginal => ({
 }));
 
 const { ApiError } = await import("../src/utils/api-base.js");
-const { presentAskAction, confirmAskAction, actionRow } = await import("../src/utils/ask-actions.js");
+const { presentAskAction, confirmAskAction } = await import("../src/utils/ask-actions.js");
 const { _activeReplyWatches, consumeReplyWatch } = await import("../src/utils/ask-reply-watch.js");
 
 class FakeCollector extends EventEmitter {
@@ -100,7 +100,7 @@ describe("proposed action card", () => {
     vi.advanceTimersByTime(3 * 60_000);
     await vi.waitFor(() => expect(postAsk).toHaveBeenCalledWith("/api/discord-ask/action/cancel", { actionId: action.id, discordId: "u1" }));
     expect(footer(edits.at(-1)!)).toBe("Not filed.");
-    const row = (edits.at(-1)!.components as Array<ReturnType<typeof actionRow>>)[0].toJSON();
+    const row = (edits.at(-1)!.components as Array<ActionRowBuilder<ButtonBuilder>>)[0].toJSON();
     expect(row.components.every(c => (c as { disabled?: boolean }).disabled)).toBe(true);
     expect(collector.stopped).toBe(true);
     expect(_activeReplyWatches()).toBe(0);
@@ -139,6 +139,17 @@ describe("proposed action card", () => {
     const { card } = fakeCard();
     await presentAskAction(context(card, { isPrivate: true }), { proposedAction: action });
     expect(_activeReplyWatches()).toBe(0);
+  });
+
+  it("expires a private card through the interaction, since a plain edit cannot reach it", async () => {
+    postAsk.mockResolvedValue({ ok: true });
+    const { card, collector, edits } = fakeCard();
+    const editCard = vi.fn(async () => undefined);
+    await presentAskAction(context(card, { isPrivate: true, editCard }), { proposedAction: action });
+    collector.stop("time");
+    await vi.waitFor(() => expect(postAsk).toHaveBeenCalledWith("/api/discord-ask/action/cancel", { actionId: action.id, discordId: "u1" }));
+    expect(editCard).toHaveBeenCalledOnce();
+    expect(edits).toHaveLength(0);
   });
 });
 

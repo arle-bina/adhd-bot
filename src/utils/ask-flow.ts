@@ -1,4 +1,5 @@
 import type { Message, MessageComponentInteraction, User } from "discord.js";
+import type { CardEdit } from "./ask-actions.js";
 import { presentAskAction } from "./ask-actions.js";
 import { resolveAskIdentity, type AskIdentity } from "./ask-context.js";
 import { registerAskAnswer } from "./ask-continuation-store.js";
@@ -28,6 +29,8 @@ export interface AskFlowInput {
   placeholder: (payload: AskMessagePayload) => Promise<Message>;
   /** Further messages after the first. */
   more: (payload: AskMessagePayload) => Promise<Message>;
+  /** Edits a message sent by `more`. Private follow-ups are only editable through their interaction. */
+  editMore?: (message: Message, payload: CardEdit) => Promise<unknown>;
 }
 
 /** Every Ask message goes out with mentions disabled. */
@@ -86,6 +89,7 @@ export async function runAskFlow(input: AskFlowInput): Promise<void> {
       isPrivate: input.isPrivate,
       scopeId: input.scopeId,
       post: input.more,
+      editCard: input.editMore,
       runOfferFromButton: (question, button) => runFollowupFromButton(question, button, input),
       runOfferFromMessage: (question, message) => runAskFromMessage(message, question),
     }, result);
