@@ -19,6 +19,8 @@ All notable changes to the AHD Discord Bot are documented here.
 
 ### Changed
 
+- Ask Keir charts in Discord are now drawn by Ask's own chart renderer, so they look the same as on ask.lakesidegames.net: a navy Lakeside card with the game's name, compact numbers with the game's currency, a line for changes over turns, separate small charts for figures on different scales, and sorted bars with the asked-about company or country picked out. The bot reads Ask's new `ask-chart` blocks as well as Mermaid charts. If Ask cannot be reached, the bot draws the chart itself as before. Logic in `src/utils/ask-visualizations.ts` (`renderAskVisualization`), Vitest coverage in `tests/ask-visualizations.test.ts`.
+
 - Only bug reports get the platform question. Moderation reports are about people and mechanics questions are about rules, so neither answer would change with the client.
 - Beta Tester role ID added to the protected role list in `utils/roles.ts` so the regular sync never strips it.
 
