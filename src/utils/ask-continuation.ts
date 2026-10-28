@@ -1,7 +1,8 @@
 import type { Message } from "discord.js";
 import { askAnswerRecord, registerAskAnswer, type AnswerRecord } from "./ask-continuation-store.js";
-import { runAskFlow, safePayload } from "./ask-flow.js";
-import { ASK_MAX_QUESTION, acquireAskSlot } from "./ask-safety.js";
+import { runAskFromMessage, safePayload } from "./ask-flow.js";
+import { consumeReplyWatch } from "./ask-reply-watch.js";
+import { ASK_MAX_QUESTION } from "./ask-safety.js";
 
 // Reply-to-continue: replying to one of the bot's Ask answers continues that
 // conversation, no slash command needed. The registry remembers which bot
@@ -30,6 +31,8 @@ export function continuationFor(check: ContinuationCheck): AnswerRecord | null {
 /** MessageCreate hook. Fail-quiet: a broken follow-up must never crash the bot. */
 export async function handleAskContinuation(message: Message): Promise<void> {
   try {
+    // A yes or no to Keir's pending offer or draft is not a new question.
+    if (consumeReplyWatch(message)) return;
     const record = continuationFor({
       authorId: message.author.id,
       authorIsBot: message.author.bot,
@@ -43,32 +46,7 @@ export async function handleAskContinuation(message: Message): Promise<void> {
       await message.reply(safePayload(`Follow-ups are limited to ${ASK_MAX_QUESTION} characters. Shorten it and reply again.`));
       return;
     }
-    const gate = acquireAskSlot(message.author.id);
-    if (!gate.ok) {
-      await message.reply(safePayload(gate.message));
-      return;
-    }
-    try {
-      const thinking = await message.reply(safePayload("Thinking…"));
-      const send = async (payload: Parameters<typeof safePayload>[0]) => {
-        if (!message.channel.isSendable()) throw new Error("channel not sendable");
-        return message.channel.send(safePayload(payload));
-      };
-      await runAskFlow({
-        user: message.author,
-        channelId: message.channelId,
-        question,
-        responseLength: "concise",
-        mode: "auto",
-        useMcp: true,
-        isPrivate: false,
-        scopeId: message.id,
-        placeholder: payload => thinking.edit(safePayload(payload)),
-        more: send,
-      });
-    } finally {
-      gate.release();
-    }
+    await runAskFromMessage(message, question);
   } catch (error) {
     console.error("[ask] continuation handler error:", error instanceof Error ? error.message : String(error));
   }

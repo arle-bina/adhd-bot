@@ -22,12 +22,37 @@ export interface AskSource {
   label: string;
 }
 
+export interface AskEnergyWindow {
+  used?: number;
+  limit?: number;
+  remaining?: number;
+  percentLeft?: number;
+  resetAt?: string | number;
+}
+
+/** One effort-based pool; old fields mirror the daily window in energy units. */
+export interface AskEnergy {
+  daily?: AskEnergyWindow;
+  weekly?: AskEnergyWindow;
+  /** About how many typical answers are left before either window runs out. */
+  typicalLeft?: number;
+  unit?: "energy";
+}
+
 export interface AskUsage {
   used?: number;
   limit?: number;
   remaining?: number;
   mcpRemaining?: number;
   mcpLimit?: number;
+  energy?: AskEnergy;
+}
+
+/** What one finished answer cost, settled by the engine. */
+export interface AskCharge {
+  cost?: number;
+  percentOfDaily?: number;
+  reasons?: string[];
 }
 
 export interface AskResponse {
@@ -48,11 +73,18 @@ export interface AskResponse {
   leadModelId?: string | null;
   leadModelName?: string;
   usage?: AskUsage | { input: number; output: number };
+  charge?: AskCharge;
   questionTrimmed?: boolean;
   followups?: string[];
   followupsLeft?: number;
   reportUrl?: string | null;
   vizBlocked?: boolean;
+  /** The instant "I'll look into X for you." line; also on cached JSON answers. */
+  ack?: string;
+  /** A drafted suggestion or ticket waiting for the asker's yes. */
+  proposedAction?: unknown;
+  /** Keir offers to file something; selecting it is a free action turn. */
+  offer?: unknown;
 }
 
 export const ASK_SITE_ORIGIN = (process.env.ASK_SITE_URL || "https://ask.lakesidegames.net").replace(/\/$/, "");
@@ -137,6 +169,55 @@ function isQuotaUsage(usage: AskResponse["usage"]): usage is AskUsage {
   return Boolean(usage && typeof usage === "object" && "remaining" in usage);
 }
 
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function finite(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+/** Percent of a window still left, from the raw numbers when both are present. */
+function percentLeft(window: AskEnergyWindow | undefined): number | null {
+  if (!window) return null;
+  if (finite(window.remaining) && finite(window.limit) && window.limit > 0) {
+    return Math.round(Math.max(0, Math.min(1, window.remaining / window.limit)) * 100);
+  }
+  return finite(window.percentLeft) ? Math.round(Math.max(0, Math.min(100, window.percentLeft))) : null;
+}
+
+function formatPercent(value: number): string {
+  return value > 0 && value < 1 ? "under 1%" : `${Math.round(value)}%`;
+}
+
+/** "Used 3% of today's energy (live data, chart)"; nothing for free answers. */
+export function chargeText(charge: AskCharge | undefined, daily?: AskEnergyWindow): string | null {
+  if (!charge || !finite(charge.cost) || charge.cost <= 0) return null;
+  const percent = finite(daily?.limit) && daily.limit > 0
+    ? (charge.cost / daily.limit) * 100
+    : charge.percentOfDaily;
+  if (!finite(percent)) return null;
+  const reasons = (charge.reasons ?? []).filter(reason => typeof reason === "string" && reason.trim()).slice(0, 4);
+  return `Used ${formatPercent(percent)} of today's energy${reasons.length ? ` (${reasons.join(", ")})` : ""}`;
+}
+
+/** Daily and weekly energy left, in plain words. */
+export function energyText(energy: AskEnergy | undefined): string | null {
+  if (!energy) return null;
+  const parts: string[] = [];
+  const daily = percentLeft(energy.daily);
+  if (daily !== null) {
+    const typical = finite(energy.typicalLeft) ? Math.max(0, Math.floor(energy.typicalLeft)) : null;
+    const about = typical === null ? "" : `, about ${typical} ${typical === 1 ? "question" : "questions"} left`;
+    parts.push(`Energy: ${daily}% left today${about}`);
+  }
+  const weekly = percentLeft(energy.weekly);
+  if (weekly !== null) {
+    const reset = energy.weekly?.resetAt ? new Date(energy.weekly.resetAt) : null;
+    const refill = reset && !Number.isNaN(reset.getTime()) ? `, refills ${WEEKDAYS[reset.getUTCDay()]}` : "";
+    parts.push(`This week: ${weekly}% left${refill}`);
+  }
+  return parts.length ? parts.join(" · ") : null;
+}
+
 export interface AskFooterContext {
   requester?: AskIdentity;
 }
@@ -147,10 +228,16 @@ export function askFooterText(result: AskResponse, context: AskFooterContext = {
   const parts: string[] = [usedLive ? "Live game data used" : "Grounded in game rules and documentation"];
   const model = result.modelName || result.model;
   if (model) parts.push(result.providerName ? `${model} via ${result.providerName}` : model);
-  if (isQuotaUsage(result.usage) && typeof result.usage.remaining === "number" && typeof result.usage.limit === "number") {
+  const energy = isQuotaUsage(result.usage) ? result.usage.energy : undefined;
+  if (!energy && isQuotaUsage(result.usage) && typeof result.usage.remaining === "number" && typeof result.usage.limit === "number") {
+    // Engines before the energy pool still count questions.
     parts.push(`${result.usage.remaining} of ${result.usage.limit} questions left today`);
   }
   const lines = [parts.join(" · ")];
+  const charge = chargeText(result.charge, energy?.daily);
+  if (charge) lines.push(charge);
+  const left = energyText(energy);
+  if (left) lines.push(left);
   const requester = context.requester;
   if (requester?.characterCount && requester.characterCount > 1) {
     lines.push(`Answered as ${requester.characterName} (1 of ${requester.characterCount} characters; pick another with the character option)`);
@@ -225,6 +312,11 @@ export async function requestAsk(options: AskRequestOptions): Promise<AskRespons
       if (typeof data !== "object" || !data) return;
       if (event === "meta") {
         meta = { questionTrimmed: (data as { questionTrimmed?: unknown }).questionTrimmed === true };
+        return;
+      }
+      if (event === "ack") {
+        const text = String((data as { text?: unknown }).text || "");
+        if (text) options.progress.ack(text);
         return;
       }
       const label = String((data as { label?: unknown }).label || "");

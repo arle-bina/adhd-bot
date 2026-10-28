@@ -43,11 +43,6 @@ export const data = new SlashCommandBuilder()
   )
   .addBooleanOption((opt) =>
     opt
-      .setName("live_data")
-      .setDescription("Read live game state when useful. Defaults to on")
-  )
-  .addBooleanOption((opt) =>
-    opt
       .setName("private")
       .setDescription("Only you see the answer")
   )
@@ -107,13 +102,15 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       question,
       responseLength: interaction.options.getString("response_length") ?? "concise",
       mode,
-      useMcp: interaction.options.getBoolean("live_data") ?? true,
+      // Ask reads live game data whenever the question needs it.
+      useMcp: true,
       isPrivate,
       characterName: interaction.options.getString("character"),
       subjectUser: interaction.options.getUser("user"),
       scopeId: interaction.id,
       placeholder,
       more: payload => interaction.followUp({ ...safePayload(payload), ephemeral: isPrivate }),
+      editMore: (message, payload) => interaction.webhook.editMessage(message, payload),
     });
   } finally {
     gate.release();

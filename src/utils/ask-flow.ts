@@ -1,4 +1,6 @@
 import type { Message, MessageComponentInteraction, User } from "discord.js";
+import type { CardEdit } from "./ask-actions.js";
+import { presentAskAction } from "./ask-actions.js";
 import { resolveAskIdentity, type AskIdentity } from "./ask-context.js";
 import { registerAskAnswer } from "./ask-continuation-store.js";
 import { AskProgressReporter } from "./ask-progress.js";
@@ -26,7 +28,9 @@ export interface AskFlowInput {
   /** Replaces the placeholder (progress, then the answer). */
   placeholder: (payload: AskMessagePayload) => Promise<Message>;
   /** Further messages after the first. */
-  more: (payload: AskMessagePayload) => Promise<unknown>;
+  more: (payload: AskMessagePayload) => Promise<Message>;
+  /** Edits a message sent by `more`. Private follow-ups are only editable through their interaction. */
+  editMore?: (message: Message, payload: CardEdit) => Promise<unknown>;
 }
 
 /** Every Ask message goes out with mentions disabled. */
@@ -78,6 +82,17 @@ export async function runAskFlow(input: AskFlowInput): Promise<void> {
     if (!input.isPrivate) {
       registerAskAnswer(delivered.id, { userId: input.user.id, question: input.question });
     }
+    // A drafted suggestion or ticket, or an offer to file one. Never throws.
+    await presentAskAction({
+      user: input.user,
+      channelId: input.channelId,
+      isPrivate: input.isPrivate,
+      scopeId: input.scopeId,
+      post: input.more,
+      editCard: input.editMore,
+      runOfferFromButton: (question, button) => runFollowupFromButton(question, button, input),
+      runOfferFromMessage: (question, message) => runAskFromMessage(message, question),
+    }, result);
   } catch (error) {
     await progress.stop();
     console.error("[ask] answer failed:", error instanceof Error ? error.message : String(error));
@@ -108,6 +123,39 @@ export async function runFollowupFromButton(
       scopeId: button.id,
       placeholder,
       more: payload => button.followUp({ ...safePayload(payload), ephemeral: parent.isPrivate }),
+    });
+  } finally {
+    gate.release();
+  }
+}
+
+/**
+ * A question typed in chat (a reply to an answer, or a yes to Keir's offer):
+ * public, concise, answered as a reply to the player's message.
+ */
+export async function runAskFromMessage(message: Message, question: string): Promise<void> {
+  const gate = acquireAskSlot(message.author.id);
+  if (!gate.ok) {
+    await message.reply(safePayload(gate.message));
+    return;
+  }
+  try {
+    const thinking = await message.reply(safePayload("Thinking…"));
+    const send = async (payload: AskMessagePayload) => {
+      if (!message.channel.isSendable()) throw new Error("channel not sendable");
+      return message.channel.send(safePayload(payload));
+    };
+    await runAskFlow({
+      user: message.author,
+      channelId: message.channelId,
+      question,
+      responseLength: "concise",
+      mode: "auto",
+      useMcp: true,
+      isPrivate: false,
+      scopeId: message.id,
+      placeholder: payload => thinking.edit(safePayload(payload)),
+      more: send,
     });
   } finally {
     gate.release();

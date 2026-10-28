@@ -32,6 +32,7 @@ describe("Ask safety", () => {
     expect(askErrorMessage(new AskServerError("Every answer model is busy, try again in a moment."))).toContain("busy");
     const quota = new ApiError(429, "/api/discord-ask/answer", JSON.stringify({ error: "You've used all 5 questions for today.", quota: true }));
     expect(askErrorMessage(quota)).toBe("You've used all 5 questions for today.");
+    expect(askErrorMessage(new ApiError(402, "/api/discord-ask/answer", "<html></html>"))).toContain("energy");
     const leak = new Error("fetch failed at https://internal.example:8080/x\n    at Socket.emit (node:events:517:28)");
     const generic = askErrorMessage(leak);
     expect(generic).not.toContain("internal.example");

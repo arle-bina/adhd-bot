@@ -38,3 +38,22 @@ describe("DiscordConversationTracker", () => {
     expect(first).toMatch(/^[A-Za-z0-9_-]{6,40}$/);
   });
 });
+
+describe("Ask Keir acknowledgement", () => {
+  it("replaces the generic header and stays above the steps until the answer streams", () => {
+    const progress = new AskProgressState();
+    progress.ack("I'll look into how to build union support for you.");
+    expect(progress.render()).toBe("I'll look into how to build union support for you.");
+    progress.status("Searching docs");
+    expect(progress.render().split("\n")[0]).toBe("I'll look into how to build union support for you.");
+    progress.delta("Union support grows when");
+    expect(progress.render()).toContain("Union support grows when");
+  });
+
+  it("strips mentions and formatting from the ack", () => {
+    const progress = new AskProgressState();
+    progress.ack("I'll look into @everyone **now** for you.");
+    expect(progress.render()).not.toContain("@everyone");
+    expect(progress.render()).not.toContain("**");
+  });
+});
