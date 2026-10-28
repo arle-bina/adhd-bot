@@ -1,12 +1,13 @@
 /**
- * Ask chart rendering, in-process.
+ * Ask chart rendering, in-process fallback.
  *
- * Ask answers carry charts as Mermaid source. Discord cannot render Mermaid,
- * and posting the source to a third-party renderer sends game data off-box.
- * The Ask prompt only asks models for two chart dialects, `xychart-beta` and
- * `pie`, so those are parsed here and drawn with the bot's own chart house
- * style. Every other Mermaid dialect (flowcharts, sequences) returns null and
- * the caller points the player at the web view instead.
+ * Charts in Discord are normally drawn by Ask's own renderer
+ * (ask-visualizations.ts, renderAskVisualization) so they match the web.
+ * When Ask cannot be reached, Mermaid `xychart-beta` and `pie` blocks are
+ * parsed here and drawn with the bot's own chart house style; game data
+ * never goes to a third-party renderer. Every other Mermaid dialect
+ * (flowcharts, sequences) returns null and the caller points the player at
+ * the web view instead.
  */
 
 import {
