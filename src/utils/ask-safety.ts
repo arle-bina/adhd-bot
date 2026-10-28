@@ -99,10 +99,10 @@ export function askErrorMessage(error: unknown): string {
   const status = error instanceof ApiError ? error.status : 0;
   const text = error instanceof Error ? error.message : String(error ?? "");
   if (status === 429 || /\b429\b|rate.?limit|busy/i.test(text)) {
-    return "Ask Keir is busy right now. Try again in a minute; this did not use one of your questions.";
+    return "Ask Keir is busy right now. Try again in a minute; this did not use any energy.";
   }
-  if (status === 402 || /quota|daily limit|questions left|out of questions/i.test(text)) {
-    return "You have used today's Ask Keir questions. They reset daily; supporters get more.";
+  if (status === 402 || /quota|daily limit|questions left|out of questions|energy/i.test(text)) {
+    return "You've used your Ask Keir energy for now. Daily energy refills at midnight UTC; supporters get more.";
   }
   if (status === 401 || status === 403) {
     return "Ask Keir could not verify this request. Try again later.";
@@ -113,5 +113,5 @@ export function askErrorMessage(error: unknown): string {
   if (status === 400 && /question required/i.test(text)) {
     return "That question was empty. Ask again with a question.";
   }
-  return "Ask Keir could not answer that one. Try again in a moment; failed answers do not use your questions.";
+  return "Ask Keir could not answer that one. Try again in a moment; failed answers do not use energy.";
 }

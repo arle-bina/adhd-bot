@@ -40,6 +40,34 @@ describe("answer footer", () => {
     expect(text).toContain("trimmed to 500 characters");
   });
 
+  it("shows energy left today and this week instead of a question count", () => {
+    const text = askFooterText({
+      ...base,
+      usage: {
+        used: 6, limit: 20, remaining: 14,
+        energy: {
+          daily: { used: 6, limit: 20, remaining: 14, percentLeft: 70 },
+          weekly: { used: 38, limit: 100, remaining: 62, percentLeft: 62, resetAt: "2026-11-02T00:00:00Z" },
+          typicalLeft: 14, unit: "energy",
+        },
+      },
+      charge: { cost: 0.6, percentOfDaily: 3, reasons: ["live data", "chart"] },
+    });
+    expect(text).toContain("Used 3% of today's energy (live data, chart)");
+    expect(text).toContain("Energy: 70% left today, about 14 questions left");
+    expect(text).toContain("This week: 62% left, refills Monday");
+    expect(text).not.toContain("questions left today");
+  });
+
+  it("says nothing about cost for a free answer and floors tiny charges", () => {
+    const energy = { daily: { limit: 160, remaining: 160 }, typicalLeft: 1 };
+    const free = askFooterText({ ...base, usage: { remaining: 160, energy }, charge: { cost: 0, reasons: [] } });
+    expect(free).not.toContain("Used");
+    expect(free).toContain("about 1 question left");
+    const tiny = askFooterText({ ...base, usage: { remaining: 160, energy }, charge: { cost: 0.25 } });
+    expect(tiny).toContain("Used under 1% of today's energy");
+  });
+
   it("ignores token usage objects from older engines", () => {
     expect(askFooterText({ ...base, usage: { input: 10, output: 20 } })).not.toContain("questions left");
   });
