@@ -36,11 +36,16 @@ export class AskProgressState {
   private readonly maxItems: number;
   private items: ProgressItem[] = [];
   private answer = "";
+  private ackLine = "";
 
   constructor(maxItems = 6) {
     this.maxItems = Math.max(2, maxItems);
   }
 
+  /** Keir's instant acknowledgement replaces the generic header. */
+  ack(text: string): void {
+    this.ackLine = String(text || "").replace(/@/g, "at ").replace(/[*~`>|_]/g, "").replace(/\s+/g, " ").trim().slice(0, 200);
+  }
   status(label: string): void { this.push("status", label); }
   action(label: string): void { this.push("action", label); }
   /** Accumulate streamed answer text; once any arrives, it takes the stage. */
@@ -55,8 +60,9 @@ export class AskProgressState {
 
   render(): string {
     if (this.answer.trim()) return previewFrom(this.answer);
-    if (!this.items.length) return "Working on it…";
-    return ["Working on it…", ...this.items.map((item, index) =>
+    const header = this.ackLine || "Working on it…";
+    if (!this.items.length) return header;
+    return [header, ...this.items.map((item, index) =>
       `${index === this.items.length - 1 ? "•" : "✓"} ${item.label}${index === this.items.length - 1 ? "…" : ""}`,
     )].join("\n");
   }
@@ -104,6 +110,7 @@ export class AskProgressReporter {
     this.throttleMs = throttleMs;
   }
 
+  ack(text: string): void { this.state.ack(text); this.queue(); }
   status(label: string): void { this.state.status(label); this.queue(); }
   action(label: string): void { this.state.action(label); this.queue(); }
   delta(piece: string): void { this.state.delta(piece); this.queue(); }

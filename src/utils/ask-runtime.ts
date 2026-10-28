@@ -53,6 +53,12 @@ export interface AskResponse {
   followupsLeft?: number;
   reportUrl?: string | null;
   vizBlocked?: boolean;
+  /** The instant "I'll look into X for you." line; also on cached JSON answers. */
+  ack?: string;
+  /** A drafted suggestion or ticket waiting for the asker's yes. */
+  proposedAction?: unknown;
+  /** Keir offers to file something; selecting it is a free action turn. */
+  offer?: unknown;
 }
 
 export const ASK_SITE_ORIGIN = (process.env.ASK_SITE_URL || "https://ask.lakesidegames.net").replace(/\/$/, "");
@@ -225,6 +231,11 @@ export async function requestAsk(options: AskRequestOptions): Promise<AskRespons
       if (typeof data !== "object" || !data) return;
       if (event === "meta") {
         meta = { questionTrimmed: (data as { questionTrimmed?: unknown }).questionTrimmed === true };
+        return;
+      }
+      if (event === "ack") {
+        const text = String((data as { text?: unknown }).text || "");
+        if (text) options.progress.ack(text);
         return;
       }
       const label = String((data as { label?: unknown }).label || "");
