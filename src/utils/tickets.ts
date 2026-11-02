@@ -90,6 +90,9 @@ export const PANEL_EMOJI_MAP: Record<string, TicketCategory> = {
   "🧩": "mechanics",
 };
 
+/** Junior Developers can read and reply in tickets but do not count as ticket staff. */
+export const JUNIOR_DEV_ROLE_ID = "1566829201523347497";
+
 // In-memory lock to prevent race conditions on double-click
 const creationLocks = new Set<string>();
 
@@ -1179,7 +1182,7 @@ export async function createTicket(
 
     const devTeamRoleId = process.env.DEV_TEAM_ROLE_ID ?? "1470571508689535188";
     const modRoleId = moderatorRoleId();
-    const ticketViewerRoleId = "1483975767703552111";
+    const ticketViewerRoleIds = ["1483975767703552111", JUNIOR_DEV_ROLE_ID];
 
     const permissionOverwrites = [
       { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
@@ -1224,14 +1227,14 @@ export async function createTicket(
             },
           ]
         : []),
-      {
-        id: ticketViewerRoleId,
+      ...ticketViewerRoleIds.map((id) => ({
+        id,
         allow: [
           PermissionFlagsBits.ViewChannel,
           PermissionFlagsBits.SendMessages,
           PermissionFlagsBits.ReadMessageHistory,
         ],
-      },
+      })),
     ];
 
     const channel = await guild.channels.create({

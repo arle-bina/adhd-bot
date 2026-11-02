@@ -6,8 +6,9 @@ import {
   ChannelType,
 } from "discord.js";
 import { getTickets } from "../utils/ticketStore.js";
+import { JUNIOR_DEV_ROLE_ID } from "../utils/tickets.js";
 
-const TICKET_VIEWER_ROLE_ID = "1483975767703552111";
+const TICKET_VIEWER_ROLE_IDS = ["1483975767703552111", JUNIOR_DEV_ROLE_ID];
 
 export const data = new SlashCommandBuilder()
   .setName("sync-ticket-perms")
@@ -38,11 +39,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       }
 
       try {
-        await channel.permissionOverwrites.edit(TICKET_VIEWER_ROLE_ID, {
-          ViewChannel: true,
-          SendMessages: true,
-          ReadMessageHistory: true,
-        });
+        for (const roleId of TICKET_VIEWER_ROLE_IDS) {
+          await channel.permissionOverwrites.edit(roleId, {
+            ViewChannel: true,
+            SendMessages: true,
+            ReadMessageHistory: true,
+          });
+        }
 
         const modRoleId = process.env.SERVER_MODERATOR_ID?.trim();
         if (modRoleId) {
