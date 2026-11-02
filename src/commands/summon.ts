@@ -11,6 +11,7 @@ import {
   pokeSummon,
   type SummonAction,
 } from "../utils/summon.js";
+import { JUNIOR_DEV_ROLE_ID } from "../utils/tickets.js";
 
 export const data = new SlashCommandBuilder()
   .setName("summon")
@@ -27,11 +28,14 @@ export const data = new SlashCommandBuilder()
   .addSubcommand((sub) => sub.setName("stop").setDescription("Dismiss Keir from this channel"))
   .addSubcommand((sub) => sub.setName("status").setDescription("Is Keir here, and is he working?"));
 
+// Junior Developers may summon Keir for questions and investigations; Keir
+// itself keeps sign-off on heals and shipping with the owner and delegate.
 function isDeveloper(interaction: ChatInputCommandInteraction): boolean {
   const devRoleId = process.env.DEVELOPER_ROLE_ID;
   const roles = interaction.member?.roles;
   if (!devRoleId || !roles) return false;
-  return Array.isArray(roles) ? roles.includes(devRoleId) : roles.cache.has(devRoleId);
+  const allowed = [devRoleId, JUNIOR_DEV_ROLE_ID];
+  return allowed.some((id) => (Array.isArray(roles) ? roles.includes(id) : roles.cache.has(id)));
 }
 
 async function replyStatus(interaction: ChatInputCommandInteraction) {
