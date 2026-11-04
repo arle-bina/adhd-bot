@@ -10,6 +10,7 @@ import {
   ComponentType,
 } from "discord.js";
 import { getMarketShare, getAutocomplete, SectorType, MarketShareResponse } from "../utils/api.js";
+import { SECTOR_CHOICES, normalizeSectorType } from "../utils/sectorChoices.js";
 import { hexToInt, replyWithError, normalizeGameUrl } from "../utils/helpers.js";
 import { renderBarChart, brandColor, OTHERS, UNOWNED, compactMoney, type BarRow } from "../utils/viz/index.js";
 import { chartAttachment } from "../utils/viz/attach.js";
@@ -38,25 +39,7 @@ export const data = new SlashCommandBuilder()
       .setName("sector")
       .setDescription("Industry sector")
       .setRequired(true)
-      .addChoices(
-        { name: "Financial", value: "financial" },
-        { name: "Media", value: "media" },
-        { name: "Manufacturing", value: "manufacturing" },
-        { name: "Chemical Industries", value: "chemical_industries" },
-        { name: "Healthcare", value: "healthcare" },
-        { name: "Retail", value: "retail" },
-        { name: "Automobiles", value: "automobiles" },
-        { name: "Technology", value: "technology" },
-        { name: "Energy", value: "energy" },
-        { name: "Agriculture", value: "agriculture" },
-        { name: "Real Estate", value: "real_estate" },
-        { name: "Construction", value: "construction" },
-        { name: "Defense", value: "defense" },
-        { name: "Telecommunications", value: "telecommunications" },
-        { name: "Entertainment", value: "entertainment" },
-        { name: "Logistics", value: "logistics" },
-        { name: "Extraction", value: "extraction" },
-      )
+      .addChoices(...SECTOR_CHOICES)
   )
   .addStringOption((option) =>
     option
@@ -282,7 +265,7 @@ function buildNavRow(page: number, totalPages: number, showUnowned: boolean): Ac
 }
 
 export async function execute(interaction: ChatInputCommandInteraction) {
-  const type = interaction.options.getString("sector", true) as SectorType;
+  const type = normalizeSectorType(interaction.options.getString("sector", true)) as SectorType;
   const country = interaction.options.getString("country") ?? undefined;
   const state = interaction.options.getString("state") ?? undefined;
   let page = interaction.options.getInteger("page") ?? 1;
