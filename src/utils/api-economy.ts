@@ -237,7 +237,7 @@ export type SectorType =
   | "chemical_industries"
   | "healthcare"
   | "retail"
-  | "automobiles"
+  | "manufacturing_vehicles"
   | "technology"
   | "energy"
   | "agriculture"
@@ -245,7 +245,7 @@ export type SectorType =
   | "construction"
   | "defense"
   | "telecommunications"
-  | "entertainment"
+  | "media_entertainment"
   | "logistics"
   | "extraction";
 

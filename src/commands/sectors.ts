@@ -8,6 +8,7 @@ import {
   ComponentType,
 } from "discord.js";
 import { getSectors, SectorType, OwnedSectorsResponse, UnownedSectorsResponse } from "../utils/api.js";
+import { SECTOR_CHOICES, normalizeSectorType } from "../utils/sectorChoices.js";
 import { replyWithError, normalizeGameUrl } from "../utils/helpers.js";
 import {
   formatCurrency,
@@ -32,25 +33,7 @@ export const data = new SlashCommandBuilder()
       .setName("type")
       .setDescription("Industry type")
       .setRequired(true)
-      .addChoices(
-        { name: "Financial", value: "financial" },
-        { name: "Media", value: "media" },
-        { name: "Manufacturing", value: "manufacturing" },
-        { name: "Chemical Industries", value: "chemical_industries" },
-        { name: "Healthcare", value: "healthcare" },
-        { name: "Retail", value: "retail" },
-        { name: "Automobiles", value: "automobiles" },
-        { name: "Technology", value: "technology" },
-        { name: "Energy", value: "energy" },
-        { name: "Agriculture", value: "agriculture" },
-        { name: "Real Estate", value: "real_estate" },
-        { name: "Construction", value: "construction" },
-        { name: "Defense", value: "defense" },
-        { name: "Telecommunications", value: "telecommunications" },
-        { name: "Entertainment", value: "entertainment" },
-        { name: "Logistics", value: "logistics" },
-        { name: "Extraction", value: "extraction" },
-      )
+      .addChoices(...SECTOR_CHOICES)
   )
   .addBooleanOption((option) =>
     option
@@ -214,7 +197,7 @@ function buildNavRow(page: number, totalPages: number): ActionRowBuilder<ButtonB
 }
 
 export async function execute(interaction: ChatInputCommandInteraction) {
-  const type = interaction.options.getString("type", true) as SectorType;
+  const type = normalizeSectorType(interaction.options.getString("type", true)) as SectorType;
   const unowned = interaction.options.getBoolean("unowned") ?? false;
   let page = interaction.options.getInteger("page") ?? 1;
   const targetCurrency = interaction.options.getString("currency") || "USD";

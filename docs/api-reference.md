@@ -403,7 +403,7 @@ Sector ownership or unowned market by industry type.
 
 | Param | Type | Required | Notes |
 |-------|------|----------|-------|
-| `type` | string | ✓ | `"financial"`, `"media"`, `"manufacturing"`, `"healthcare"`, `"retail"`, `"automobiles"`, `"technology"`, `"energy"`, `"agriculture"`, `"real_estate"`, `"defense"`, `"telecommunications"`, `"entertainment"` |
+| `type` | string | ✓ | `"financial"`, `"media"`, `"manufacturing"`, `"healthcare"`, `"retail"`, `"manufacturing_vehicles"`, `"technology"`, `"energy"`, `"agriculture"`, `"real_estate"`, `"defense"`, `"telecommunications"`, `"media_entertainment"` |
 | `unowned` | string | — | `"true"` for unowned-market view |
 | `page` | number | — | Default 1, pageSize 10 |
 
