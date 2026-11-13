@@ -31,4 +31,9 @@ export function validateEnv() {
   if (!process.env.ASK_SECRET && !process.env.ASK_API_SECRET) {
     console.warn("[env] ASK_SECRET is unset; /ask will fail until it matches ops-dash ASK_API_SECRET");
   }
+
+  // Optional: /grant, /revoke and /grants reply "not configured" without the token.
+  if (!process.env.LAKESIDE_ACCOUNTS_INTERNAL_TOKEN) {
+    console.warn("[env] LAKESIDE_ACCOUNTS_INTERNAL_TOKEN is unset; /grant, /revoke and /grants are disabled");
+  }
 }

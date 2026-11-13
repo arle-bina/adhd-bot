@@ -76,6 +76,9 @@ This repository contains the **Discord bot** — a companion app that connects t
 | `/starboard` | Configure the starboard | `channel`, `threshold`, `emoji`, `self-star`, `enabled` |
 | `/sync-roles` | Backfill party and country roles for linked members | — |
 | `/version` | Show bot version, commit, and uptime | — |
+| `/grant` | Give a player paid access through the Lakeside account service (admin only; the service checks its own allow list) | `user`, `product`, `expires`, `reason` |
+| `/revoke` | Take back a grant (admin only) | `grant`, `user` |
+| `/grants` | `user` shows what a player has and why; `list` shows every active grant (admin only) | `user` |
 
 The bot also sends an **automatic welcome message** when a new member joins, prompting them to read the rules and run `/accept`.
 
