@@ -1,6 +1,7 @@
 name: Deploy to Oracle Cloud
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -8,6 +9,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.3
@@ -16,6 +18,7 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            set -eu
             cd ~/adhd-bot
             git fetch origin main
             git reset --hard origin/main

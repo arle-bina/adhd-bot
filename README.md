@@ -238,6 +238,8 @@ bash scripts/deploy.sh
 
 Pulls latest changes, rebuilds, and restarts the PM2 process.
 
+GitHub also deploys automatically on pushes to main. To deploy main manually, open Actions, select Deploy to Oracle Cloud, and choose Run workflow. Deployment stops on the first failed command and has a 15-minute job limit.
+
 ### PM2 Commands
 
 ```bash
