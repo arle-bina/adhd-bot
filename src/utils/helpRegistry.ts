@@ -121,6 +121,7 @@ export const categories: Category[] = [
     commands: [
       "merge-ticket",
       "ticket-panel",
+      "keir",
       "reassess",
       "retriage",
       "backfill-tickets",
