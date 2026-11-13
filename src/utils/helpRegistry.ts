@@ -128,6 +128,9 @@ export const categories: Category[] = [
       "sync-roles",
       "sync-supporters",
       "temp-sp-access",
+      "grant",
+      "revoke",
+      "grants",
       "strike",
       "supporter",
       "starboard",
@@ -272,6 +275,12 @@ export const extras: Record<string, HelpExtras> = {
     examples: ["/temp-sp-access user:@johndoe days:7"],
     details: "Default 30 days, max 90. Does not overwrite a permanent grant.",
   },
+  grant: {
+    examples: ["/grant user:@johndoe product:Corporate Warfare expires:30 reason:Playtest"],
+    details: "Owner and cofounder only; the account service checks the allow list. The player gets a DM.",
+  },
+  revoke: { examples: ["/revoke grant:Corporate Warfare user:@johndoe"] },
+  grants: { examples: ["/grants user user:@johndoe", "/grants list"] },
   "ban-bot-channel-usage": {
     examples: ["/ban-bot-channel-usage add channel:#general", "/ban-bot-channel-usage list"],
   },
