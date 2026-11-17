@@ -72,6 +72,7 @@ import { buildWelcomeMessage } from "./utils/welcome.js";
 import { handleSummonMessage, startSummonRefresh } from "./utils/summon.js";
 import { handleDirectMessage } from "./utils/dmInbox.js";
 import { DECISION_MODAL_PREFIX, DECISION_PREFIX, handleDecisionButton, handleDecisionModal } from "./utils/keirDecision.js";
+import { FEEDBACK_MODAL_PREFIX, FEEDBACK_PREFIX, handleFeedbackButton, handleFeedbackModal } from "./utils/keirFeedback.js";
 import { isBotEnabled } from "./utils/botState.js";
 import { isChannelBanned } from "./utils/channelBans.js";
 import {
@@ -1278,6 +1279,24 @@ client.on("interactionCreate", async (interaction) => {
       await handleDecisionModal(interaction);
     } catch (error) {
       console.error("Keir decision modal error:", error);
+    }
+    return;
+  }
+
+  // Keir answer feedback: Great / Helpful / Not helpful / Report on Keir's newest answer.
+  if (interaction.isButton() && interaction.customId.startsWith(FEEDBACK_PREFIX)) {
+    try {
+      await handleFeedbackButton(interaction);
+    } catch (error) {
+      console.error("Keir feedback button error:", error);
+    }
+    return;
+  }
+  if (interaction.isModalSubmit() && interaction.customId.startsWith(FEEDBACK_MODAL_PREFIX)) {
+    try {
+      await handleFeedbackModal(interaction);
+    } catch (error) {
+      console.error("Keir feedback modal error:", error);
     }
     return;
   }
