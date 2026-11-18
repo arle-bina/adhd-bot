@@ -78,7 +78,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       lines.push("**🟢 Active Elections**");
       for (const e of active.slice(0, 10)) {
         const emoji = raceEmoji(e.electionType, e.countryId);
-        const type = formatElectionType(e.electionType);
+        const type = formatElectionType(e.electionType, e.countryId);
         const endStr = e.endTime
           ? ` · ends <t:${Math.floor(new Date(e.endTime).getTime() / 1000)}:R>`
           : "";
@@ -96,7 +96,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       lines.push("**⏳ Upcoming Elections**");
       for (const e of upcoming.slice(0, 8)) {
         const emoji = raceEmoji(e.electionType, e.countryId);
-        const type = formatElectionType(e.electionType);
+        const type = formatElectionType(e.electionType, e.countryId);
         const startStr = e.startTime
           ? ` · starts <t:${Math.floor(new Date(e.startTime).getTime() / 1000)}:R>`
           : "";

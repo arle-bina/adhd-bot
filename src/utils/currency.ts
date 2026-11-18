@@ -8,6 +8,7 @@ import { apiFetchPublic } from "./api-base.js";
 
 export const COUNTRY_CURRENCY: Record<string, string> = {
   US: "USD",
+  CA: "CAD",
   UK: "GBP",
   DE: "EUR",
   JP: "JPY",
@@ -19,6 +20,7 @@ export const COUNTRY_CURRENCY: Record<string, string> = {
 
 export const CURRENCY_SYMBOLS: Record<string, string> = {
   USD: "$",
+  CAD: "C$",
   GBP: "\u00a3",
   EUR: "\u20ac",
   JPY: "\u00a5",
@@ -30,6 +32,7 @@ export const CURRENCY_SYMBOLS: Record<string, string> = {
 /** For discord.js `.addChoices()` on slash command string options. */
 export const CURRENCY_CHOICES: Array<{ name: string; value: string }> = [
   { name: "USD ($)", value: "USD" },
+  { name: "CAD (C$)", value: "CAD" },
   { name: "GBP (\u00a3)", value: "GBP" },
   { name: "EUR (\u20ac)", value: "EUR" },
   { name: "JPY (\u00a5)", value: "JPY" },
@@ -41,6 +44,7 @@ export const CURRENCY_CHOICES: Array<{ name: string; value: string }> = [
 /** Maps stock exchange codes to their home currency. */
 export const EXCHANGE_CURRENCY: Record<string, string> = {
   nyse: "USD",
+  tsx: "CAD",
   ftse: "GBP",
   dax: "EUR",
   nikkei: "JPY",
@@ -56,7 +60,7 @@ export const EXCHANGE_CURRENCY: Record<string, string> = {
 
 /** Map a countryId to its currency code. Falls back to "USD". */
 export function currencyFor(countryId: string | null | undefined): string {
-  return (countryId && COUNTRY_CURRENCY[countryId]) || "USD";
+  return (countryId && COUNTRY_CURRENCY[countryId.toUpperCase()]) || "USD";
 }
 
 /** Map a currency code to its display symbol. Falls back to "$". */

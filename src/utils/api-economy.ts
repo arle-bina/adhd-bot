@@ -361,7 +361,7 @@ export interface MarketShareResponse {
   sectorType: string;
   sectorLabel: string;
   scope: {
-    country: "US" | "UK" | "DE" | "JP" | "IE" | "BR" | "CN" | "NG" | null;
+    country: "US" | "CA" | "UK" | "DE" | "JP" | "IE" | "BR" | "CN" | "NG" | null;
     stateId: string | null;
     stateName: string | null;
   };

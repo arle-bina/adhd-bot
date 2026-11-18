@@ -1,6 +1,7 @@
 // Centralized formatting functions and constants for game concepts.
 
-export function formatElectionType(type: string): string {
+export function formatElectionType(type: string, countryId?: string | null): string {
+  if (countryId?.toUpperCase() === "CA" && type === "governor") return "Premier";
   const map: Record<string, string> = {
     senate: "Senate",
     house: "House",
@@ -10,6 +11,7 @@ export function formatElectionType(type: string): string {
     vicePresident: "Vice Presidential",
     commons: "Commons",
     caCommons: "House of Commons",
+    snap_caCommons: "Snap House of Commons",
     provincialLegislature: "Provincial Legislature",
     primeMinister: "Prime Minister",
     chancellor: "Chancellor",
@@ -36,7 +38,8 @@ export function formatElectionType(type: string): string {
   return map[type] ?? type;
 }
 
-export function formatOfficeType(type: string): string {
+export function formatOfficeType(type: string, countryId?: string | null): string {
+  if (countryId?.toUpperCase() === "CA" && type === "governor") return "Premier";
   const map: Record<string, string> = {
     governor: "Governor",
     senate: "Senator",
@@ -45,6 +48,9 @@ export function formatOfficeType(type: string): string {
     president: "President",
     vicePresident: "Vice President",
     commons: "MP",
+    caCommons: "MP",
+    snap_caCommons: "MP",
+    provincialLegislature: "Member of the Provincial Legislature",
     primeMinister: "Prime Minister",
     chancellor: "Chancellor",
     shugiin: "Representative",
@@ -86,6 +92,9 @@ export const RACE_EMOJI: Record<string, string> = {
   governor: "👔",
   president: "🇺🇸",
   vicePresident: "🇺🇸",
+  caCommons: "🇨🇦",
+  snap_caCommons: "🇨🇦",
+  provincialLegislature: "🇨🇦",
   commons: "🇬🇧",
   snap_commons: "🇬🇧",
   primeMinister: "🇬🇧",
@@ -112,6 +121,7 @@ export const RACE_EMOJI: Record<string, string> = {
 
 export const COUNTRY_NAMES: Record<string, string> = {
   US: "United States",
+  CA: "Canada",
   UK: "United Kingdom",
   DE: "Germany",
   JP: "Japan",
@@ -126,6 +136,7 @@ export const COUNTRY_NAMES: Record<string, string> = {
 
 export const COUNTRY_FLAG: Record<string, string> = {
   US: "🇺🇸",
+  CA: "🇨🇦",
   UK: "🇬🇧",
   DE: "🇩🇪",
   JP: "🇯🇵",
@@ -151,6 +162,7 @@ export function raceEmoji(electionType: string, countryId?: string): string {
 
 export const COUNTRY_COLORS: Record<string, number> = {
   US: 0x3c5a9a,
+  CA: 0xd80621,
   UK: 0x9a3c3c,
   DE: 0xffcc00,
   JP: 0xbc002d,
@@ -165,6 +177,7 @@ export const COUNTRY_COLORS: Record<string, number> = {
 export const EXCHANGE_LABELS: Record<string, string> = {
   global: "Global Stock Market",
   nyse: "NYSE",
+  tsx: "TSX",
   ftse: "FTSE",
   dax: "DAX",
   nikkei: "Nikkei",

@@ -148,7 +148,7 @@ export const categories: Category[] = [
 ];
 
 /** Commands that carry no permission gate in Discord but are staff tools in practice. */
-export const STAFF_BY_CONVENTION = new Set(["claim", "close-ticket", "copy-ticket", "test"]);
+export const STAFF_BY_CONVENTION = new Set(["keir", "claim", "close-ticket", "copy-ticket", "test"]);
 
 export const extras: Record<string, HelpExtras> = {
   profile: {
@@ -200,18 +200,19 @@ export const extras: Record<string, HelpExtras> = {
     details:
       "No-limit hold'em against other players. The table pays out by final chip count; winners pay 5% of their profit. Blinds double every ten hands.",
   },
-  elections: { examples: ["/elections", "/elections country:US state:CA"] },
+  elections: { examples: ["/elections", "/elections country:US state:CA", "/elections country:CA state:CA_ON"] },
   election: {
     examples: [
       "/election country:US state:CA race:Senate",
       "/election country:UK state:UK_SCO race:Commons",
       "/election country:US",
+      "/election country:CA state:CA_ON race:Provincial Legislature (CA)",
     ],
     details: "Omit state and race to browse all elections for a country.",
   },
   calendar: { examples: ["/calendar", "/calendar country:US"] },
   predict: {
-    examples: ["/predict country:US race:Senate", "/predict country:UK race:Commons"],
+    examples: ["/predict country:US race:Senate", "/predict country:UK race:Commons", "/predict country:CA race:House of Commons (CA)"],
   },
   party: {
     examples: ["/party id:1 country:UK", "/party id:2 country:US currency:EUR"],
@@ -220,8 +221,8 @@ export const extras: Record<string, HelpExtras> = {
   "party-compare": {
     examples: ["/party-compare party1:1 country1:US party2:2 country2:US"],
   },
-  state: { examples: ["/state id:CA", "/state id:UK_ENG"] },
-  government: { examples: ["/government", "/government country:UK"] },
+  state: { examples: ["/state id:CA", "/state id:UK_ENG", "/state id:CA_ON"] },
+  government: { examples: ["/government", "/government country:UK", "/government country:CA"] },
   corporation: {
     examples: ["/corporation name:Apex Media"],
     details: "Use the Bonds and Financials buttons on the result to switch tabs.",

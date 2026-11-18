@@ -22,7 +22,7 @@
 
 ## :robot: Overview
 
-**A House Divided** is a browser-based political simulation where players create politicians, compete in elections, form coalitions, pass legislation, and climb from state office to national leadership. The game runs on a turn-based economy (1 turn = 1 real hour) with persistent world state across the US and UK.
+**A House Divided** is a browser-based political simulation where players create politicians, compete in elections, form coalitions, pass legislation, and climb from state office to national leadership. The game runs on a turn-based economy (1 turn = 1 real hour) with persistent world state across the enabled countries, including the US and Canada.
 
 This repository contains the **Discord bot** — a companion app that connects to the game's API and exposes live game data via slash commands, so players can check standings, elections, and news without switching to a browser.
 
@@ -292,3 +292,21 @@ npm run lint:fix
 ## :robot: License
 
 Proprietary — All rights reserved.
+
+## Canadian support
+
+Canada uses the same lookup commands as the US: `/profile`, `/party`, `/leaderboard`,
+`/country`, `/government`, `/legislation`, `/elections`, `/calendar`, and `/predict`.
+Election choices include the House of Commons, snap Commons elections and provincial
+legislatures. Premier and Prime Minister records are shown when available from the game.
+`/state id:CA_ON` looks up Ontario; `/state id:ON country:CA` also works. `CA` alone
+continues to mean California. Country-scoped election suggestions use Canadian provinces.
+Money is displayed in Canadian dollars and `/stock-chart country:ca` selects the TSX.
+Role synchronization recognizes Canada, Canadian MPs, provincial legislators and premiers.
+
+The game API changes on `codex/canada-bot-parity` supply country-scoped cabinet data,
+province autocomplete and region lookups. Deploy those before the updated bot. The
+normal deployment workflow registers the changed slash-command options automatically.
+For a manual deployment, run `npm run register` once after building. Tests and builds
+do not register commands or modify Discord roles. Long government lists use continuation
+fields and messages so cabinet members remain visible within Discord's limits.

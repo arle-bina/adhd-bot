@@ -70,6 +70,7 @@ export const data = new SlashCommandBuilder()
       .setRequired(false)
       .addChoices(
         { name: "United States (NYSE)", value: "us" },
+        { name: "Canada (TSX)", value: "ca" },
         { name: "United Kingdom (FTSE)", value: "uk" },
         { name: "Germany (DAX)", value: "de" },
         { name: "Japan (Nikkei)", value: "jp" },

@@ -34,11 +34,11 @@ describe("cachedGet", () => {
 
   it("serves repeat calls from cache until TTL expires", async () => {
     const load = vi.fn(async () => ({ n: 1 }));
-    await cachedGet(true, "/api/discord-bot/state", { id: "1" }, load);
-    await cachedGet(true, "/api/discord-bot/state", { id: "1" }, load);
+    await cachedGet(true, "/api/discord-bot/country/US/region", { id: "1" }, load);
+    await cachedGet(true, "/api/discord-bot/country/US/region", { id: "1" }, load);
     expect(load).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(61_000);
-    await cachedGet(true, "/api/discord-bot/state", { id: "1" }, load);
+    await cachedGet(true, "/api/discord-bot/country/US/region", { id: "1" }, load);
     expect(load).toHaveBeenCalledTimes(2);
   });
 
@@ -78,7 +78,7 @@ describe("cachedGet", () => {
 
   it("stays bounded", async () => {
     for (let i = 0; i < _cacheTesting.MAX_ENTRIES + 50; i++) {
-      await cachedGet(true, "/api/discord-bot/state", { id: String(i) }, async () => i);
+      await cachedGet(true, "/api/discord-bot/country/US/region", { id: String(i) }, async () => i);
     }
     expect(_cacheTesting.size()).toBeLessThanOrEqual(_cacheTesting.MAX_ENTRIES);
   });

@@ -130,6 +130,9 @@ export async function syncMemberRoles(
     "Prime Minister",
     "Chancellor",
     "MP",
+    "Member of Parliament",
+    "Member of the Provincial Legislature",
+    "Governor of the Bank of Canada",
     "Central Bank Chair",
     "Representative",  // Shūgiin
     "Councillor",      // Sangiin

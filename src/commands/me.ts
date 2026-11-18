@@ -50,7 +50,7 @@ export async function buildMeReply(userId: string): Promise<MeReply> {
   const fmt = (n: number) => `${sym}${formatNumber(n, defaults.numberFormat)}`;
   const num = (n: number) => formatNumber(n, defaults.numberFormat);
 
-  const office = char.officeType ? formatOfficeType(char.officeType) : char.position || "No office";
+  const office = char.officeType ? formatOfficeType(char.officeType, char.countryId) : char.position || "No office";
   const flag = char.countryId ? COUNTRY_FLAG[char.countryId] ?? "" : "";
 
   const embed = new EmbedBuilder()
@@ -74,7 +74,7 @@ export async function buildMeReply(userId: string): Promise<MeReply> {
   const lines: string[] = [];
   if (char.activeElection) {
     const e = char.activeElection;
-    const label = e.electionLabel ?? formatElectionType(e.electionType);
+    const label = e.electionLabel ?? formatElectionType(e.electionType, char.countryId);
     lines.push(`**${label}** (${e.electionState}), entered <t:${Math.floor(new Date(e.enteredAt).getTime() / 1000)}:R>`);
   }
   try {
@@ -85,7 +85,7 @@ export async function buildMeReply(userId: string): Promise<MeReply> {
           if (!e.candidates.some((c) => c.characterId === char.id)) continue;
           if (char.activeElection && e.id === char.activeElection.electionId) continue;
           const when = e.status === "active" ? (e.endTime ? `ends <t:${Math.floor(new Date(e.endTime).getTime() / 1000)}:R>` : "active") : e.startTime ? `starts <t:${Math.floor(new Date(e.startTime).getTime() / 1000)}:R>` : "upcoming";
-          lines.push(`**${formatElectionType(e.electionType)}** (${e.state}), ${when}`);
+          lines.push(`**${formatElectionType(e.electionType, char.countryId)}** (${e.state}), ${when}`);
         }
       }
     }

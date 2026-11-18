@@ -49,7 +49,7 @@ export async function autocomplete(interaction: AutocompleteInteraction): Promis
     return;
   }
   try {
-    const res = await getAutocomplete({ type: "states", q: focused.value, limit: 25 });
+    const res = await getAutocomplete({ type: "states", q: focused.value, country: interaction.options.getString("country"), limit: 25 });
     await interaction.respond(
       res.results.map((r) => ({ name: r.name, value: r.id }))
     );
@@ -67,7 +67,7 @@ function buildElectionsEmbed(
   const shown = elections.slice(start, start + PAGE_SIZE);
 
   const lines = shown.map((e) => {
-    const typeLabel = formatElectionType(e.electionType);
+    const typeLabel = formatElectionType(e.electionType, e.countryId);
     const candidateList =
       e.candidates
         .map((c) => {

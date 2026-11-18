@@ -33,9 +33,11 @@ interface AutocompleteResponse {
 export async function getAutocomplete(params: {
   type: string;
   q: string;
+  country?: string | null;
   limit?: number;
 }): Promise<AutocompleteResponse> {
   const p: Record<string, string> = { type: params.type, q: params.q };
+  if (params.country) p.country = params.country.toUpperCase();
   if (params.limit != null) p.limit = String(params.limit);
   return apiFetch<AutocompleteResponse>("/api/discord-bot/autocomplete", p);
 }

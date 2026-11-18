@@ -88,30 +88,30 @@ describe("formatOfficeType", () => {
 describe("constant maps", () => {
   it("RACE_EMOJI has entries for all election types including snaps", () => {
     expect(Object.keys(RACE_EMOJI).sort()).toEqual([
-      "bundestag", "centralBankChair", "chamber", "chancellor", "commons",
+      "bundestag", "caCommons", "centralBankChair", "chamber", "chancellor", "commons",
       "dail", "governor", "house", "landtag", "localCouncil",
       "ministerPresident", "npcDelegate", "peoplesCongress", "premier",
-      "president", "primeMinister", "regionalCouncil", "sangiin", "senate",
-      "shugiin", "snap_bundestag", "snap_commons", "snap_dail",
+      "president", "primeMinister", "provincialLegislature", "regionalCouncil", "sangiin", "senate",
+      "shugiin", "snap_bundestag", "snap_caCommons", "snap_commons", "snap_dail",
       "snap_shugiin", "stateSenate", "taoiseach", "uachtaran", "vicePresident",
     ]);
   });
 
   it("COUNTRY_NAMES covers every supported country", () => {
     expect(Object.keys(COUNTRY_NAMES).sort()).toEqual([
-      "BR", "CN", "DD", "DE", "IE", "JP", "NG", "RU", "UK", "US",
+      "BR", "CA", "CN", "DD", "DE", "IE", "JP", "NG", "RU", "UK", "US",
     ]);
   });
 
   it("COUNTRY_FLAG covers every supported country", () => {
     expect(Object.keys(COUNTRY_FLAG).sort()).toEqual([
-      "BR", "CN", "DD", "DE", "IE", "JP", "NG", "RU", "UK", "US",
+      "BR", "CA", "CN", "DD", "DE", "IE", "JP", "NG", "RU", "UK", "US",
     ]);
   });
 
   it("COUNTRY_COLORS covers every supported country", () => {
     expect(Object.keys(COUNTRY_COLORS).sort()).toEqual([
-      "BR", "CN", "DD", "DE", "IE", "JP", "NG", "RU", "UK", "US",
+      "BR", "CA", "CN", "DD", "DE", "IE", "JP", "NG", "RU", "UK", "US",
     ]);
   });
 
@@ -163,7 +163,7 @@ describe("formatOfficeType — RU/DD fallbacks", () => {
 
   it("EXCHANGE_LABELS covers all exchanges", () => {
     expect(Object.keys(EXCHANGE_LABELS).sort()).toEqual([
-      "b3", "dax", "ftse", "global", "iseq", "nikkei", "nyse", "sse",
+      "b3", "dax", "ftse", "global", "iseq", "nikkei", "nyse", "sse", "tsx",
     ]);
   });
 });
