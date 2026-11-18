@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { data as electionCommand } from "../../src/commands/election.js";
+import { data as predictCommand } from "../../src/commands/predict.js";
 import { formatElectionType } from "../../src/utils/formatting.js";
 
 describe("formatElectionType", () => {
@@ -35,6 +36,15 @@ it("registers the Canadian race types accepted by the game API", () => {
     expect.arrayContaining([
       { name: "House of Commons (CA)", value: "caCommons" },
       { name: "Provincial Legislature (CA)", value: "provincialLegislature" },
+    ]),
+  );
+});
+
+it("offers the Canadian Commons in the prediction chamber picker", () => {
+  const race = predictCommand.toJSON().options?.find((option) => option.name === "race");
+  expect(race && "choices" in race && race.choices).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ name: "House of Commons (CA)", value: "caCommons" }),
     ]),
   );
 });

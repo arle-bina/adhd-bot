@@ -35,6 +35,7 @@ export const data = new SlashCommandBuilder()
         { name: "Senate (US/BR/NG)", value: "senate" },
         { name: "House (US/NG)", value: "house" },
         { name: "Commons (UK)", value: "commons" },
+        { name: "House of Commons (CA)", value: "caCommons" },
         { name: "Shūgiin (JP)", value: "shugiin" },
         { name: "Sangiin (JP)", value: "sangiin" },
         { name: "Bundestag (DE)", value: "bundestag" },
@@ -70,6 +71,7 @@ export async function autocomplete(interaction: AutocompleteInteraction): Promis
  */
 const CHAMBER_SHAPE: Record<string, ChamberShape> = {
   commons: "westminster",
+  caCommons: "westminster",
 };
 
 async function buildChart(
@@ -115,7 +117,7 @@ function buildMajorityLabel(entries: PredictionPartyEntry[], totalSeats: number,
     return `**${largest.partyName} Majority**`;
   }
 
-  const noMajorityTerm = race === "commons" ? "Hung Parliament" : "No Majority";
+  const noMajorityTerm = CHAMBER_SHAPE[race] === "westminster" ? "Hung Parliament" : "No Majority";
   return `**${noMajorityTerm}** (${largest.partyName} Largest Party)`;
 }
 
