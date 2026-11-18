@@ -9,6 +9,8 @@ export function formatElectionType(type: string): string {
     president: "Presidential",
     vicePresident: "Vice Presidential",
     commons: "Commons",
+    caCommons: "House of Commons",
+    provincialLegislature: "Provincial Legislature",
     primeMinister: "Prime Minister",
     chancellor: "Chancellor",
     shugiin: "Shūgiin",

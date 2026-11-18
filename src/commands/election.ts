@@ -47,6 +47,8 @@ export const data = new SlashCommandBuilder()
         { name: "President", value: "president" },
         { name: "Commons", value: "commons" },
         { name: "Snap Commons", value: "snap_commons" },
+        { name: "House of Commons (CA)", value: "caCommons" },
+        { name: "Provincial Legislature (CA)", value: "provincialLegislature" },
         { name: "Prime Minister", value: "primeMinister" },
         { name: "Shūgiin (JP)", value: "shugiin" },
         { name: "Snap Shūgiin (JP)", value: "snap_shugiin" },
