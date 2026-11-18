@@ -229,7 +229,7 @@ export async function buildCountryView(tab: CountryTab, countryCode: string): Pr
           subtitle: `${total} seats · ${Math.floor(total / 2) + 1} for a majority`,
           totalSeats: total,
           majority: Math.floor(total / 2) + 1,
-          shape: c === "UK" ? "westminster" : "arch",
+          shape: c === "UK" || c === "CA" ? "westminster" : "arch",
           parties: leg.composition.map((p, i) => ({ name: p.partyName, seats: p.seats, color: brandColor(p.partyColor, i) })),
         }),
         "country-legislature",

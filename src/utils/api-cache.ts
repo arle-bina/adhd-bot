@@ -27,7 +27,7 @@ const ALLOW_TTLS: Array<[string, number]> = [
   ["/api/discord-bot/autocomplete", 60 * SEC],
   ["/api/discord-bot/leaderboard", 60 * SEC],
   ["/api/discord-bot/party", 60 * SEC],
-  ["/api/discord-bot/state", 60 * SEC],
+  ["/api/discord-bot/country/", 60 * SEC],
   ["/api/discord-bot/government", 60 * SEC],
   ["/api/discord-bot/elections", 60 * SEC],
   ["/api/discord-bot/race", 60 * SEC],

@@ -43,11 +43,12 @@ export const data = new SlashCommandBuilder()
         { name: "Senate", value: "senate" },
         { name: "House", value: "house" },
         { name: "State Senate", value: "stateSenate" },
-        { name: "Governor", value: "governor" },
+        { name: "Governor / Premier (CA)", value: "governor" },
         { name: "President", value: "president" },
         { name: "Commons", value: "commons" },
         { name: "Snap Commons", value: "snap_commons" },
         { name: "House of Commons (CA)", value: "caCommons" },
+        { name: "Snap House of Commons (CA)", value: "snap_caCommons" },
         { name: "Provincial Legislature (CA)", value: "provincialLegislature" },
         { name: "Prime Minister", value: "primeMinister" },
         { name: "Shūgiin (JP)", value: "shugiin" },
@@ -68,7 +69,7 @@ export async function autocomplete(interaction: AutocompleteInteraction): Promis
     return;
   }
   try {
-    const res = await getAutocomplete({ type: "states", q: focused.value, limit: 25 });
+    const res = await getAutocomplete({ type: "states", q: focused.value, country: interaction.options.getString("country"), limit: 25 });
     await interaction.respond(
       res.results.map((r) => ({ name: r.name, value: r.id }))
     );
@@ -102,7 +103,7 @@ function buildListEmbed(elections: ListElection[], country: string, state?: stri
   const subtitle = state ? ` · ${state}` : "";
   const lines = elections.slice(0, 25).map((e) => {
     const emoji = raceEmoji(e.electionType, country);
-    const type = formatElectionType(e.electionType);
+    const type = formatElectionType(e.electionType, country);
     const timeStr = e.endTime ? ` · ends <t:${ts(e.endTime)}:R>` : "";
     return `${emoji} **${type} — ${e.stateName ?? e.state}** (${e.status})${timeStr}`;
   });
@@ -120,12 +121,12 @@ function buildListEmbed(elections: ListElection[], country: string, state?: stri
   return embed;
 }
 
-function buildSelectMenuRow(elections: ListElection[]): ActionRowBuilder<StringSelectMenuBuilder> | null {
+function buildSelectMenuRow(elections: ListElection[], country: string): ActionRowBuilder<StringSelectMenuBuilder> | null {
   const sliced = elections.slice(0, 25);
   if (sliced.length === 0) return null;
 
   const options = sliced.map((e) => {
-    const type = formatElectionType(e.electionType);
+    const type = formatElectionType(e.electionType, country);
     const label = `${type} — ${e.stateName ?? e.state}`.slice(0, 100);
     return new StringSelectMenuOptionBuilder().setLabel(label).setValue(e.id);
   });
@@ -200,7 +201,7 @@ function buildRaceChart(detail: RaceDetailResponse): Buffer | null {
     };
   });
 
-  const type = formatElectionType(election.electionType);
+  const type = formatElectionType(election.electionType, election.countryId);
   const where = election.stateName ?? election.state ?? "";
   const phaseLabel = phase.isUpcoming
     ? "Upcoming"
@@ -239,7 +240,7 @@ function buildDetailEmbed(detail: RaceDetailResponse): EmbedBuilder {
   const { election, phase, incumbent, candidates } = detail;
   const votes = detail.votes ?? ({} as typeof detail.votes);
   const emoji = raceEmoji(election.electionType, election.countryId);
-  const type = formatElectionType(election.electionType);
+  const type = formatElectionType(election.electionType, election.countryId);
 
   let phaseStr: string;
   if (phase.isUpcoming) {
@@ -443,7 +444,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         await interaction.editReply({ content: "No active or upcoming elections found." });
         return;
       }
-      const menuRow = buildSelectMenuRow(elections);
+      const menuRow = buildSelectMenuRow(elections, country);
       message = await interaction.editReply({
         embeds: [buildListEmbed(elections, country, state)],
         components: menuRow ? [menuRow] : [],
@@ -475,7 +476,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
         });
       } else if (component.isButton() && component.customId === "back_to_list") {
         const elections = await fetchList();
-        const menuRow = buildSelectMenuRow(elections);
+        const menuRow = buildSelectMenuRow(elections, country);
         currentView = "list";
         currentDetail = null;
         await component.editReply({

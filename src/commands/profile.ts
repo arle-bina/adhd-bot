@@ -129,7 +129,7 @@ async function buildProfileCard(
   const infamy = Math.round(char.infamy ?? 0);
 
   const activeElection = char.activeElection?.electionType
-    ? `Contesting: ${char.activeElection.electionLabel ?? formatOfficeType(char.activeElection.electionType)}` +
+    ? `Contesting: ${char.activeElection.electionLabel ?? formatOfficeType(char.activeElection.electionType, char.countryId)}` +
       ` (${char.activeElection.electionState ?? "Unknown"})`
     : null;
 

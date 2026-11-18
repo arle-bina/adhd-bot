@@ -32,7 +32,7 @@ export type KeirDeskSub = (typeof KEIR_DESK_SUBCOMMANDS)[number]["name"];
 export interface KeirDeskCall {
   sub: KeirDeskSub;
   options: { ticket?: number; name?: string; share?: boolean };
-  member: { id: string; roles: string[] };
+  member: { id: string; roles: readonly string[] };
 }
 
 export interface KeirDeskReply {

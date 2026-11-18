@@ -11,12 +11,13 @@ import { chartAttachment } from "../utils/viz/attach.js";
 import { COUNTRY_FLAG } from "../utils/formatting.js";
 import { respondCountryAutocomplete, validateCountry } from "../utils/countryChoices.js";
 import { countryOrDefault } from "../utils/userPrefsStore.js";
+import { governmentEmbeds } from "../utils/governmentEmbeds.js";
 
 export const cooldown = 5;
 
 function sectionTitle(section: string, country: string): string {
   if (section === "leadership") {
-    if (country === "UK") return "Parliamentary Leadership";
+    if (country === "UK" || country === "CA") return "Parliamentary Leadership";
     if (country === "DE") return "Bundestag Leadership";
     if (country === "JP") return "Diet Leadership";
     if (country === "IE") return "Oireachtas Leadership";
@@ -69,7 +70,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   try {
     const result = await getGovernment(country);
 
-    if (!result.found || result.officials.length === 0) {
+    if (!result.found || (result.officials.length === 0 && !result.governmentFormation)) {
       await interaction.editReply({ content: "No government data found." });
       return;
     }
@@ -105,6 +106,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       }
     }
 
+    const displaySections: Array<{ name: string; lines: string[] }> = [];
     for (const [section, officials] of sections) {
       const title = sectionTitle(section, result.country);
       const lines = officials.map((o) => {
@@ -119,11 +121,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         return `**${o.role}:** ${nameStr}${partyStr}`;
       });
 
-      embed.addFields({
-        name: title,
-        value: lines.join("\n").slice(0, 1024),
-        inline: false,
-      });
+      displaySections.push({ name: title, lines });
     }
 
     // A coalition's only real question is whether it clears the line, so the
@@ -135,7 +133,11 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     const attachment = chart ? chartAttachment(chart, "government", result.country) : null;
     if (attachment) embed.setImage(attachment.url);
 
-    await interaction.editReply({ embeds: [embed], files: attachment ? [attachment.file] : [] });
+    const pages = governmentEmbeds(embed, displaySections);
+    await interaction.editReply({ embeds: [pages[0]], files: attachment ? [attachment.file] : [] });
+    for (const page of pages.slice(1)) {
+      await interaction.followUp({ embeds: [page] });
+    }
   } catch (error) {
     await replyWithError(interaction, "government", error);
   }

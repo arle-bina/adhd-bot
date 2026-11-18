@@ -9,6 +9,8 @@ import { replyWithError, standardFooter, normalizeGameUrl } from "../utils/helpe
 import { stateDidYouMean } from "../utils/lookupSuggestions.js";
 import { formatOfficeType } from "../utils/formatting.js";
 
+import { respondCountryAutocomplete } from "../utils/countryChoices.js";
+
 export { formatOfficeType };
 
 export const cooldown = 5;
@@ -19,15 +21,24 @@ export const data = new SlashCommandBuilder()
   .addStringOption((option) =>
     option
       .setName("id")
-      .setDescription("State or region: type a name or code (e.g. CA, UK_ENG)")
+      .setDescription("State or region: type a name or code (e.g. CA, CA_ON, UK_ENG)")
       .setRequired(true)
       .setAutocomplete(true)
+  )
+  .addStringOption((option) => option
+    .setName("country")
+    .setDescription("Country for a bare province or state code (e.g. CA for ON)")
+    .setAutocomplete(true)
   );
 
 export async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {
-  const focused = interaction.options.getFocused();
+  const focused = interaction.options.getFocused(true);
+  if (focused.name === "country") {
+    await respondCountryAutocomplete(interaction);
+    return;
+  }
   try {
-    const res = await getAutocomplete({ type: "states", q: focused, limit: 25 });
+    const res = await getAutocomplete({ type: "states", q: focused.value, country: interaction.options.getString("country"), limit: 25 });
     await interaction.respond(
       res.results.map((r) => ({ name: r.name, value: r.id }))
     );
@@ -42,12 +53,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply();
 
   try {
-    const result = await getState(id);
+    const result = await getState(id, interaction.options.getString("country"));
 
     if (!result.found || !result.state) {
       await interaction.editReply({
         content:
-          "State not found. Pick one from the suggestions as you type, or use the state code, e.g. `CA`, `TX`, `UK_ENG`." +
+          "State not found. Pick one from the suggestions as you type, or use the state code, e.g. `CA`, `TX`, `CA_ON`, `UK_ENG`." +
           (await stateDidYouMean(id)),
       });
       return;
@@ -58,7 +69,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const officialsValue =
       s.officials
         .map((o) => {
-          const officeLabel = formatOfficeType(o.officeType);
+          const officeLabel = o.officeLabel ?? formatOfficeType(o.officeType);
           if (!o.characterName) return `**${officeLabel}:** Vacant`;
           const npcSuffix = o.isNPP ? " [NPC]" : "";
           const display = `${o.characterName}${npcSuffix} (${o.party ?? "Independent"})`;

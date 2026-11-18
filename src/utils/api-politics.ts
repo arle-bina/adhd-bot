@@ -206,6 +206,7 @@ export async function getElections(params: {
 
 interface StateOfficial {
   officeType: string;
+  officeLabel?: string;
   characterId: string | null;
   characterName: string | null;
   party: string | null;
@@ -229,8 +230,10 @@ interface StateResponse {
   state?: StateData;
 }
 
-export async function getState(id: string): Promise<StateResponse> {
-  return apiFetch<StateResponse>("/api/discord-bot/state", { id });
+export async function getState(id: string, country?: string | null): Promise<StateResponse> {
+  const code = id.trim().toUpperCase();
+  const resolvedCountry = (country || (code.includes("_") ? code.split("_")[0] : "US")).toUpperCase();
+  return apiFetch<StateResponse>(`/api/discord-bot/country/${encodeURIComponent(resolvedCountry)}/region`, { id: code });
 }
 
 // ---------------------------------------------------------------------------
