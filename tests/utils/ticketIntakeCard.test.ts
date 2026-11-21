@@ -205,4 +205,10 @@ describe("persistent ticket intake card", () => {
     // A pending announcement keeps the recovery pass running until it posts.
     expect(ticketIntakeCardNeedsRefresh({ ticketNumber: 1448, apiTicketNumber: 1448, intakeCardVersion: 2, intakeReceiptUrl: "https://ops.example/t/opaque", intakeSeeded: true, intakeReceiptPending: true }, 1448)).toBe(true);
   });
+
+  it("an incident card has no page or platform intake, only the receipt", () => {
+    const embed = buildTicketIntakeCardEmbed({ ...ticket, category: "incident" as const }, new EmbedBuilder()).toJSON();
+    const names = (embed.fields ?? []).map((f) => f.name);
+    expect(names).toEqual(["Receipt"]);
+  });
 });

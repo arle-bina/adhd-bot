@@ -281,6 +281,11 @@ function intakeEmbed(ticket: NonNullable<ReturnType<typeof getTicketByChannel>>,
   const page = ticket.intakeCandidatePageUrl ?? (!ticket.intakePageDescription && !ticket.intakePageConfirmed && ticket.intakeAwaitingReply !== "page" ? ticketCandidatePage(ticket.description) : undefined);
   const existing = embed.data.fields ?? [];
   const retained = existing.filter((field) => !["Intake", "Affected page / issue", "Affected page", "Page to confirm", "Platform to confirm", "Platform and versions", "Receipt"].includes(field.name));
+  // An incident is a staff catch-all (a stuck turn, an outage): no page or platform to confirm.
+  if (ticket.category === "incident") {
+    embed.setFields([...retained, { name: "Receipt", value: ticket.intakeReceiptUrl ? `[View ticket receipt](${ticket.intakeReceiptUrl})` : "Receipt link is being prepared", inline: false }]);
+    return embed;
+  }
   embed.setFields([...retained,
     { name: "Intake", value: ticket.intakeAwaitingReply === "page" ? "Which page or menu is affected? Reply here." : ticket.intakePageConfirmed && ticket.intakePlatformConfirmed ? "Details confirmed" : `Page ${ticket.intakePageConfirmed ? "confirmed" : "optional to confirm"} · platform ${ticket.intakePlatformConfirmed ? "confirmed" : "optional to confirm"}`, inline: false },
     { name: "Affected page / issue", value: ticket.intakeAwaitingReply === "page" ? "Which page or menu is affected? Reply here." : ticket.intakePageDescription ? `${ticket.intakePageDescription.slice(0, 900)} · ${ticket.intakePageConfirmed ? "confirmed" : "optional to confirm"}` : page ? `[${page}](${page}) · ${ticket.intakePageConfirmed ? "confirmed" : "optional to confirm"}` : "No page detected yet · paste a link or describe it", inline: false },
@@ -1309,7 +1314,7 @@ export async function createTicket(
     addTicket(guild.id, ticketRecord);
     await embedMessage.edit({
       embeds: [intakeEmbed(ticketRecord, EmbedBuilder.from(embedMessage.embeds[0]))],
-      components: [buildTicketActionRow(false), buildIntakeActionRow(ticketNumber, ticketRecord)],
+      components: [buildTicketActionRow(false), ...(ticketRecord.category === "incident" ? [] : [buildIntakeActionRow(ticketNumber, ticketRecord)])],
     }).catch((error) => console.error(`Could not activate intake card for #${paddedNum}:`, error));
     await embedMessage.react("✅").catch(() => {});
     await embedMessage.react("❌").catch(() => {});
@@ -1402,7 +1407,7 @@ export async function createTicket(
               if (missingDetails) cardEmbed.addFields({ name: "Details needed", value: missingDetails.slice(0, 1000), inline: false });
               await currentCard.edit({
                 embeds: [cardEmbed],
-                components: [buildTicketActionRow(false), buildIntakeActionRow(ticketNumber, ticketRecord)],
+                components: [buildTicketActionRow(false), ...(ticketRecord.category === "incident" ? [] : [buildIntakeActionRow(ticketNumber, ticketRecord)])],
               }).then(() => {
                 markTicketIntakeSeeded(ticketRecord, intakeSeed, true);
               }).catch(() => failedMessages.push("the intake card"));
