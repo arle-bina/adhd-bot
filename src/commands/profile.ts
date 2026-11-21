@@ -75,6 +75,15 @@ const CAREER_EMOJI: Record<string, string> = {
   resigned: "🏳️",
   appointed: "📋",
   removed: "🚫",
+  took_post: "🎖️",
+  left_post: "↩️",
+  left_office: "↩️",
+};
+
+/** Post labels carry no verb, so exits say so explicitly. */
+const CAREER_PREFIX: Record<string, string> = {
+  left_post: "Left ",
+  left_office: "Left ",
 };
 
 function partyColor(char: CharacterResult): number {
@@ -280,7 +289,7 @@ function buildCareerEmbed(char: CharacterResult, career: CareerEvent[]): EmbedBu
   const lines = career.slice(0, 20).map((event) => {
     const emoji = CAREER_EMOJI[event.type] ?? "•";
     const ts = Math.floor(new Date(event.date).getTime() / 1000);
-    return `${emoji} **${event.office}** — <t:${ts}:D>`;
+    return `${emoji} ${CAREER_PREFIX[event.type] ?? ""}**${event.office}** — <t:${ts}:D>`;
   });
 
   embed.setDescription(lines.join("\n").slice(0, 4096));
